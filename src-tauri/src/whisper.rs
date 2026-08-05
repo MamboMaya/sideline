@@ -49,8 +49,19 @@ fn download_model(app: &AppHandle, path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(model_dir()).map_err(|e| e.to_string())?;
     let part_path = path.with_extension("bin.part");
 
-    let mut resp =
-        reqwest::blocking::get(MODEL_URL).map_err(|e| format!("model download failed: {e}"))?;
+    // No whole-request timeout: reqwest's blocking default is 30 s for the
+    // ENTIRE transfer, which a ~148 MB model can't finish on slower
+    // connections — first-run capture would fail forever. Connect timeout
+    // stays finite so a dead network still errors promptly.
+    let client = reqwest::blocking::Client::builder()
+        .timeout(None)
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("model download failed: {e}"))?;
+    let mut resp = client
+        .get(MODEL_URL)
+        .send()
+        .map_err(|e| format!("model download failed: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("model download failed: HTTP {}", resp.status()));
     }
