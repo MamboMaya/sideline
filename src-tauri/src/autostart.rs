@@ -56,16 +56,27 @@ pub fn ensure_consent(app: &AppHandle) {
         .title("Sideline")
         .buttons(MessageDialogButtons::OkCancelCustom(
             "Launch at Login".to_string(),
-            "Not Now".to_string(),
+            // Not "Not Now": the decline branch actively disables (it must,
+            // for installs the old force-enable already registered), so the
+            // label has to promise exactly that, not a deferral.
+            "Don't Launch at Login".to_string(),
         ))
         .show(move |launch_at_login| {
             let autolaunch = handle.autolaunch();
-            let _ = if launch_at_login {
+            let applied = if launch_at_login {
                 autolaunch.enable()
             } else {
                 autolaunch.disable()
             };
-            let _ = record_prompted(&sentinel);
+            // Record the answer only if it was actually honored; a failed
+            // LaunchAgent write re-asks next launch instead of silently
+            // diverging from the user's choice forever.
+            match applied {
+                Ok(()) => {
+                    let _ = record_prompted(&sentinel);
+                }
+                Err(e) => eprintln!("autostart: could not apply login-item choice: {e}"),
+            }
         });
 }
 
