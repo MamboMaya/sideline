@@ -143,8 +143,9 @@ pub(crate) fn purge_archive(app: &tauri::AppHandle) {
 
     // Checked, not `let _ =`: this is the one write that destroys data — a
     // failure must not be reported as success (screenshots above are
-    // already in the Trash either way; say so).
-    if let Err(e) = fs::write(&archive_path, &remainder) {
+    // already in the Trash either way; say so). Atomic temp+rename like
+    // every other notes write.
+    if let Err(e) = crate::commands::notes::write_file(&archive_path, remainder.clone()) {
         app.dialog()
             .message(format!(
                 "Failed to rewrite archive.md ({e}). No entries were purged; \

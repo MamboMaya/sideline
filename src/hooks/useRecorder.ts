@@ -44,10 +44,23 @@ export function useRecorder(
     const unError = listen<string>("capture-error", (e) =>
       showToast(e.payload),
     );
+    // Backend conditions that used to die in stderr — a hotkey silently
+    // rebound/disabled, the fs watcher dying (external edits stop
+    // appearing) — surface as toasts through the same channel.
+    const unHotkey = listen<string>("hotkey-fallback", (e) =>
+      showToast(e.payload),
+    );
+    const unWatcher = listen<string>("watcher-dead", () =>
+      showToast(
+        "File watching stopped — restart Sideline to see external edits",
+      ),
+    );
     return () => {
       unState.then((f) => f());
       unLevel.then((f) => f());
       unError.then((f) => f());
+      unHotkey.then((f) => f());
+      unWatcher.then((f) => f());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

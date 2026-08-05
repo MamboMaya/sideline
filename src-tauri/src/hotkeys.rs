@@ -123,13 +123,37 @@ pub(crate) fn register_hotkey_with_fallback(
 ) {
     if let Err(e) = app.global_shortcut().register(resolved) {
         eprintln!("failed to register {label} shortcut ({e}); falling back to default");
+        // Also emitted as `hotkey-fallback` (frontend toasts it): a
+        // Finder-launched app's stderr goes nowhere the user looks, and a
+        // silently-switched or silently-dead binding is exactly the
+        // fighting-the-user failure this app tries never to have.
+        use tauri::Emitter;
         if resolved != default {
             match app.global_shortcut().register(default) {
-                Ok(()) => *active.lock().unwrap() = default,
-                Err(e2) => eprintln!(
-                    "failed to register default {label} shortcut too ({e2}); {label} hotkey disabled"
-                ),
+                Ok(()) => {
+                    *active.lock().unwrap() = default;
+                    let _ = app.emit(
+                        "hotkey-fallback",
+                        format!(
+                            "Custom {label} hotkey is taken by another app — using the default instead"
+                        ),
+                    );
+                }
+                Err(e2) => {
+                    eprintln!(
+                        "failed to register default {label} shortcut too ({e2}); {label} hotkey disabled"
+                    );
+                    let _ = app.emit(
+                        "hotkey-fallback",
+                        format!("{label} hotkey couldn't be registered — disabled this session"),
+                    );
+                }
             }
+        } else {
+            let _ = app.emit(
+                "hotkey-fallback",
+                format!("{label} hotkey couldn't be registered — disabled this session"),
+            );
         }
     }
 }

@@ -161,7 +161,9 @@ export function useTriage({
     const note = current[currentIdx];
     persist(current.filter((_, i) => i !== currentIdx));
     showToast(message, () => {
-      deleteTriaged(filename);
+      deleteTriaged(filename).catch((e) =>
+        showToast(`Undo failed: ${String(e)}`),
+      );
       // Re-insert the filed note into the LIVE list, not the completion
       // snapshot: a snapshot restore would erase any note captured (or
       // change made) between filing and undo.
@@ -229,7 +231,9 @@ export function useTriage({
           const routed = current[currentIdx];
           persist(current.filter((_, i) => i !== currentIdx));
           showToast(`Todo → ${project}`, () => {
-            writeTodos(project, prevTodoContent).then(() => loadTodos());
+            writeTodos(project, prevTodoContent)
+              .then(() => loadTodos())
+              .catch((e) => showToast(`Undo failed: ${String(e)}`));
             // Re-insert into the LIVE list — a completion-snapshot restore
             // would erase notes captured between routing and undo.
             persist(insertNoteAt(notesRef.current, routed, currentIdx));
@@ -503,10 +507,14 @@ export function useTriage({
 
       showToast(message, () => {
         for (const filename of createdFilenames) {
-          deleteTriaged(filename);
+          deleteTriaged(filename).catch((e) =>
+            showToast(`Undo failed: ${String(e)}`),
+          );
         }
         for (const [project, prevContent] of touchedProjects) {
-          writeTodos(project, prevContent);
+          writeTodos(project, prevContent).catch((e) =>
+            showToast(`Undo failed: ${String(e)}`),
+          );
         }
         if (touchedProjects.size > 0) loadTodos();
         // Merge the filed notes back into the LIVE list (identity:

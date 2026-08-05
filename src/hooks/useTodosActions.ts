@@ -14,12 +14,11 @@ import {
   tagString,
 } from "../inbox";
 import { needsTitle } from "../lib/format";
-import { appendToArchive } from "../lib/archive";
+import { appendToArchive, undoArchiveAppend } from "../lib/archive";
 import {
   deleteTriaged,
   readTodos,
   triageNote,
-  writeArchive,
   writeTodos,
   writeTriaged,
 } from "../lib/commands";
@@ -118,7 +117,7 @@ export function useTodosActions({
               note.filename,
               { status: restore },
               setTriagedStatus(nextContent, restore),
-            ).catch(() => {});
+            ).catch((e) => showToast(`Undo failed: ${String(e)}`));
             dismissToast();
           });
         }
@@ -169,7 +168,9 @@ export function useTodosActions({
         if (status !== "pending") {
           const label = status === "done" ? "Done" : "Iced 🧊";
           showToast(`${label} → ${project}`, () => {
-            apply(parseTodos(prevContent)).catch(() => {});
+            apply(parseTodos(prevContent)).catch((e) =>
+              showToast(`Undo failed: ${String(e)}`),
+            );
             dismissToast();
           });
         }
@@ -248,7 +249,9 @@ export function useTodosActions({
       try {
         await apply(nextEntries);
         showToast(removing ? `Removed #${tag}` : `Added #${tag}`, () => {
-          apply(parseTodos(prevContent)).catch(() => {});
+          apply(parseTodos(prevContent)).catch((e) =>
+            showToast(`Undo failed: ${String(e)}`),
+          );
           dismissToast();
         });
       } catch (e) {
@@ -320,7 +323,9 @@ export function useTodosActions({
         await loadTodos();
         pendingSelectKeyRef.current = `todo::${project}::${entries.length - 1}`;
         showToast(`→ ${project} todos`, () => {
-          writeTodos(project, prevTodoContent).then(() => loadTodos());
+          writeTodos(project, prevTodoContent)
+            .then(() => loadTodos())
+            .catch((e) => showToast(`Undo failed: ${String(e)}`));
           triageNote(note.filename, content)
             .then((finalFilename) => {
               setTriaged((prev) => [
@@ -331,7 +336,7 @@ export function useTodosActions({
                 new Map(prev).set(finalFilename, content),
               );
             })
-            .catch(() => {});
+            .catch((e) => showToast(`Undo failed: ${String(e)}`));
           dismissToast();
         });
       } catch (e) {
@@ -388,7 +393,7 @@ export function useTodosActions({
       const nextEntries = section.entries.filter((_, i) => i !== entryIndex);
       const block = archiveBlock("📥", entry.timestamp, entry.tags, entry.body);
       try {
-        const prevArchive = await appendToArchive(block);
+        await appendToArchive(block);
         setTodos((prev) =>
           prev.map((t) =>
             t.project === project ? { ...t, entries: nextEntries } : t,
@@ -396,7 +401,11 @@ export function useTodosActions({
         );
         await writeTodos(project, serializeTodos(nextEntries));
         showToast(`Archived from ${project}`, () => {
-          writeArchive(prevArchive);
+          // Inverse op, not a pre-append snapshot restore (which would
+          // erase archive entries added since).
+          undoArchiveAppend(block).catch((e) =>
+            showToast(`Undo failed: ${String(e)}`),
+          );
           writeTodos(project, prevContent)
             .then(() => {
               setTodos((prev) =>
@@ -407,7 +416,7 @@ export function useTodosActions({
                 ),
               );
             })
-            .catch(() => {});
+            .catch((e) => showToast(`Undo failed: ${String(e)}`));
           dismissToast();
         });
       } catch (e) {
@@ -432,7 +441,7 @@ export function useTodosActions({
         note.reply,
       );
       try {
-        const prevArchive = await appendToArchive(block);
+        await appendToArchive(block);
         await deleteTriaged(note.filename);
         setTriaged((prev) => prev.filter((n) => n.filename !== note.filename));
         setTriagedContent((prev) => {
@@ -441,7 +450,9 @@ export function useTodosActions({
           return next;
         });
         showToast(`Archived ${note.filename}`, () => {
-          writeArchive(prevArchive);
+          undoArchiveAppend(block).catch((e) =>
+            showToast(`Undo failed: ${String(e)}`),
+          );
           if (content !== undefined) {
             triageNote(note.filename, content)
               .then((finalFilename) => {
@@ -453,7 +464,7 @@ export function useTodosActions({
                   new Map(prev).set(finalFilename, content),
                 );
               })
-              .catch(() => {});
+              .catch((e) => showToast(`Undo failed: ${String(e)}`));
           }
           dismissToast();
         });

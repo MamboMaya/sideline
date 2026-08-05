@@ -23,9 +23,19 @@ cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording), fs watcher on
   (`load_hotkeys` in hotkeys.rs, not through `read_config`) and normalized
   (modifier aliases, bare letter/digit/`space` → `Code` name) before
   `Shortcut::from_str`; a missing key, unparseable combo, or OS-level
-  registration failure all `eprintln!` and fall back to the hardcoded
-  ⌥⌘Space/⌥⌘R default — the app never loses a hotkey to a typo. Takes
-  effect on next launch only, no live reload.
+  registration failure all fall back to the hardcoded ⌥⌘Space/⌥⌘R default —
+  the app never loses a hotkey to a typo. An OS-level registration failure
+  (combo claimed by another app; the default also failing) additionally
+  emits `hotkey-fallback`, which the frontend toasts — a silently-switched
+  or silently-dead binding must not be discoverable only by pressing it.
+  Takes effect on next launch only, no live reload.
+
+- The fs watcher emits `watcher-dead` (frontend toasts "restart Sideline")
+  on any exit path — setup failure or channel close — since a dead watcher
+  otherwise means external edits silently stop appearing all session. All
+  full-file writes (inbox, archive, config, triaged, todos) go through one
+  atomic temp+rename helper (`write_file` in commands/notes.rs), so a crash
+  mid-write can never leave a notes file empty or truncated.
 
 - `read_inbox`, `write_inbox` — versioned compare-and-swap pair:
   `read_inbox` returns `(content, version)` (a content hash), and

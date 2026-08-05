@@ -101,8 +101,11 @@ mod tests {
     #[test]
     fn prompt_not_needed_after_recording() {
         let sentinel = scratch_sentinel("recorded");
+        let _ = std::fs::remove_dir_all(sentinel.parent().unwrap());
         record_prompted(&sentinel).expect("record should succeed");
         assert!(!prompt_needed(&sentinel));
+        // Clean up only THIS test's subdir — tests run in parallel and
+        // share the pid-keyed scratch root.
         let _ = std::fs::remove_dir_all(sentinel.parent().unwrap());
     }
 
@@ -111,11 +114,16 @@ mod tests {
         // Application Support/<identifier>/ may not exist on a fresh
         // machine; recording must create the whole path, not fail.
         let sentinel = scratch_sentinel("deep/nested/dirs");
+        let subroot = sentinel
+            .ancestors()
+            .nth(3)
+            .expect("deep/nested/dirs has 3 ancestors")
+            .to_path_buf();
+        let _ = std::fs::remove_dir_all(&subroot);
         assert!(!sentinel.parent().unwrap().exists());
         record_prompted(&sentinel).expect("record should create parents");
         assert!(sentinel.exists());
-        let _ = std::fs::remove_dir_all(
-            std::env::temp_dir().join(format!("sideline-autostart-test-{}", std::process::id())),
-        );
+        // Clean up only THIS test's subtree, never the shared scratch root.
+        let _ = std::fs::remove_dir_all(&subroot);
     }
 }

@@ -17,11 +17,22 @@ fn read_file_or_empty(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
-/// Shared body of `write_inbox`/`write_archive`/`write_config`: create the
-/// file's parent dir if needed, then write the full content.
-fn write_file(path: &Path, content: String) -> Result<(), String> {
-    fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    fs::write(path, content).map_err(|e| e.to_string())
+/// Shared body of every full-file write (inbox, archive, config, triaged,
+/// todos): create the parent dir if needed, write to a sibling `.tmp`, then
+/// rename into place — atomic on APFS, so a crash or power loss mid-write
+/// can never leave a notes file empty or truncated (`fs::write` alone is
+/// open-truncate-then-write).
+pub(crate) fn write_file(path: &Path, content: String) -> Result<(), String> {
+    let parent = path.parent().ok_or("path has no parent")?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let mut tmp_name = path
+        .file_name()
+        .ok_or("path has no file name")?
+        .to_os_string();
+    tmp_name.push(".tmp");
+    let tmp = parent.join(tmp_name);
+    fs::write(&tmp, content).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 /// Error sentinel the frontend matches on to detect a refused stale write.
@@ -103,7 +114,7 @@ pub(crate) fn triage_note(filename: String, content: String) -> Result<String, S
         path = dir.join(format!("{stem}-{n}.md"));
         n += 1;
     }
-    fs::write(&path, content).map_err(|e| e.to_string())?;
+    write_file(&path, content)?;
     let final_filename = path
         .file_name()
         .and_then(|f| f.to_str())
@@ -226,7 +237,7 @@ pub(crate) fn write_todos(project: String, content: String) -> Result<(), String
     let dir = notes_dir().join("todos");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let p = dir.join(format!("{project}.md"));
-    fs::write(p, content).map_err(|e| e.to_string())
+    write_file(&p, content)
 }
 
 /// Overwrites an existing `~/notes/notes/<filename>` in place — used for the
@@ -239,7 +250,7 @@ pub(crate) fn write_triaged(filename: String, content: String) -> Result<(), Str
     if !p.exists() {
         return Err("file does not exist".into());
     }
-    fs::write(p, content).map_err(|e| e.to_string())
+    write_file(&p, content)
 }
 
 #[cfg(test)]
