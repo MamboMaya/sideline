@@ -4,6 +4,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
 
 mod archive;
 mod audio;
+mod autostart;
 mod claude;
 mod commands;
 mod hotkeys;
@@ -66,12 +67,9 @@ pub fn run() {
             audio::list_audio_devices
         ])
         .setup(move |app| {
-            // Autostart at login (re-enabled every launch; disabling it in
-            // System Settings > Login Items sticks only until the next run).
-            {
-                use tauri_plugin_autostart::ManagerExt;
-                let _ = app.autolaunch().enable();
-            }
+            // One-time launch-at-login consent dialog; after it's answered,
+            // System Settings > Login Items is authoritative (see autostart.rs).
+            autostart::ensure_consent(app.handle());
 
             // Global hotkeys: toggle popover / toggle recording from anywhere.
             hotkeys::register_hotkey_with_fallback(

@@ -5,8 +5,12 @@ delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`)
 `commands/notes.rs` + `commands/open.rs` (the IPC commands below, grouped by
 concern), `claude.rs` (`send_to_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning), `hotkeys.rs` (config + registration),
-`tray.rs` (tray menu construction/events), and `watcher.rs` (the inbox fs
-watcher) — plus `audio.rs` and `whisper.rs` for in-app voice recording,
+`tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
+watcher), and `autostart.rs` (one-time launch-at-login consent: a native
+dialog on first run — "Launch at Login" enables, "Not Now" disables, either
+answer writes an `autostart-prompted` sentinel to Application Support so the
+question never returns, and System Settings > Login Items is authoritative
+from then on) — plus `audio.rs` and `whisper.rs` for in-app voice recording,
 documented separately below.
 
 Tray icon + popover window toggle (tray click anchors under the icon for that
