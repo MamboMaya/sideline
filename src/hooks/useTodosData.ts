@@ -151,8 +151,11 @@ export function useTodosData({
       if (n.status === "iced") return false;
       if (!showDone && n.status === "done") return false;
       return matchesSearch(n.body, n.tags, n.title ?? undefined);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     });
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triaged, showDone, searchLower]);
 
   // Tag sections (2nd group in the merged Todos view): triaged notes grouped

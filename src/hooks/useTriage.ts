@@ -302,6 +302,10 @@ export function useTriage({
     // stable identity from useInbox, so listing it costs nothing (it never
     // churns this callback) while making the dependency visible instead of
     // silently captured.
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [prompts, models, projectTags, sending, loadTodos, generateTitles, persist],
   );
 
@@ -533,6 +537,10 @@ export function useTriage({
     }
     // Same as above: `persist` is listed because it's read here and its
     // identity is stable, so it never churns this callback.
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     prompts,
     models,

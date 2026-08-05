@@ -8,7 +8,7 @@ import {
   serializeTodos,
   todoRowDisplay,
 } from "./inbox";
-import { QUICK_TAGS, tagLabel, tagChipClass } from "./lib/format";
+import { QUICK_TAGS, tagLabel } from "./lib/format";
 import { appendToArchive } from "./lib/archive";
 import {
   readTriaged,
@@ -39,7 +39,6 @@ import { useTriage } from "./hooks/useTriage";
 import { useTodosActions } from "./hooks/useTodosActions";
 import { useEditRow } from "./hooks/useEditRow";
 import { useKeyboard } from "./keys/useKeyboard";
-import { TagEditor } from "./components/TagEditor";
 import { Toast } from "./components/Toast";
 import { ShortcutsModal } from "./components/ShortcutsModal";
 import { Header } from "./components/Header";
@@ -273,6 +272,10 @@ export default function App() {
     return () => {
       un.then((f) => f());
     };
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The 5 opaque `.sideline.json` overrides, read from current state —

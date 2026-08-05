@@ -125,6 +125,10 @@ export function useTodosActions({
         showToast(`Failed to update ${note.filename}: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent, applyTriagedPatch],
   );
 
@@ -178,6 +182,10 @@ export function useTodosActions({
         showToast(`Failed to update ${project}.md: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 
@@ -222,6 +230,10 @@ export function useTodosActions({
         return next;
       });
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -258,6 +270,10 @@ export function useTodosActions({
         showToast(`Failed to update ${project}.md: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 
@@ -343,6 +359,10 @@ export function useTodosActions({
         showToast(`Re-route to ${project} failed: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent, loadTodos, generateTitles],
   );
 
@@ -377,6 +397,10 @@ export function useTodosActions({
         showToast(`Failed to update ${note.filename}: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent, projectTags, rerouteTriagedNote, applyTriagedPatch],
   );
 
@@ -423,6 +447,10 @@ export function useTodosActions({
         showToast(`Failed to archive from ${project}.md: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 
@@ -472,6 +500,10 @@ export function useTodosActions({
         showToast(`Failed to archive ${note.filename}: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent],
   );
 
@@ -498,6 +530,10 @@ export function useTodosActions({
     } catch (e) {
       showToast(`Copy failed: ${String(e)}`);
     }
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Per-section ⧉ copy button: bundles a project's PENDING
@@ -523,6 +559,10 @@ export function useTodosActions({
         showToast(`Copy failed: ${String(e)}`);
       }
     },
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 

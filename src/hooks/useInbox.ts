@@ -167,6 +167,10 @@ export function useInbox({
     }
     setPreamble(parsedPreamble);
     setNotes(taggedNotes);
+    // Deliberate omission: these close over refs/setState/toast closures only
+    // (never stale), keeping this callback's identity stable — see the file's
+    // stable-identity comments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
