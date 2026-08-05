@@ -46,6 +46,18 @@ pub(crate) fn move_to_user_trash(p: &Path) -> Result<(), String> {
     fs::rename(p, dest).map_err(|e| e.to_string())
 }
 
+/// What survives a confirmed purge: the confirm dialog can sit open for
+/// minutes while the frontend keeps appending to archive.md, and only the
+/// snapshot the user saw was confirmed. The archive is append-only, so
+/// content added meanwhile is a suffix — return it (to be written back,
+/// leading newlines trimmed). Any non-append divergence (external edit,
+/// truncation) returns None: abort rather than destroy unconfirmed data.
+fn purge_remainder(snapshot: &str, current: &str) -> Option<String> {
+    current
+        .strip_prefix(snapshot)
+        .map(|tail| tail.trim_start_matches('\n').to_string())
+}
+
 /// Tray-menu "Purge Archive…": after a native confirmation, empty
 /// archive.md and move screenshots referenced ONLY by the archive into the
 /// macOS Trash. The Trash is the final safety net — this is the one place
@@ -78,11 +90,13 @@ pub(crate) fn purge_archive(app: &tauri::AppHandle) {
         }
     }
     let live_refs = asset_refs(&live);
-    let purgeable: Vec<PathBuf> = asset_refs(&archive)
+    // Refs kept alongside paths: after the confirm dialog the survivors of
+    // the snapshot-vs-now diff must be re-excluded by ref string.
+    let purgeable: Vec<(String, PathBuf)> = asset_refs(&archive)
         .into_iter()
         .filter(|r| !live_refs.contains(r))
-        .filter_map(|r| confine(Path::new(&r)).ok())
-        .filter(|p| p.is_file())
+        .filter_map(|r| confine(Path::new(&r)).ok().map(|p| (r, p)))
+        .filter(|(_, p)| p.is_file())
         .collect();
 
     let msg = format!(
@@ -104,16 +118,54 @@ pub(crate) fn purge_archive(app: &tauri::AppHandle) {
         return;
     }
 
+    // The dialog may have sat open for minutes; only the snapshot the user
+    // saw was confirmed. Preserve anything appended meanwhile, abort on
+    // any other change.
+    let current = fs::read_to_string(&archive_path).unwrap_or_default();
+    let Some(remainder) = purge_remainder(&archive, &current) else {
+        app.dialog()
+            .message("archive.md changed while confirming — nothing was purged. Try again.")
+            .title("Purge Archive")
+            .blocking_show();
+        return;
+    };
+    let kept = remainder.lines().filter(|l| l.starts_with("### ")).count();
+
+    // Entries appended during the dialog may reference assets that were
+    // purgeable a moment ago — keep those out of the Trash.
+    let remainder_refs = asset_refs(&remainder);
     let mut trashed = 0;
-    for p in &purgeable {
-        if move_to_user_trash(p).is_ok() {
+    for (r, p) in &purgeable {
+        if !remainder_refs.contains(r) && move_to_user_trash(p).is_ok() {
             trashed += 1;
         }
     }
-    let _ = fs::write(&archive_path, "");
+
+    // Checked, not `let _ =`: this is the one write that destroys data — a
+    // failure must not be reported as success (screenshots above are
+    // already in the Trash either way; say so).
+    if let Err(e) = fs::write(&archive_path, &remainder) {
+        app.dialog()
+            .message(format!(
+                "Failed to rewrite archive.md ({e}). No entries were purged; \
+                 {trashed} screenshot{} already moved to Trash (restorable there).",
+                if trashed == 1 { " was" } else { "s were" },
+            ))
+            .title("Purge Archive")
+            .blocking_show();
+        return;
+    }
+    let kept_note = if kept > 0 {
+        format!(
+            " Kept {kept} entr{} added while confirming.",
+            if kept == 1 { "y" } else { "ies" }
+        )
+    } else {
+        String::new()
+    };
     app.dialog()
         .message(format!(
-            "Purged {entry_count} entr{}; {trashed} screenshot{} moved to Trash.",
+            "Purged {entry_count} entr{}; {trashed} screenshot{} moved to Trash.{kept_note}",
             if entry_count == 1 { "y" } else { "ies" },
             if trashed == 1 { "" } else { "s" },
         ))
@@ -124,6 +176,41 @@ pub(crate) fn purge_archive(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- purge_remainder --------------------------------------------------
+
+    #[test]
+    fn purge_remainder_unchanged_archive_leaves_nothing() {
+        assert_eq!(
+            purge_remainder("### old entry\nbody\n", "### old entry\nbody\n"),
+            Some(String::new())
+        );
+    }
+
+    #[test]
+    fn purge_remainder_preserves_entries_appended_during_confirm() {
+        let snapshot = "### old entry\nbody\n";
+        let current = "### old entry\nbody\n\n### new entry\nnew body\n";
+        assert_eq!(
+            purge_remainder(snapshot, current),
+            Some("### new entry\nnew body\n".to_string())
+        );
+    }
+
+    #[test]
+    fn purge_remainder_aborts_on_non_append_divergence() {
+        // Anything other than a pure append (external edit, truncation)
+        // must abort the purge rather than destroy unconfirmed content.
+        assert_eq!(
+            purge_remainder("### old entry\nbody\n", "### rewritten\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn purge_remainder_aborts_on_truncation() {
+        assert_eq!(purge_remainder("### old entry\nbody\n", ""), None);
+    }
 
     // --- asset_refs -------------------------------------------------------
 
