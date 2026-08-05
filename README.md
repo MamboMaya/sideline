@@ -7,10 +7,6 @@ project todo list, or delete it. Everything is plain Markdown under `~/notes`,
 and nothing ever leaves your machine except the (optional) Claude-assisted
 triage calls.
 
-## Screenshots
-
-Coming soon — inbox popover, todos view, recording indicator.
-
 ## What it does
 
 - **Capture**: global hotkey (⌥⌘R) records a voice note, transcribes it
@@ -43,8 +39,12 @@ pnpm tauri build
 ```
 
 First build takes 10–15 minutes (it compiles whisper.cpp). The first recording
-downloads the Whisper model (~148 MB) to `~/.whisper-models/`. macOS only;
-Apple Silicon recommended (transcription runs on Metal).
+downloads the Whisper model (~148 MB) to `~/.whisper-models/`. macOS 10.15
+(Catalina) or later; Apple Silicon recommended (transcription runs on Metal).
+
+On first launch, Sideline asks once whether to launch automatically at login;
+after that, System Settings > General > Login Items is authoritative (change
+it there anytime).
 
 Optional: install the [`claude` CLI](https://claude.com/claude-code) to enable
 Claude-assisted triage and note headers. Everything else works without it.
