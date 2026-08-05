@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    # macOS-only app (menu bar, cpal/whisper-rs native deps) — Linux lacks
+    # the platform this repo targets, so there is no cross-platform matrix.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # No explicit version: reads packageManager from package.json.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec prettier --check .
+      - run: pnpm test
+
+      - run: cargo fmt --check
+        working-directory: src-tauri
+      - run: cargo test --release
+        working-directory: src-tauri
+      # cargo clippy subsumes `cargo check`; no separate check step needed.
+      - run: cargo clippy --release -- -D warnings
+        working-directory: src-tauri
+
+      # No `tauri build` here: unsigned CI builds can't pass the app's TCC/
+      # signing constraints (see CLAUDE.md), so a CI build would prove
+      # nothing about the real, signed build.

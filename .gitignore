@@ -1,0 +1,10 @@
+node_modules
+dist
+src-tauri/target
+src-tauri/gen
+.DS_Store
+.claude/
+.previews/
+docs/superpowers/
+CLAUDE.local.md
+.superpowers/

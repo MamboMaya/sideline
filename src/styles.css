@@ -1,0 +1,614 @@
+:root {
+  --accent: #e8912d;
+  --text: #e6e6ea;
+  --text-muted: #8a8a94;
+  --text-secondary: #b9b9c2;
+  --bg: #1b1b1f;
+  --bg-raised: #232329;
+  --border: #2c2c33;
+  --border-strong: #3a3a44;
+  --project: #4a9edb;
+  --danger: #e05252;
+}
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  /* clip, not hidden: hidden still allows programmatic scrolling (e.g.
+     scrollIntoView through a wide descendant), which once left the whole
+     popover shifted sideways. clip forbids scrolling entirely. */
+  overflow: clip;
+}
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.header-spacer {
+  flex: 1;
+  min-width: 4px;
+}
+.tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.tab:hover {
+  color: var(--text);
+}
+/* Inset underline instead of border-bottom: keeps the tab box symmetric so
+   tab text and the header's icon buttons center on the same line. */
+.tab.active {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+/* Header buttons after the tabs (batch, show-done, search, Finder, VS
+   Code) share the header's remaining space; icon-only ones keep a fixed
+   width so the row never reflows/wraps at the popover's 380px width. */
+header .ghost {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+header .ghost.active {
+  color: var(--accent);
+}
+/* Voice-note recording indicator, right after the header spacer — hidden
+   entirely at idle (see the `recState !== "idle"` guard in the JSX). */
+.rec-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.rec-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.rec-elapsed {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+}
+.rec-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 13px;
+}
+.rec-bar {
+  width: 2.5px;
+  min-height: 2px;
+  background: var(--danger);
+  border-radius: 1px;
+  transition: height 0.05s linear;
+}
+.rec-status {
+  color: var(--accent);
+  font-style: italic;
+}
+/* flex: 1 keeps the toast bar pinned to the window bottom even when the
+   card list is short. */
+.cards {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  position: relative;
+}
+.card.selected {
+  border-color: var(--accent);
+}
+/* Triage-in-progress: the whole card gets an unmistakable pulsing amber
+   glow (not just a small corner icon) so it's obvious at a glance which
+   card is mid-flight, even across a crowded list. */
+.card.sending {
+  border-color: var(--accent);
+  animation: sending-glow 1.5s ease-in-out infinite;
+}
+@keyframes sending-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(232, 145, 45, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 10px 2px rgba(232, 145, 45, 0.55);
+  }
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.ts {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex: 1;
+}
+.sending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.body {
+  white-space: pre-wrap;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+/* Haiku-generated header line on long triaged/todo cards — the scannable
+   summary above the raw capture (style C: headline leads, raw note recedes
+   to one grey line until expanded via Enter/click). */
+.card-title {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.35;
+  margin-bottom: 3px;
+}
+.body.sub {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.body.sub.clamp1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.body.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* Sticky section headers float over the list, so keyboard-nav
+   scrollIntoView must aim below them — otherwise arrowing up leaves the
+   selected card hidden under its header. */
+.section .card {
+  scroll-margin-top: 32px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  /* Sticky: the tag heading stays pinned while its section scrolls, until
+     the next section's heading pushes it off. Full-bleed background so
+     cards slide underneath cleanly (-8px offsets cancel .cards padding). */
+  position: sticky;
+  top: -8px;
+  z-index: 5;
+  margin: 0 -8px;
+  padding: 6px 10px;
+  background: var(--bg);
+}
+.section-header {
+  cursor: pointer;
+}
+/* Keyboard selection can land on a COLLAPSED section's header row — same
+   amber cue as a selected card. */
+.section-header.selected {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.section-header .chevron {
+  color: var(--text-muted);
+  font-size: 10px;
+  width: 10px;
+  flex-shrink: 0;
+}
+/* Project section headers name a PROJECT tag, not a quick/custom one — blue
+   like `.tag.project`, overriding the header's default amber. Size/weight/
+   uppercase stay inherited from `.section-header`. */
+.section-header .project-name {
+  color: var(--project);
+}
+.copy-btn {
+  margin-left: auto;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.reply {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.reply-label {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.reply-body {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tag {
+  background: none;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.tag:hover {
+  border-color: #6a6a74;
+  cursor: pointer;
+}
+/* Active = filled amber, for quick and custom tags alike — one style
+   family for every non-project tag, both states. */
+.tag.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.tag.on:hover {
+  filter: brightness(1.1);
+}
+/* Project tags render `@name` instead of `#name` (see `tagLabel` in
+   App.tsx) — a distinct blue accent so they read apart from the amber
+   quick/custom tags at every display site (card chips, pinned-tag chips,
+   autocomplete rows). Comes after `.tag.on` so it wins the tie when both
+   classes are present. */
+.tag.project {
+  border-color: var(--project);
+  color: var(--project);
+}
+/* Selected project tag: filled state matching `.tag.on`'s pattern but
+   blue, so an active project chip actually looks pressed instead of reading
+   identical to its unselected state. */
+.tag.project.on {
+  background: var(--project);
+  border-color: var(--project);
+  color: var(--bg);
+  font-weight: 600;
+}
+.tag-input {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  outline: none;
+  width: 90px;
+}
+.tag-add {
+  background: none;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.tag-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.search-input {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 3px 8px;
+  font-size: 12px;
+  outline: none;
+  width: 120px;
+  min-width: 60px;
+  flex-shrink: 1;
+}
+.edit-area {
+  width: 100%;
+  min-height: 120px;
+  max-height: 45vh;
+  overflow-y: auto;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.4;
+  padding: 6px 8px;
+  outline: none;
+  margin-bottom: 6px;
+}
+.todo-glyph {
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.card.done {
+  opacity: 0.5;
+}
+.card.done .body {
+  text-decoration: line-through;
+  text-decoration-color: #5a5a63;
+}
+.card.iced {
+  opacity: 0.65;
+  border-style: dashed;
+}
+.suggest {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 100%;
+  margin-top: 4px;
+  background: #2a2a31;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 10;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.suggest.up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+.suggest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.suggest-row:hover,
+.suggest-row.active {
+  background: #35353d;
+}
+.suggest-tag {
+  color: var(--text);
+}
+.suggest-tag.project {
+  color: var(--project);
+}
+.suggest-pin {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0.35;
+  padding: 0 2px;
+  line-height: 1;
+}
+.suggest-pin:hover {
+  opacity: 0.7;
+}
+.suggest-pin.pinned {
+  opacity: 1;
+  color: var(--accent);
+}
+.suggest-pin.pinned:hover {
+  opacity: 1;
+}
+.suggest-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.suggest-x:hover {
+  color: var(--danger);
+  opacity: 1;
+}
+/* "new" chip on the create row of the tag autocomplete. */
+.suggest-new {
+  color: var(--text-muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-left: 5px;
+}
+.ghost {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.ghost:hover {
+  color: var(--text);
+}
+.ghost.danger:hover {
+  color: var(--danger);
+}
+/* The 🧊 park and ✎ edit buttons hide at rest (clutter on every card) and
+   appear on card hover; `i`/`e` work regardless. */
+.card .ghost.ice,
+.card .ghost.edit-btn {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.card:hover .ghost.ice,
+.card:hover .ghost.edit-btn {
+  opacity: 1;
+}
+/* Lives inside .cards (the only flex:1 region), so flex:1 centers the
+   message in the whole list area, not just under the header. */
+.empty {
+  color: var(--text-muted);
+  text-align: center;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Two stacked rows: Everywhere (full width, items flow down two columns),
+   then Inbox | Todos side by side. */
+.shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.9;
+  cursor: pointer;
+  overflow-x: clip;
+}
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 16px;
+  grid-template-rows: repeat(7, auto);
+  grid-auto-flow: column;
+}
+.shortcuts-row {
+  display: flex;
+  gap: 16px;
+}
+.shortcuts-col {
+  flex: 1;
+  min-width: 0;
+}
+.shortcuts-title {
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+/* One shortcut per row: fixed-width-ish key on the left, label right. */
+.shortcut {
+  color: var(--text-secondary);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* letter-spacing keeps multi-glyph chords (⌥⌘Space) from reading as one
+   smudge at this size. */
+.shortcut kbd {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.08em;
+}
+.error {
+  color: var(--danger);
+  padding: 12px;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-raised);
+  border-top: 2px solid var(--accent);
+  padding: 8px 12px;
+}
+.toast-message {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast-undo {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.toast-undo:hover {
+  text-decoration: underline;
+}
+.toast-dismiss {
+  font-size: 13px;
+}

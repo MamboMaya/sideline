@@ -1,0 +1,2 @@
+# Defaults are fine; this file's presence is what makes `cargo fmt` /
+# `cargo fmt --check` deterministic (no reliance on a user's global config).
