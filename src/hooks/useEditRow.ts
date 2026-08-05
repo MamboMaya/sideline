@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import {
-  Note,
-  TodoEntry,
-  TriagedNote,
+  type Note,
+  type TodoEntry,
+  type TriagedNote,
   parseTriagedFile,
   serializeTodos,
   setTriagedBody,

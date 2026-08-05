@@ -70,7 +70,7 @@ export function autoTag(
       const chars = tag.replace(/-/g, "").split("");
       if (chars.length === 0) continue;
       const re = new RegExp(
-        "\\b" + chars.map(escapeRegex).join("[\\s-]?") + "\\b",
+        `\\b${chars.map(escapeRegex).join("[\\s-]?")}\\b`,
         "i",
       );
       if (re.test(n.body)) added.push(tag);

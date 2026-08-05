@@ -82,6 +82,7 @@ export function TodoCard({
       <div className="card-head">
         {variant === "normal" && (
           <button
+            type="button"
             className="todo-glyph"
             title={isDone ? "Un-done (d)" : "Mark done (d)"}
             onClick={(e) => {
@@ -94,6 +95,7 @@ export function TodoCard({
         )}
         <span className="ts">{entry.timestamp}</span>
         <button
+          type="button"
           className="ghost edit-btn"
           title="Edit (e)"
           onClick={(e) => {
@@ -107,6 +109,7 @@ export function TodoCard({
           // Done can never be iced — no 🧊 on done cards.
           !isDone && (
             <button
+              type="button"
               className="ghost ice"
               title="Icebox — park for later (i)"
               onClick={(e) => {
@@ -119,6 +122,7 @@ export function TodoCard({
           )
         ) : (
           <button
+            type="button"
             className="ghost"
             title="Thaw — back to pending (i)"
             onClick={(e) => {
@@ -130,6 +134,7 @@ export function TodoCard({
           </button>
         )}
         <button
+          type="button"
           className="ghost"
           title={
             variant === "iced"
@@ -146,6 +151,7 @@ export function TodoCard({
           {variant === "iced" ? "✓" : isDone ? "↺" : "✓"}
         </button>
         <button
+          type="button"
           className="ghost danger"
           title="Archive (x)"
           onClick={(e) => {
@@ -185,6 +191,7 @@ export function TodoCard({
       <div className="tags" onClick={(e) => e.stopPropagation()}>
         {entry.tags.map((t) => (
           <button
+            type="button"
             key={t}
             className={tagChipClass(t, true, projectTags)}
             title="Remove tag"

@@ -45,6 +45,7 @@ export function SectionHeader({
       {label}
       {onCopy && (
         <button
+          type="button"
           className="ghost copy-btn"
           title="Copy pending todos (c)"
           onClick={(e) => {

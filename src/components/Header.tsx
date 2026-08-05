@@ -58,6 +58,7 @@ export function Header({
     <header>
       <div className="tabs">
         <button
+          type="button"
           className={view === "inbox" ? "tab active" : "tab"}
           title="⌘1 · s toggles"
           onClick={() => onChangeView("inbox")}
@@ -65,6 +66,7 @@ export function Header({
           Inbox ({notesCount})
         </button>
         <button
+          type="button"
           className={view === "todos" ? "tab active" : "tab"}
           title="⌘2 · s toggles"
           onClick={() => onChangeView("todos")}
@@ -85,6 +87,7 @@ export function Header({
               <span className="rec-bars">
                 {REC_BAR_MULT.map((m, i) => (
                   <span
+                    // biome-ignore lint/suspicious/noArrayIndexKey: REC_BAR_MULT is a static constant; bars never reorder
                     key={i}
                     className="rec-bar"
                     style={{
@@ -105,6 +108,7 @@ export function Header({
       )}
       {view === "inbox" && (
         <button
+          type="button"
           className="ghost"
           title="Triage all notes — one Claude call (T)"
           disabled={notesCount === 0 || batchRunning}
@@ -115,6 +119,7 @@ export function Header({
       )}
       {view === "todos" && (
         <button
+          type="button"
           className={showDone ? "ghost active" : "ghost"}
           title="Toggle visibility of done items"
           onClick={onToggleShowDone}
@@ -134,11 +139,17 @@ export function Header({
           title="Search (/)"
         />
       ) : (
-        <button className="ghost" title="Search (/)" onClick={onOpenSearch}>
+        <button
+          type="button"
+          className="ghost"
+          title="Search (/)"
+          onClick={onOpenSearch}
+        >
           🔍
         </button>
       )}
       <button
+        type="button"
         className={showShortcuts ? "ghost active" : "ghost"}
         title="Keyboard shortcuts (?)"
         onClick={onToggleShortcuts}

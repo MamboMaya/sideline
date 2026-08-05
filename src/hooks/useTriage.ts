@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { MutableRefObject } from "react";
 import {
-  Note,
+  type Note,
   parseTodos,
   serializeTodos,
   slugFor,
@@ -184,6 +184,7 @@ export function useTriage({
   // — other cards stay fully usable while this runs, so completion must
   // re-locate the note by `raw` rather than trust `idx`. A note must never
   // be stuck: CLI failure falls back to plain (appendix-less) filing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const triageWithClaude = useCallback(
     async (idx: number) => {
       const note = notesRef.current[idx];
@@ -302,10 +303,6 @@ export function useTriage({
     // stable identity from useInbox, so listing it costs nothing (it never
     // churns this callback) while making the dependency visible instead of
     // silently captured.
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [prompts, models, projectTags, sending, loadTodos, generateTitles, persist],
   );
 
@@ -315,6 +312,7 @@ export function useTriage({
   // tagged notes still skip Claude entirely (same as the single-note path)
   // and are filed instantly, grouped so each project's todo file is read
   // and written once for the whole batch rather than once per note.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const triageBatch = useCallback(async () => {
     if (batchRunning) return;
     // Exclude notes a single-note triage is already working on — the batch
@@ -537,10 +535,6 @@ export function useTriage({
     }
     // Same as above: `persist` is listed because it's read here and its
     // identity is stable, so it never churns this callback.
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     prompts,
     models,

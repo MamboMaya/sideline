@@ -1,0 +1,64 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "files": {
+    "includes": [
+      "**",
+      "!dist",
+      "!src-tauri/target",
+      "!src-tauri/gen",
+      "!.previews",
+      "!.superpowers"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 80
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "off"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "useHookAtTopLevel": "error",
+        "useExhaustiveDependencies": "warn"
+      },
+      "a11y": {
+        // Keyboard interaction is app-global (src/keys/ dispatch), not
+        // per-element: cards are click targets whose key handling lives in
+        // the one keymap, and autofocus IS the intended UX in a
+        // keyboard-first popover (edit textarea, search, tag input).
+        // Per-element key handlers or focus-order changes would fight that
+        // design. Revisit if the app ever targets screen-reader support.
+        "useKeyWithClickEvents": "off",
+        "noStaticElementInteractions": "off",
+        "noAutofocus": "off"
+      },
+      "style": {
+        // The pre-Biome setup (tseslint recommended) allowed non-null
+        // assertions, and mechanically rewriting them adds runtime
+        // branches — keep the old preference.
+        "noNonNullAssertion": "off",
+        // styles.css predates this rule; reordering selectors for
+        // specificity risks visual changes with no test coverage.
+        "noDescendingSpecificity": "off"
+      }
+    }
+  }
+}

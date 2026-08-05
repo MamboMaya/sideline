@@ -68,6 +68,7 @@ export function InboxCard({
         ) : (
           <>
             <button
+              type="button"
               className="ghost edit-btn"
               title="Edit (e)"
               onClick={onEdit}
@@ -75,6 +76,7 @@ export function InboxCard({
               ✎
             </button>
             <button
+              type="button"
               className="ghost"
               title="Triage with Claude → own file (t)"
               onClick={onTriage}
@@ -82,6 +84,7 @@ export function InboxCard({
               ✓
             </button>
             <button
+              type="button"
               className="ghost danger"
               title="Archive (x)"
               onClick={onDelete}
@@ -95,6 +98,7 @@ export function InboxCard({
       <div className="tags">
         {quickTags.map((t, i) => (
           <button
+            type="button"
             key={t}
             className={tagChipClass(t, note.tags.includes(t), projectTags)}
             title={`key ${i + 1}`}
@@ -108,6 +112,7 @@ export function InboxCard({
           .filter(({ t }) => !quickTags.includes(t))
           .map(({ t, keyNum }) => (
             <button
+              type="button"
               key={t}
               className={tagChipClass(t, note.tags.includes(t), projectTags)}
               title={`key ${keyNum}`}
@@ -120,6 +125,7 @@ export function InboxCard({
           .filter((t) => !quickTags.includes(t) && !pinnedTags.includes(t))
           .map((t) => (
             <button
+              type="button"
               key={t}
               className={tagChipClass(t, true, projectTags)}
               onClick={() => onToggleTag(t)}

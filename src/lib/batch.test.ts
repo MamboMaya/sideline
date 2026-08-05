@@ -2,7 +2,7 @@
 // and splitting the reply back into per-item text.
 import { describe, expect, test } from "vitest";
 import type { Note } from "../inbox";
-import { BatchUnit, buildBatchPrompt, parseBatchReply } from "./batch";
+import { type BatchUnit, buildBatchPrompt, parseBatchReply } from "./batch";
 
 const note = (body: string, tags: string[] = []): Note => ({
   icon: "📝",

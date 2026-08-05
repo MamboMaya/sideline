@@ -1,4 +1,4 @@
-import { Note } from "../inbox";
+import type { Note } from "../inbox";
 
 // Inverse-operation helpers for undo closures. Undo must NOT restore whole
 // pre-action snapshots: notes captured (or actions taken) between the action
@@ -78,5 +78,5 @@ export function stripArchiveBlock(
   const out = archive.slice(0, start) + archive.slice(end);
   // appendToArchive trims the pre-append content before re-joining, so the
   // removal leaves the prior text without its final newline — restore it.
-  return out && !out.endsWith("\n") ? out + "\n" : out;
+  return out && !out.endsWith("\n") ? `${out}\n` : out;
 }

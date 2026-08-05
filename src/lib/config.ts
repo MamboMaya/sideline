@@ -160,7 +160,7 @@ export function parseConfig(raw: string): SidelineConfig {
       projectsOverride = rawProjects;
     }
     const zoom =
-      typeof parsed?.zoom === "number" && isFinite(parsed.zoom)
+      typeof parsed?.zoom === "number" && Number.isFinite(parsed.zoom)
         ? Math.min(1.5, Math.max(0.7, parsed.zoom))
         : 1;
     const audioOverride =

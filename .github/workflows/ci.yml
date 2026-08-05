@@ -39,8 +39,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc --noEmit
-      - run: pnpm exec prettier --check .
+      # Biome lints + format-checks TS/TSX/JSON/CSS; Prettier covers only
+      # what Biome doesn't format (markdown, YAML).
       - run: pnpm run lint
+      - run: pnpm exec prettier --check "**/*.{md,yml,yaml}"
+
       - run: pnpm test
 
       - run: cargo fmt --check

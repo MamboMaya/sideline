@@ -48,12 +48,12 @@ export function TagEditor({
   const canCreate = isActive ? editor.suggestCreate(tags) : false;
 
   // Clamp the highlighted row if the match list shrinks out from under it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   useEffect(() => {
     if (!inputVisible) return;
     editor.setSuggestIndex((i) =>
       i >= matches.length ? matches.length - 1 : i,
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputVisible, matches.length]);
 
   // INVERSION: the dropdown is absolutely positioned inside the scrolling
@@ -67,6 +67,7 @@ export function TagEditor({
   // exactly one — the row this instance belongs to, which is only ever
   // measured when it's actually the active+open one). Zero reads of view/
   // selection/card ref maps.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   useLayoutEffect(() => {
     if (!inputVisible) return;
     const card = inputRef.current?.closest(".card");
@@ -77,7 +78,6 @@ export function TagEditor({
     const spaceBelow = containerBottom - card.getBoundingClientRect().bottom;
     const estimatedHeight = (matches.length + (canCreate ? 1 : 0)) * 26 + 14;
     editor.setSuggestUp(spaceBelow < estimatedHeight);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputVisible, matches.length, canCreate]);
 
   return (
@@ -140,6 +140,7 @@ export function TagEditor({
         />
       ) : (
         <button
+          type="button"
           className="tag-add"
           title="Add tag (a)"
           onClick={(e) => {
@@ -168,6 +169,7 @@ export function TagEditor({
                 <span className="suggest-new">new</span>
               </span>
               <button
+                type="button"
                 className="suggest-pin"
                 title="Add + pin (⌘↵)"
                 onMouseDown={(e) => {
@@ -207,6 +209,7 @@ export function TagEditor({
               {!QUICK_TAGS.includes(t) && (
                 <span className="suggest-actions">
                   <button
+                    type="button"
                     className={
                       pinnedTags.includes(t)
                         ? "suggest-pin pinned"
@@ -223,6 +226,7 @@ export function TagEditor({
                     📌
                   </button>
                   <button
+                    type="button"
                     className="suggest-pin suggest-x"
                     title="Delete from suggestions"
                     onMouseDown={(e) => {

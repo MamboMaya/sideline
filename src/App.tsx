@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   archiveBlock,
   parseTriagedFile,
-  TodoEntry,
+  type TodoEntry,
   parseTodos,
   serializeTodos,
   todoRowDisplay,
@@ -148,6 +148,7 @@ export default function App() {
   // hard-deleted. Uses capture time as the proxy for "done long enough"
   // (done-time isn't recorded anywhere).
   const sweptRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   useEffect(() => {
     if (sweptRef.current) return;
     sweptRef.current = true;
@@ -156,7 +157,7 @@ export default function App() {
         const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
         const isOld = (ts: string) => {
           const t = new Date(ts.replace(" ", "T")).getTime();
-          return !isNaN(t) && t < cutoff;
+          return !Number.isNaN(t) && t < cutoff;
         };
         let archived = 0;
         const pairs = await readTodos();
@@ -198,13 +199,13 @@ export default function App() {
         // Best-effort housekeeping — never block launch on it.
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reopening the popover is a fresh glance: jump back to the top with a
   // clean slate (selection, search, modal). Tab switches within one open
   // session keep their place. Focus-gain ≡ reopen, since the popover hides
   // on every focus loss.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   useEffect(() => {
     const un = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (!focused) return;
@@ -221,10 +222,6 @@ export default function App() {
     return () => {
       un.then((f) => f());
     };
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Tag editor (`a` in both views: input + suggestion dropdown). A single

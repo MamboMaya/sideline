@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Note } from "../inbox";
+import type { Note } from "../inbox";
 import {
   insertNoteAt,
   mergeMissingNotes,

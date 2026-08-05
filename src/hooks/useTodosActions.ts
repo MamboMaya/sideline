@@ -2,9 +2,9 @@ import { useCallback } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
-  TodoEntry,
-  TodoStatus,
-  TriagedNote,
+  type TodoEntry,
+  type TodoStatus,
+  type TriagedNote,
   archiveBlock,
   parseTodos,
   parseTriagedFile,
@@ -87,6 +87,7 @@ export function useTodosActions({
   // iced). Marking gets a u/Undo toast; un-marking back to plain `triaged`
   // is silent — toggling back is just the same key again (with showDone on
   // so the now-done card is still visible to re-select).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const setTriagedStatusAction = useCallback(
     async (note: TriagedNote, action: "done" | "iced") => {
       // Ice is a no-op on a done note; the done action has no such guard
@@ -125,10 +126,6 @@ export function useTodosActions({
         showToast(`Failed to update ${note.filename}: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent, applyTriagedPatch],
   );
 
@@ -149,6 +146,7 @@ export function useTodosActions({
   // iced; no-op on done). Marking done or iced gets a u/Undo toast
   // restoring the file content captured just before the flip; un-marking
   // back to pending is silent.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const setTodoStatus = useCallback(
     async (project: string, entryIndex: number, status: TodoStatus) => {
       const section = todos.find((t) => t.project === project);
@@ -182,10 +180,6 @@ export function useTodosActions({
         showToast(`Failed to update ${project}.md: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 
@@ -220,6 +214,7 @@ export function useTodosActions({
     [toggleTodoStatus],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const toggleTodoExpanded = useCallback(
     (project: string, entryIndex: number) => {
       const key = `${project}::${entryIndex}`;
@@ -230,15 +225,12 @@ export function useTodosActions({
         return next;
       });
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
   // Todos view tag editing (`a` / chip click): a todo entry's tags update
   // in place in its project file.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const updateTodoTags = useCallback(
     async (project: string, entryIndex: number, tag: string) => {
       const section = todos.find((t) => t.project === project);
@@ -270,10 +262,6 @@ export function useTodosActions({
         showToast(`Failed to update ${project}.md: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 
@@ -283,6 +271,7 @@ export function useTodosActions({
   // triage-time routing. The Claude reply rides along inside the entry body
   // under its `## Claude` heading so nothing is lost. Undo restores both
   // files.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const rerouteTriagedNote = useCallback(
     async (note: TriagedNote, project: string) => {
       const content = triagedContent.get(note.filename);
@@ -359,16 +348,13 @@ export function useTodosActions({
         showToast(`Re-route to ${project} failed: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent, loadTodos, generateTitles],
   );
 
   // Tag toggle on a triaged card: removal and non-project adds rewrite the
   // frontmatter `tags:` line in place; adding a PROJECT tag re-routes the
   // note into that project's queue instead (see rerouteTriagedNote).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const toggleTriagedTag = useCallback(
     async (note: TriagedNote, tag: string) => {
       const removing = note.tags.includes(tag);
@@ -397,16 +383,13 @@ export function useTodosActions({
         showToast(`Failed to update ${note.filename}: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent, projectTags, rerouteTriagedNote, applyTriagedPatch],
   );
 
   // Todos view `x`: archives the selected row to ~/notes/archive.md, with an
   // undo toast. Todo row → archive the entry block + rewrite the project
   // file without it; undo restores both files.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const deleteTodoEntry = useCallback(
     async (project: string, entryIndex: number) => {
       const section = todos.find((t) => t.project === project);
@@ -447,10 +430,6 @@ export function useTodosActions({
         showToast(`Failed to archive from ${project}.md: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 
@@ -458,6 +437,7 @@ export function useTodosActions({
   // plus the `## Claude` reply, so nothing is lost), then remove the file
   // (fs remove — content lives on in the archive). Undo restores the
   // archive and re-creates the file via `triage_note`.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const deleteTriagedNote = useCallback(
     async (note: TriagedNote) => {
       const content = triagedContent.get(note.filename);
@@ -500,16 +480,13 @@ export function useTodosActions({
         showToast(`Failed to archive ${note.filename}: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [triagedContent],
   );
 
   // Todos view `c`: copies just the SELECTED row — a todo entry or a
   // triaged note (body + reply) — for pasting one task into a session. The
   // per-section ⧉ button remains the whole-tag bundle.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const copyRow = useCallback(async (row: MergedRow) => {
     if (row.kind === "header") return;
     let md: string;
@@ -530,15 +507,12 @@ export function useTodosActions({
     } catch (e) {
       showToast(`Copy failed: ${String(e)}`);
     }
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Per-section ⧉ copy button: bundles a project's PENDING
   // entries (no status markers — they're pending by definition) as markdown
   // for pasting into a repo Claude session.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const copyProjectTodos = useCallback(
     async (project: string) => {
       const section = todos.find((t) => t.project === project);
@@ -559,10 +533,6 @@ export function useTodosActions({
         showToast(`Copy failed: ${String(e)}`);
       }
     },
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [todos],
   );
 

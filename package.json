@@ -28,8 +28,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "eslint . --max-warnings 0",
-    "format": "prettier --write .",
+    "lint": "biome check --error-on-warnings .",
+    "format": "biome format --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -39,15 +39,13 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
     "@tauri-apps/cli": "^2.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
-    "eslint": "^10.8.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.9.6",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.66.0",
+    "typescript": "^7.0.2",
     "vite": "^8.2.0",
     "vitest": "^3.2.4"
   }

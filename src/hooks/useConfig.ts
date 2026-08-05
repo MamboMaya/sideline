@@ -1,13 +1,13 @@
 import { useState } from "react";
 import {
-  Prompts,
+  type Prompts,
   DEFAULT_PROMPTS,
-  Models,
+  type Models,
   DEFAULT_MODELS,
-  ProjectsConfig,
-  HotkeysConfig,
-  SidelineConfig,
-  ConfigOverrides,
+  type ProjectsConfig,
+  type HotkeysConfig,
+  type SidelineConfig,
+  type ConfigOverrides,
   writeConfig,
 } from "../lib/config";
 import { useZoom } from "./useZoom";

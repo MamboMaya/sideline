@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TodoEntry, TriagedNote, parseTodos, parseTriagedFile } from "../inbox";
+import {
+  type TodoEntry,
+  type TriagedNote,
+  parseTodos,
+  parseTriagedFile,
+} from "../inbox";
 import { readTriaged, readTodos } from "../lib/commands";
 
 // One todo row in the merged Todos view: `entryIndex` is the entry's
@@ -146,16 +151,13 @@ export function useTodosData({
   // search — same predicate order for both concerns everywhere they appear.
   // Iced notes never show here: they render in the pooled Icebox section
   // instead (see `icedTriaged`), same as iced todo entries.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const visibleTriaged = useMemo(() => {
     return triaged.filter((n) => {
       if (n.status === "iced") return false;
       if (!showDone && n.status === "done") return false;
       return matchesSearch(n.body, n.tags, n.title ?? undefined);
     });
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triaged, showDone, searchLower]);
 
   // Tag sections (2nd group in the merged Todos view): triaged notes grouped
@@ -196,6 +198,7 @@ export function useTodosData({
   // collapsed behind showDone (also newest-first). `entryIndex` keeps each
   // row's position in the project's on-disk entries array so a
   // toggle/delete can rewrite via `serializeTodos` without disturbing order.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const projectSections = useMemo(() => {
     return todos
       .map(({ project, entries }) => {
@@ -226,12 +229,12 @@ export function useTodosData({
       })
       .filter((s) => s.rows.length > 0)
       .sort((a, b) => a.project.localeCompare(b.project));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, showDone, searchLower]);
 
   // The pooled 🧊 Icebox: every iced entry across all projects, projects
   // A-Z then file order — one section at the very bottom, so parked items
   // stay visible without polluting the working sections or their counts.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const icedRows = useMemo<TodoRow[]>(() => {
     return [...todos]
       .sort((a, b) => a.project.localeCompare(b.project))
@@ -248,12 +251,12 @@ export function useTodosData({
               ),
           ),
       );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, searchLower]);
 
   // Iced triaged notes pool into the same Icebox section, after the iced
   // todo entries. Oldest first (Rust returns mtime-DESC, so reverse) —
   // matches every other section's capture order.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const icedTriaged = useMemo(() => {
     return triaged
       .filter(
@@ -263,7 +266,6 @@ export function useTodosData({
       )
       .slice()
       .reverse();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triaged, searchLower]);
 
   // Flat nav list across BOTH row kinds, in section order (projects A-Z,
@@ -315,9 +317,12 @@ export function useTodosData({
       : `tag::${row.note.tags[0] ?? "untagged"}`;
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const mergedIndexByKey = useMemo(() => {
     const m = new Map<string, number>();
-    mergedFlat.forEach((row, i) => m.set(rowKey(row), i));
+    mergedFlat.forEach((row, i) => {
+      m.set(rowKey(row), i);
+    });
     return m;
   }, [mergedFlat]);
 

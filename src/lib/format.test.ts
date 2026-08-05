@@ -97,6 +97,7 @@ describe("sanitizeTag", () => {
 
 describe("escapeRegex", () => {
   test("escapes every regex metacharacter", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal "${}" is the regex-metacharacter fixture under test
     expect(escapeRegex(".*+?^${}()|[]\\")).toBe(
       "\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\",
     );

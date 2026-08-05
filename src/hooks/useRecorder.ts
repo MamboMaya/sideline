@@ -25,6 +25,7 @@ export function useRecorder(
 
   // Recorder events: three independent subscriptions since state/level/error
   // arrive on separate event names from audio.rs / whisper.rs.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   useEffect(() => {
     const unState = listen<string>("recording-state", (e) => {
       const s = e.payload;
@@ -62,7 +63,6 @@ export function useRecorder(
       unHotkey.then((f) => f());
       unWatcher.then((f) => f());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Elapsed m:ss while recording — the tray title computes its own copy in

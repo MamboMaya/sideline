@@ -99,6 +99,7 @@ export function TriagedCard({
       <div className="card-head">
         <span className="ts">{note.captured}</span>
         <button
+          type="button"
           className="ghost edit-btn"
           title="Edit (e)"
           onClick={(e) => {
@@ -112,6 +113,7 @@ export function TriagedCard({
           // Done can never be iced — no 🧊 on done cards.
           !isDone && (
             <button
+              type="button"
               className="ghost ice"
               title="Icebox — park for later (i)"
               onClick={(e) => {
@@ -124,6 +126,7 @@ export function TriagedCard({
           )
         ) : (
           <button
+            type="button"
             className="ghost"
             title="Thaw — back to pending (i)"
             onClick={(e) => {
@@ -136,6 +139,7 @@ export function TriagedCard({
         )}
         {variant === "normal" ? (
           <button
+            type="button"
             className="ghost"
             title={isDone ? "Un-done (d)" : "Mark done (d)"}
             onClick={(e) => {
@@ -147,6 +151,7 @@ export function TriagedCard({
           </button>
         ) : (
           <button
+            type="button"
             className="ghost"
             title="Mark done (d)"
             onClick={(e) => {
@@ -158,6 +163,7 @@ export function TriagedCard({
           </button>
         )}
         <button
+          type="button"
           className="ghost danger"
           title="Archive (x)"
           onClick={(e) => {
@@ -169,6 +175,7 @@ export function TriagedCard({
         </button>
         {variant === "normal" && (
           <button
+            type="button"
             className="ghost"
             title="Open in VS Code"
             onClick={(e) => {
@@ -191,6 +198,7 @@ export function TriagedCard({
       <div className="tags" onClick={(e) => e.stopPropagation()}>
         {note.tags.map((t) => (
           <button
+            type="button"
             key={t}
             className={tagChipClass(t, true, projectTags)}
             title="Remove tag"

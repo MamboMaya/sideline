@@ -14,7 +14,7 @@ export function useSearch() {
     if (!searchLower) return true;
     if (body.toLowerCase().includes(searchLower)) return true;
     if (tags.some((t) => t.toLowerCase().includes(searchLower))) return true;
-    if (extra && extra.toLowerCase().includes(searchLower)) return true;
+    if (extra?.toLowerCase().includes(searchLower)) return true;
     return false;
   };
 

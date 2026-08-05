@@ -50,7 +50,7 @@ export function parseInbox(text: string): { preamble: string; notes: Note[] } {
 // header (`### <icon> <ts> #tag1 #tag2`): a leading space then `#tag` per
 // tag, or "" when there are none (no trailing space before the body).
 export function tagString(tags: string[]): string {
-  return tags.length ? " " + tags.map((t) => `#${t}`).join(" ") : "";
+  return tags.length ? ` ${tags.map((t) => `#${t}`).join(" ")}` : "";
 }
 
 export function serializeInbox(preamble: string, notes: Note[]): string {
@@ -59,7 +59,7 @@ export function serializeInbox(preamble: string, notes: Note[]): string {
   for (const n of notes) {
     parts.push(`### ${n.icon} ${n.timestamp}${tagString(n.tags)}\n${n.body}`);
   }
-  return parts.join("\n\n") + "\n";
+  return `${parts.join("\n\n")}\n`;
 }
 
 // Renders one archive.md block (inbox-entry shape): `### <icon> <ts><tags>`
@@ -170,9 +170,9 @@ export function parseTriagedFile(
         .filter(Boolean);
     }
     const statusMatch = fm[1].match(/^status:\s*(.*)$/m);
-    if (statusMatch && statusMatch[1].trim()) status = statusMatch[1].trim();
+    if (statusMatch?.[1].trim()) status = statusMatch[1].trim();
     const titleMatch = fm[1].match(/^title:\s*(.*)$/m);
-    if (titleMatch && titleMatch[1].trim()) title = titleMatch[1].trim();
+    if (titleMatch?.[1].trim()) title = titleMatch[1].trim();
   }
   const claudeIdx = rest.indexOf("\n## Claude");
   let body = rest;
@@ -329,7 +329,7 @@ export function splitTodoReply(raw: string): {
   reply: string | null;
 } {
   const lines = raw.split("\n");
-  const idx = lines.findIndex((l) => l === "## Claude");
+  const idx = lines.indexOf("## Claude");
   if (idx === -1) return { body: raw, reply: null };
   return {
     body: lines.slice(0, idx).join("\n").replace(/\n+$/, ""),
@@ -360,7 +360,7 @@ export function serializeTodos(entries: TodoEntry[]): string {
     const body = e.title ? `**${e.title}**\n\n${e.body}` : e.body;
     return `### ${icon} ${e.timestamp}${tagString(e.tags)}\n\n${body}`;
   });
-  return parts.join("\n\n") + "\n";
+  return `${parts.join("\n\n")}\n`;
 }
 
 // A pending todo entry freshly routed from an inbox note.

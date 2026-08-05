@@ -9,7 +9,7 @@ import { stripArchiveBlock } from "./undo";
 export async function appendToArchive(block: string): Promise<string> {
   const prevArchive = await readArchive();
   const trimmed = prevArchive.trim();
-  const next = (trimmed ? trimmed + "\n\n" + block : block) + "\n";
+  const next = `${trimmed ? `${trimmed}\n\n${block}` : block}\n`;
   await writeArchive(next);
   return prevArchive;
 }

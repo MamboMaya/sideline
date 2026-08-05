@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Note, parseInbox, serializeInbox } from "../inbox";
+import { type Note, parseInbox, serializeInbox } from "../inbox";
 import { autoTag } from "../lib/autotag";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
 import {
@@ -10,7 +10,7 @@ import {
   readArchive,
 } from "../lib/commands";
 import { insertNoteAt } from "../lib/undo";
-import { loadConfig, SidelineConfig } from "../lib/config";
+import { loadConfig, type SidelineConfig } from "../lib/config";
 
 export interface UseInboxParams {
   // Current config state App.tsx owns — read here only for the `knownTags`
@@ -100,6 +100,7 @@ export function useInbox({
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const reload = useCallback(async () => {
     let parsedPreamble = "";
     let parsedNotes: Note[] = [];
@@ -167,10 +168,6 @@ export function useInbox({
     }
     setPreamble(parsedPreamble);
     setNotes(taggedNotes);
-    // Deliberate omission: these close over refs/setState/toast closures only
-    // (never stale), keeping this callback's identity stable — see the file's
-    // stable-identity comments.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -181,10 +178,10 @@ export function useInbox({
     };
   }, [reload]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const filteredNotes = useMemo(
     () =>
       searchLower ? notes.filter((n) => matchesSearch(n.body, n.tags)) : notes,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [notes, searchLower],
   );
 
@@ -218,6 +215,7 @@ export function useInbox({
   // `next` is always passed in (computed by the caller from `notesRef` at
   // ITS completion time), so setNotes needs no functional form — nothing
   // about the notes is captured here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   const persist = useCallback(async (next: Note[]) => {
     setNotes(next);
     try {
@@ -237,7 +235,6 @@ export function useInbox({
       }
       throw e;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Every tag is an independent checkbox toggle — quick tags included (a

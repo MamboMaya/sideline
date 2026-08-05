@@ -17,6 +17,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
         <span className="toast-message">{toast.message}</span>
         {toast.undo && (
           <button
+            type="button"
             className="toast-undo"
             title="Undo (u)"
             onClick={() => toast.undo?.()}
@@ -25,6 +26,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           </button>
         )}
         <button
+          type="button"
           className="toast-dismiss ghost"
           title="Dismiss"
           onClick={onDismiss}
