@@ -30,11 +30,19 @@ pub(crate) async fn send_to_claude(
         // blame Sideline with a permissions popup on every triage. Bare
         // calls are also faster and cheaper (no hook context in the prompt).
         // (--bare would be ideal but it disables OAuth keychain auth.)
+        // `--tools ""` disables the CLI's entire built-in tool set: note
+        // bodies are untrusted input, and without it a prompt-injected note
+        // could make the CLI read files (cwd is ~/notes, so reads there are
+        // auto-allowed in -p mode) or otherwise act instead of just
+        // completing text. Verified: with the flag, a "read inbox.md" probe
+        // can only hallucinate — no tool runs.
         cmd.arg("-p")
             .arg(&prompt)
             .arg("--setting-sources")
             .arg("")
-            .arg("--strict-mcp-config");
+            .arg("--strict-mcp-config")
+            .arg("--tools")
+            .arg("");
         if let Some(m) = model {
             cmd.arg("--model").arg(m);
         }
