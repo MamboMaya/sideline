@@ -48,6 +48,16 @@ pub struct AudioState {
     inner: Mutex<Inner>,
 }
 
+impl AudioState {
+    /// Poison-tolerant lock: a panic while holding the mutex would poison
+    /// it, and treating that as fatal would brick recording for the rest
+    /// of the session. `Inner` is a handful of Option fields that are
+    /// valid in any order of assignment, so recovering the guard is safe.
+    fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.inner.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
 #[derive(Default)]
 struct Inner {
     state_val: Option<RecState>, // None == Idle
@@ -92,7 +102,7 @@ fn set_tray_title(app: &AppHandle, state: RecState, elapsed: Option<Duration>) {
 #[tauri::command]
 pub fn get_recording_state(app: AppHandle) -> String {
     let state = app.state::<AudioState>();
-    let inner = state.inner.lock().unwrap();
+    let inner = state.lock();
     inner.state().as_str().to_string()
 }
 
@@ -220,9 +230,8 @@ where
                 // route it to the session-error slot so the ticker tears the
                 // session down NOW, instead of the user dictating into a dead
                 // stream until they press stop.
-                if let Ok(mut slot) = session_err.lock() {
-                    slot.get_or_insert_with(|| format!("Recording stopped: {err}"));
-                }
+                let mut slot = session_err.lock().unwrap_or_else(|p| p.into_inner());
+                slot.get_or_insert_with(|| format!("Recording stopped: {err}"));
             },
             None,
         )
@@ -244,9 +253,10 @@ fn capture_thread(
     // (the ticker surfaces it immediately and resets to Idle) and result_tx
     // (covers the race where stop was pressed before the ticker noticed).
     let fail = |e: String| {
-        if let Ok(mut slot) = session_err.lock() {
-            slot.get_or_insert_with(|| e.clone());
-        }
+        session_err
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get_or_insert_with(|| e.clone());
         let _ = result_tx.send(Err(e));
     };
     let device = match select_device(device_filter.as_deref()) {
@@ -321,7 +331,7 @@ fn capture_thread(
     let _ = stop_rx.recv();
     drop(stream);
 
-    let samples = buffer.lock().map(|b| b.clone()).unwrap_or_default();
+    let samples = buffer.lock().unwrap_or_else(|p| p.into_inner()).clone();
     let _ = result_tx.send(Ok(CaptureResult {
         samples,
         sample_rate,
@@ -336,7 +346,7 @@ fn capture_thread(
 #[tauri::command]
 pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
     let audio_state = app.state::<AudioState>();
-    let mut inner = audio_state.inner.lock().unwrap();
+    let mut inner = audio_state.lock();
     match inner.state() {
         RecState::Idle => {
             let (stop_tx, stop_rx) = mpsc::channel::<()>();
@@ -372,9 +382,10 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
             std::thread::spawn(move || {
                 let mut last_secs = u64::MAX;
                 while recording_flag.load(Ordering::Relaxed) {
-                    if let Some(err) = session_err.lock().ok().and_then(|mut s| s.take()) {
+                    if let Some(err) = session_err.lock().unwrap_or_else(|p| p.into_inner()).take()
+                    {
                         let state = app_ticker.state::<AudioState>();
-                        let mut inner = state.inner.lock().unwrap();
+                        let mut inner = state.lock();
                         // Only tear down if stop hasn't raced us there:
                         // once Transcribing, finish_recording owns the error
                         // path (it gets the same failure via result_rx).
@@ -433,7 +444,7 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
 /// or any error).
 fn reset_idle(app: &AppHandle) {
     let state = app.state::<AudioState>();
-    let mut inner = state.inner.lock().unwrap();
+    let mut inner = state.lock();
     inner.state_val = Some(RecState::Idle);
     drop(inner);
     emit_state(app, RecState::Idle);
