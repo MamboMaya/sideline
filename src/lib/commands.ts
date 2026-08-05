@@ -10,12 +10,24 @@ import { invoke } from "@tauri-apps/api/core";
 // the two positions for readers on the TS side.
 export type NamedFile = [name: string, content: string];
 
-export function readInbox(): Promise<string> {
-  return invoke<string>("read_inbox");
+// A write refused because inbox.md no longer matches the version the
+// frontend last read (something appended meanwhile). Callers reload and
+// surface a toast instead of clobbering the unseen change.
+export const INBOX_CONFLICT = "inbox-conflict";
+
+// Returns [content, version]; the version token goes back into writeInbox
+// as the compare-and-swap baseline.
+export function readInbox(): Promise<[string, string]> {
+  return invoke<[string, string]>("read_inbox");
 }
 
-export function writeInbox(content: string): Promise<void> {
-  return invoke<void>("write_inbox", { content });
+// Resolves to the NEW version token on success; rejects with a message
+// containing INBOX_CONFLICT when the baseline is stale.
+export function writeInbox(
+  content: string,
+  baseVersion: string,
+): Promise<string> {
+  return invoke<string>("write_inbox", { content, base_version: baseVersion });
 }
 
 export function readArchive(): Promise<string> {

@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Note, parseInbox, serializeInbox } from "../inbox";
 import { autoTag } from "../lib/autotag";
-import { appendToArchive } from "../lib/archive";
+import { appendToArchive, undoArchiveAppend } from "../lib/archive";
 import {
+  INBOX_CONFLICT,
   readInbox,
   writeInbox,
   readArchive,
-  writeArchive,
 } from "../lib/commands";
+import { insertNoteAt } from "../lib/undo";
 import { loadConfig, SidelineConfig } from "../lib/config";
 
 export interface UseInboxParams {
@@ -58,6 +59,17 @@ export function useInbox({
   const [archiveTags, setArchiveTags] = useState<string[]>([]);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const notesRef = useRef<Note[]>([]);
+  // Version token from the last read_inbox/write_inbox round-trip — the
+  // compare-and-swap baseline every write carries. A write refused as
+  // stale (INBOX_CONFLICT) means something appended to inbox.md that this
+  // state hasn't absorbed yet; clobbering it would erase that entry.
+  const versionRef = useRef("");
+  // Mirror so `persist` (stable useCallback([])) can toast without
+  // capturing a render-scoped showToast.
+  const showToastRef = useRef(showToast);
+  useEffect(() => {
+    showToastRef.current = showToast;
+  });
   // Always-current mirror of `preamble`, for the same reason notesRef
   // mirrors `notes`: `persist` is called from long-running async flows
   // (triage, batch triage, their undo closures), and every write has to
@@ -93,7 +105,8 @@ export function useInbox({
     let parsedNotes: Note[] = [];
     let readOk = false;
     try {
-      const text = await readInbox();
+      const [text, version] = await readInbox();
+      versionRef.current = version;
       const parsed = parseInbox(text);
       parsedPreamble = parsed.preamble;
       parsedNotes = parsed.notes;
@@ -139,7 +152,18 @@ export function useInbox({
     for (const key of processedKeys) autoTaggedRef.current.add(key);
 
     if (changed) {
-      await writeInbox(serializeInbox(parsedPreamble, taggedNotes));
+      try {
+        versionRef.current = await writeInbox(
+          serializeInbox(parsedPreamble, taggedNotes),
+          versionRef.current,
+        );
+      } catch (e) {
+        // A conflict here means another append landed between our read and
+        // this auto-tag write — skip it; the watcher event for that append
+        // re-runs reload and the tagger gets another pass.
+        if (!String(e).includes(INBOX_CONFLICT)) throw e;
+        return;
+      }
     }
     setPreamble(parsedPreamble);
     setNotes(taggedNotes);
@@ -192,7 +216,24 @@ export function useInbox({
   // about the notes is captured here.
   const persist = useCallback(async (next: Note[]) => {
     setNotes(next);
-    await writeInbox(serializeInbox(preambleRef.current, next));
+    try {
+      versionRef.current = await writeInbox(
+        serializeInbox(preambleRef.current, next),
+        versionRef.current,
+      );
+    } catch (e) {
+      if (String(e).includes(INBOX_CONFLICT)) {
+        // inbox.md gained content this state hasn't seen (voice capture,
+        // Raycast) — the write was refused so that entry survives. Reload
+        // to absorb it and tell the user their action needs a redo; that
+        // beats silently erasing a captured note.
+        showToastRef.current("Inbox changed on disk — redo your last action.");
+        await reload();
+        return;
+      }
+      throw e;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Every tag is an independent checkbox toggle — quick tags included (a
@@ -227,12 +268,17 @@ export function useInbox({
 
   const remove = async (idx: number) => {
     const note = notes[idx];
-    const prevNotes = notes;
-    const prevArchive = await appendToArchive(note.raw);
-    persist(prevNotes.filter((_, i) => i !== idx));
+    await appendToArchive(note.raw);
+    // Remove from the CURRENT list, not a render-scoped snapshot: the
+    // awaited archive round-trip above is a window for appends to land.
+    persist(notesRef.current.filter((n) => n !== note));
     showToast("Archived", () => {
-      writeArchive(prevArchive);
-      persist(prevNotes);
+      // Inverse ops against live state, not snapshot restores: a snapshot
+      // would erase anything captured or changed since the archive.
+      undoArchiveAppend(note.raw).catch(() => {
+        showToastRef.current("Undo: archive.md could not be rewritten");
+      });
+      persist(insertNoteAt(notesRef.current, note, idx));
       dismissToast();
     });
   };

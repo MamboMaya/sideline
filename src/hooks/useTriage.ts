@@ -16,6 +16,7 @@ import {
   groupByFirstTag,
 } from "../lib/format";
 import { buildBatchPrompt, parseBatchReply } from "../lib/batch";
+import { insertNoteAt, mergeMissingNotes } from "../lib/undo";
 import {
   deleteTriaged,
   readTodos,
@@ -157,12 +158,14 @@ export function useTriage({
     filename: string,
     message: string,
   ) => {
+    const note = current[currentIdx];
     persist(current.filter((_, i) => i !== currentIdx));
     showToast(message, () => {
       deleteTriaged(filename);
-      // Restore the completion-time snapshot (note still present), not the
-      // pre-run state — edits made while claude ran must survive undo.
-      persist(current);
+      // Re-insert the filed note into the LIVE list, not the completion
+      // snapshot: a snapshot restore would erase any note captured (or
+      // change made) between filing and undo.
+      persist(insertNoteAt(notesRef.current, note, currentIdx));
       dismissToast();
     });
   };
@@ -223,11 +226,13 @@ export function useTriage({
             showToast("Note gone — todo already routed");
             return;
           }
+          const routed = current[currentIdx];
           persist(current.filter((_, i) => i !== currentIdx));
           showToast(`Todo → ${project}`, () => {
             writeTodos(project, prevTodoContent).then(() => loadTodos());
-            // Completion-time snapshot, not pre-run — see Claude path below.
-            persist(current);
+            // Re-insert into the LIVE list — a completion-snapshot restore
+            // would erase notes captured between routing and undo.
+            persist(insertNoteAt(notesRef.current, routed, currentIdx));
             dismissToast();
           });
           return;
@@ -504,9 +509,10 @@ export function useTriage({
           writeTodos(project, prevContent);
         }
         if (touchedProjects.size > 0) loadTodos();
-        // Restore the completion-time snapshot (not the pre-batch one) —
-        // edits made while the batch ran must survive undo.
-        persist(finalCurrent);
+        // Merge the filed notes back into the LIVE list (identity:
+        // timestamp+body) instead of restoring the completion snapshot —
+        // notes captured after the batch finished must survive the undo.
+        persist(mergeMissingNotes(notesRef.current, finalCurrent));
         dismissToast();
       });
     } finally {

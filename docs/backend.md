@@ -27,7 +27,16 @@ cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording), fs watcher on
   ⌥⌘Space/⌥⌘R default — the app never loses a hotkey to a typo. Takes
   effect on next launch only, no live reload.
 
-- `read_inbox`, `write_inbox`
+- `read_inbox`, `write_inbox` — versioned compare-and-swap pair:
+  `read_inbox` returns `(content, version)` (a content hash), and
+  `write_inbox` takes the version from the caller's last read as
+  `base_version`, refusing with the `inbox-conflict` sentinel if the file
+  has changed since (an append the frontend hasn't absorbed yet). On
+  conflict the frontend reloads and toasts "redo your last action" —
+  refusing beats silently erasing a just-captured note. Undo closures
+  additionally apply inverse operations against live state (`src/lib/undo.ts`)
+  rather than restoring pre-action snapshots, since a snapshot restore
+  passes the version check yet still erases notes captured in between.
 - `triage_note` (returns final filename)
 - `read_archive`, `write_archive`
 - `send_to_claude` (async, shells out to the `claude` CLI; optional `model`
@@ -65,8 +74,10 @@ cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording), fs watcher on
 
 `append_inbox_text` (`commands/notes.rs`) is an O_APPEND write of one
 voice-note block — not an IPC command, just a plain fn the native recording
-pipeline (audio.rs) calls directly — so it can never race the frontend's
-full-file `write_inbox` or the Raycast script's own append. `reveal_inbox`
+pipeline (audio.rs) calls directly. O_APPEND makes the append itself atomic
+against other writers; protection in the other direction (a frontend
+full-file write clobbering an append it hasn't seen) comes from
+`write_inbox`'s compare-and-swap version check above. `reveal_inbox`
 (`commands/open.rs`, tray-menu "Reveal inbox.md in Finder") is likewise a
 plain fn, called only from the tray menu below.
 

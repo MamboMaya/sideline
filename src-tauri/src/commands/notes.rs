@@ -24,14 +24,53 @@ fn write_file(path: &Path, content: String) -> Result<(), String> {
     fs::write(path, content).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub(crate) fn read_inbox() -> Result<String, String> {
-    read_file_or_empty(&inbox_path())
+/// Error sentinel the frontend matches on to detect a refused stale write.
+pub(crate) const INBOX_CONFLICT: &str = "inbox-conflict";
+
+/// Version token for the inbox write guard: a content hash. DefaultHasher
+/// is only stable within one process run, which is exactly the lifetime a
+/// token lives (frontend holds it between a read and the next write; both
+/// hashes are computed here).
+fn content_version(content: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut h);
+    format!("{:x}", h.finish())
+}
+
+fn read_with_version(path: &Path) -> Result<(String, String), String> {
+    let content = read_file_or_empty(path)?;
+    let version = content_version(&content);
+    Ok((content, version))
+}
+
+/// Compare-and-swap write: refuses (with `INBOX_CONFLICT`) unless the file
+/// still hashes to `base_version` — the token the caller got from its last
+/// read. This is what makes full-file snapshot writes safe against the
+/// appends the frontend hasn't seen yet (in-app voice capture, Raycast):
+/// without it, a tag toggle landing in the watcher-debounce window after an
+/// append would silently erase the appended note. The check-then-write pair
+/// isn't atomic, but it shrinks the race from the ~150-300 ms reload window
+/// to microseconds.
+fn write_if_version(path: &Path, content: String, base_version: &str) -> Result<String, String> {
+    let (current, current_version) = read_with_version(path)?;
+    if current_version != base_version {
+        let _ = current;
+        return Err(INBOX_CONFLICT.to_string());
+    }
+    let new_version = content_version(&content);
+    write_file(path, content)?;
+    Ok(new_version)
 }
 
 #[tauri::command]
-pub(crate) fn write_inbox(content: String) -> Result<(), String> {
-    write_file(&inbox_path(), content)
+pub(crate) fn read_inbox() -> Result<(String, String), String> {
+    read_with_version(&inbox_path())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) fn write_inbox(content: String, base_version: String) -> Result<String, String> {
+    write_if_version(&inbox_path(), content, &base_version)
 }
 
 /// Appends a voice-note block in O_APPEND mode (not read-modify-write) so it
@@ -245,6 +284,50 @@ mod tests {
         let mtime = SystemTime::now() - Duration::from_secs(age_secs);
         let f = fs::File::open(&path).unwrap();
         f.set_modified(mtime).unwrap();
+    }
+
+    // --- versioned inbox writes ------------------------------------------
+
+    #[test]
+    fn version_of_missing_file_matches_empty_content() {
+        let dir = TempDir::new("ver-missing");
+        let p = dir.path().join("inbox.md");
+        assert_eq!(read_with_version(&p).unwrap().1, content_version(""));
+    }
+
+    #[test]
+    fn write_with_current_version_succeeds_and_returns_new_version() {
+        let dir = TempDir::new("ver-ok");
+        let p = dir.path().join("inbox.md");
+        fs::write(&p, "old").unwrap();
+        let (_, ver) = read_with_version(&p).unwrap();
+        let new_ver = write_if_version(&p, "new".to_string(), &ver).unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "new");
+        assert_eq!(new_ver, content_version("new"));
+    }
+
+    #[test]
+    fn write_with_stale_version_conflicts_and_preserves_file() {
+        // The file gained an appended entry after the caller's last read —
+        // the write must be refused, not clobber the append.
+        let dir = TempDir::new("ver-stale");
+        let p = dir.path().join("inbox.md");
+        fs::write(&p, "old").unwrap();
+        let (_, ver) = read_with_version(&p).unwrap();
+        fs::write(&p, "old\n### appended").unwrap();
+        let err = write_if_version(&p, "new".to_string(), &ver).unwrap_err();
+        assert_eq!(err, INBOX_CONFLICT);
+        assert_eq!(fs::read_to_string(&p).unwrap(), "old\n### appended");
+    }
+
+    #[test]
+    fn write_against_missing_file_with_empty_version_succeeds() {
+        // First write ever: baseline is the empty-content version.
+        let dir = TempDir::new("ver-first");
+        let p = dir.path().join("inbox.md");
+        let ver = content_version("");
+        write_if_version(&p, "first".to_string(), &ver).unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "first");
     }
 
     #[test]

@@ -9,6 +9,7 @@ import {
   setTriagedBody,
 } from "../inbox";
 import { writeTodos, writeTriaged } from "../lib/commands";
+import { restoreBody } from "../lib/undo";
 
 // Which row is being edited, keyed per kind — inbox note = its raw block,
 // todo = project::entryIndex, triaged = filename. Mirrors the union that
@@ -73,8 +74,10 @@ export function useEditRow({
 
   const cancel = () => setEditing(null);
 
-  // Inbox note body → useInbox's persist path. Undo restores the full
-  // pre-edit notes array.
+  // Inbox note body → useInbox's persist path. Undo restores the pre-edit
+  // body on the LIVE notes list (matched by timestamp + edited body), not
+  // a whole pre-edit snapshot — a snapshot would erase notes captured
+  // between the edit and the undo.
   const saveInboxBody = async (
     edit: Extract<EditTarget, { kind: "inbox" }>,
     body: string,
@@ -82,10 +85,17 @@ export function useEditRow({
     const prev = notesRef.current;
     const idx = prev.findIndex((n) => n.raw === edit.key);
     if (idx === -1 || prev[idx].body === body) return;
+    const prevBody = prev[idx].body;
+    const timestamp = prev[idx].timestamp;
     const next = prev.map((n, i) => (i === idx ? { ...n, body } : n));
     persist(next);
     showToast("Edited", () => {
-      persist(prev);
+      const restored = restoreBody(notesRef.current, timestamp, body, prevBody);
+      if (restored) {
+        persist(restored);
+      } else {
+        showToast("Note changed since the edit — undo skipped");
+      }
       dismissToast();
     });
   };
