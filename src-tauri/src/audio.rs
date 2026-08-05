@@ -183,6 +183,7 @@ fn build_stream<T>(
     buffer: Arc<Mutex<Vec<f32>>>,
     level: Arc<AtomicU32>,
     channels: usize,
+    session_err: Arc<Mutex<Option<String>>>,
 ) -> Result<cpal::Stream, String>
 where
     T: SizedSample,
@@ -214,7 +215,15 @@ where
                     level.store(rms.to_bits(), Ordering::Relaxed);
                 }
             },
-            |err| eprintln!("audio stream error: {err}"),
+            move |err| {
+                // Device died mid-recording (Bluetooth drop, USB unplug):
+                // route it to the session-error slot so the ticker tears the
+                // session down NOW, instead of the user dictating into a dead
+                // stream until they press stop.
+                if let Ok(mut slot) = session_err.lock() {
+                    slot.get_or_insert_with(|| format!("Recording stopped: {err}"));
+                }
+            },
             None,
         )
         .map_err(|e| e.to_string())
@@ -229,18 +238,28 @@ fn capture_thread(
     stop_rx: mpsc::Receiver<()>,
     result_tx: mpsc::Sender<Result<CaptureResult, String>>,
     level: Arc<AtomicU32>,
+    session_err: Arc<Mutex<Option<String>>>,
 ) {
+    // Every pre-stop failure goes to BOTH channels: the session-error slot
+    // (the ticker surfaces it immediately and resets to Idle) and result_tx
+    // (covers the race where stop was pressed before the ticker noticed).
+    let fail = |e: String| {
+        if let Ok(mut slot) = session_err.lock() {
+            slot.get_or_insert_with(|| e.clone());
+        }
+        let _ = result_tx.send(Err(e));
+    };
     let device = match select_device(device_filter.as_deref()) {
         Ok(d) => d,
         Err(e) => {
-            let _ = result_tx.send(Err(e));
+            fail(e);
             return;
         }
     };
     let config = match device.default_input_config() {
         Ok(c) => c,
         Err(e) => {
-            let _ = result_tx.send(Err(e.to_string()));
+            fail(e.to_string());
             return;
         }
     };
@@ -257,6 +276,7 @@ fn capture_thread(
             buffer.clone(),
             level.clone(),
             channels,
+            session_err.clone(),
         ),
         cpal::SampleFormat::I16 => build_stream::<i16>(
             &device,
@@ -264,6 +284,7 @@ fn capture_thread(
             buffer.clone(),
             level.clone(),
             channels,
+            session_err.clone(),
         ),
         cpal::SampleFormat::I32 => build_stream::<i32>(
             &device,
@@ -271,6 +292,7 @@ fn capture_thread(
             buffer.clone(),
             level.clone(),
             channels,
+            session_err.clone(),
         ),
         cpal::SampleFormat::I8 => build_stream::<i8>(
             &device,
@@ -278,18 +300,19 @@ fn capture_thread(
             buffer.clone(),
             level.clone(),
             channels,
+            session_err.clone(),
         ),
         other => Err(format!("unsupported sample format: {other:?}")),
     };
     let stream = match stream {
         Ok(s) => s,
         Err(e) => {
-            let _ = result_tx.send(Err(e));
+            fail(e);
             return;
         }
     };
     if let Err(e) = stream.play() {
-        let _ = result_tx.send(Err(e.to_string()));
+        fail(e.to_string());
         return;
     }
 
@@ -320,12 +343,14 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
             let (result_tx, result_rx) = mpsc::channel::<Result<CaptureResult, String>>();
             let level = Arc::new(AtomicU32::new(0));
             let recording_flag = Arc::new(AtomicBool::new(true));
+            let session_err: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
             let device_filter = configured_device_name();
 
             {
                 let level = level.clone();
+                let session_err = session_err.clone();
                 std::thread::spawn(move || {
-                    capture_thread(device_filter, stop_rx, result_tx, level);
+                    capture_thread(device_filter, stop_rx, result_tx, level, session_err);
                 });
             }
 
@@ -338,12 +363,34 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
             emit_state(&app, RecState::Recording);
 
             // ~20 Hz level events + 1 Hz tray elapsed title, for as long as
-            // `recording_flag` stays true (cleared by the stop branch).
+            // `recording_flag` stays true (cleared by the stop branch). Also
+            // the watchdog for `session_err`: a capture failure (no device,
+            // TCC denied, stream died mid-recording) must reach the user
+            // NOW, not when they press stop after dictating into the void.
             let app_ticker = app.clone();
             let started = Instant::now();
             std::thread::spawn(move || {
                 let mut last_secs = u64::MAX;
                 while recording_flag.load(Ordering::Relaxed) {
+                    if let Some(err) = session_err.lock().ok().and_then(|mut s| s.take()) {
+                        let state = app_ticker.state::<AudioState>();
+                        let mut inner = state.inner.lock().unwrap();
+                        // Only tear down if stop hasn't raced us there:
+                        // once Transcribing, finish_recording owns the error
+                        // path (it gets the same failure via result_rx).
+                        if inner.state() == RecState::Recording {
+                            inner.stop_tx = None;
+                            inner.result_rx = None;
+                            if let Some(f) = inner.recording_flag.take() {
+                                f.store(false, Ordering::Relaxed);
+                            }
+                            inner.state_val = Some(RecState::Idle);
+                            drop(inner);
+                            let _ = app_ticker.emit("capture-error", err);
+                            emit_state(&app_ticker, RecState::Idle);
+                        }
+                        break;
+                    }
                     let rms = f32::from_bits(level.load(Ordering::Relaxed));
                     let _ = app_ticker.emit("audio-level", rms);
                     let secs = started.elapsed().as_secs();
