@@ -80,6 +80,13 @@ export const sanitizeTitle = (raw: string) =>
     .replace(/^[#*"'`\s]+|[*"'`\s]+$/g, "")
     .slice(0, 80);
 
+// No-Claude-mode title fallback (`.sideline.json`'s `"claude": false`):
+// useTriage's generateTitles calls this instead of the Haiku header call —
+// same needsTitle gate, same sanitizeTitle cleanup, just the note's own
+// first non-empty line standing in for a generated headline.
+export const localTitle = (body: string): string =>
+  sanitizeTitle(body.split("\n").find((l) => l.trim()) ?? "");
+
 // Display label for a tag: project tags (routed via `projectTags`) render
 // with an `@` prefix instead of `#`, everywhere a tag is shown as text —
 // purely cosmetic, the stored/serialized tag string is always `sideline`,

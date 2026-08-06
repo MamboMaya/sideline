@@ -21,6 +21,8 @@ const DEFAULTS: SidelineConfig = {
   modelsOverride: undefined,
   projectTags: [],
   projectsOverride: undefined,
+  claude: true,
+  claudeOverride: undefined,
   zoom: 1,
   audioOverride: undefined,
   hotkeysOverride: undefined,
@@ -60,6 +62,7 @@ describe("parseConfig — full valid config", () => {
       prompts: { triage: "custom triage prompt" },
       models: { triage: "opus" },
       projects: { sideline: "/path/unused" },
+      claude: false,
       zoom: 1.2,
       audio: { device: "AirPods" },
       hotkeys: { toggle: "alt+cmd+space", record: "alt+cmd+r" },
@@ -76,6 +79,8 @@ describe("parseConfig — full valid config", () => {
     expect(cfg.modelsOverride).toEqual({ triage: "opus" });
     expect(cfg.projectTags).toEqual(["sideline"]);
     expect(cfg.projectsOverride).toEqual({ sideline: "/path/unused" });
+    expect(cfg.claude).toBe(false);
+    expect(cfg.claudeOverride).toBe(false);
     expect(cfg.zoom).toBe(1.2);
     expect(cfg.audioOverride).toEqual({ device: "AirPods" });
     expect(cfg.hotkeysOverride).toEqual({
@@ -140,6 +145,36 @@ describe("parseConfig — zoom", () => {
     // parses to a non-finite number isn't directly expressible — a missing
     // key covers the "no numeric zoom present" branch of the same check.
     expect(parseConfig(JSON.stringify({})).zoom).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — claude (no-Claude mode)
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — claude", () => {
+  test("absent claude key defaults to true, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.claude).toBe(true);
+    expect(cfg.claudeOverride).toBeUndefined();
+  });
+
+  test("claude: false is honored and recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ claude: false }));
+    expect(cfg.claude).toBe(false);
+    expect(cfg.claudeOverride).toBe(false);
+  });
+
+  test("claude: true is honored explicitly and still recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ claude: true }));
+    expect(cfg.claude).toBe(true);
+    expect(cfg.claudeOverride).toBe(true);
+  });
+
+  test("a non-boolean claude value is ignored (treated as absent, defaults to true)", () => {
+    const cfg = parseConfig(JSON.stringify({ claude: "false" }));
+    expect(cfg.claude).toBe(true);
+    expect(cfg.claudeOverride).toBeUndefined();
   });
 });
 
@@ -235,6 +270,7 @@ const noOverrides = {
   prompts: undefined,
   models: undefined,
   projects: undefined,
+  claude: undefined,
   audio: undefined,
   hotkeys: undefined,
 };
@@ -287,7 +323,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, zoom, audio, hotkeys when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -296,6 +332,7 @@ describe("serializeConfig", () => {
         prompts: { triage: "t" },
         models: { batch: "haiku" },
         projects: ["sideline"],
+        claude: false,
         audio: { device: "AirPods" },
         hotkeys: { toggle: "alt+cmd+space" },
       },
@@ -306,10 +343,41 @@ describe("serializeConfig", () => {
       "prompts",
       "models",
       "projects",
+      "claude",
       "zoom",
       "audio",
       "hotkeys",
     ]);
+  });
+
+  test("claude override is omitted when undefined (key absent, not forced to true)", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: noOverrides,
+    });
+    expect(JSON.parse(out)).not.toHaveProperty("claude");
+  });
+
+  test("claude: false round-trips as false, not omitted as falsy", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, claude: false },
+    });
+    expect(JSON.parse(out)).toHaveProperty("claude", false);
+  });
+
+  test("claude: true round-trips as true", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, claude: true },
+    });
+    expect(JSON.parse(out)).toHaveProperty("claude", true);
   });
 
   test("is pretty-printed with a 2-space indent, matching the original writeConfigFile output", () => {
@@ -335,6 +403,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       prompts: { triage: "custom", futureKey: "keep me" },
       models: { batch: "opus" },
       projects: ["sideline", "otherproj"],
+      claude: false,
       zoom: 0.8,
       audio: { device: "AirPods", futureField: 42 },
       hotkeys: { toggle: "alt+cmd+space" },
@@ -349,6 +418,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           prompts: cfg.promptsOverride,
           models: cfg.modelsOverride,
           projects: cfg.projectsOverride,
+          claude: cfg.claudeOverride,
           audio: cfg.audioOverride,
           hotkeys: cfg.hotkeysOverride,
         },
@@ -359,6 +429,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.prompts).toEqual(original.prompts);
     expect(rewritten.models).toEqual(original.models);
     expect(rewritten.projects).toEqual(original.projects);
+    expect(rewritten.claude).toBe(original.claude);
     expect(rewritten.zoom).toBe(original.zoom);
     expect(rewritten.audio).toEqual(original.audio);
     expect(rewritten.hotkeys).toEqual(original.hotkeys);

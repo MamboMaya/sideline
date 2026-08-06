@@ -64,10 +64,10 @@ export interface HotkeysConfig {
 }
 
 // Everything loadConfig produces from `.sideline.json` — one field per
-// App.tsx config state slice, including the 5 opaque per-key overrides
-// (promptsOverride, modelsOverride, projectsOverride, audioOverride,
-// hotkeysOverride) kept around purely so a pin/zoom/hide write doesn't
-// clobber hand-edited config it didn't touch.
+// App.tsx config state slice, including the 6 opaque per-key overrides
+// (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
+// audioOverride, hotkeysOverride) kept around purely so a pin/zoom/hide
+// write doesn't clobber hand-edited config it didn't touch.
 export interface SidelineConfig {
   pinnedTags: string[];
   hiddenTags: string[];
@@ -77,6 +77,16 @@ export interface SidelineConfig {
   modelsOverride: Partial<Models> | undefined;
   projectTags: string[];
   projectsOverride: ProjectsConfig | undefined;
+  // Resolved no-Claude-mode switch: `.sideline.json`'s `claude` key, merged
+  // against the default of `true` (absent/invalid = Claude enabled). `false`
+  // means every non-project triage flow skips `send_to_claude` entirely and
+  // falls back to local, CLI-free filing — see useTriage.
+  claude: boolean;
+  // Raw `claude` value as it appeared in the file (undefined when the key is
+  // absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited `false` back to the default `true`, same as the 5 opaque
+  // overrides below.
+  claudeOverride: boolean | undefined;
   zoom: number;
   audioOverride: unknown;
   hotkeysOverride: HotkeysConfig | undefined;
@@ -91,6 +101,8 @@ const EMPTY_CONFIG: SidelineConfig = {
   modelsOverride: undefined,
   projectTags: [],
   projectsOverride: undefined,
+  claude: true,
+  claudeOverride: undefined,
   zoom: 1,
   audioOverride: undefined,
   hotkeysOverride: undefined,
@@ -159,6 +171,8 @@ export function parseConfig(raw: string): SidelineConfig {
       projectTags = Object.keys(rawProjects);
       projectsOverride = rawProjects;
     }
+    const claudeOverride =
+      typeof parsed?.claude === "boolean" ? parsed.claude : undefined;
     const zoom =
       typeof parsed?.zoom === "number" && Number.isFinite(parsed.zoom)
         ? Math.min(1.5, Math.max(0.7, parsed.zoom))
@@ -180,6 +194,8 @@ export function parseConfig(raw: string): SidelineConfig {
       modelsOverride: rawModels,
       projectTags,
       projectsOverride,
+      claude: claudeOverride ?? true,
+      claudeOverride,
       audioOverride,
       hotkeysOverride,
       zoom,
@@ -203,13 +219,16 @@ export async function loadConfig(): Promise<SidelineConfig> {
   }
 }
 
-// The 5 opaque per-key overrides from `.sideline.json` — round-tripped
+// The 6 opaque per-key overrides from `.sideline.json` — round-tripped
 // verbatim (whatever the user hand-edited, including unknown keys within
 // each) so a pin/zoom/hide write never clobbers a value it didn't touch.
 export interface ConfigOverrides {
   prompts: Partial<Prompts> | undefined;
   models: Partial<Models> | undefined;
   projects: ProjectsConfig | undefined;
+  // Raw `claude` boolean as read from the file — `undefined` means the key
+  // is absent (so it stays omitted on write, not forced to `true`).
+  claude: boolean | undefined;
   audio: unknown;
   hotkeys: HotkeysConfig | undefined;
 }
@@ -223,10 +242,11 @@ export interface ConfigWrite {
 
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
-// projects?, zoom?, audio?, hotkeys? (omitted when falsy/empty/default) —
-// .sideline.json is read by capture/ tooling too, so this order is contract
-// (see docs/data-model.md). Object spread preserves insertion order for
-// these string keys, so the order below is exactly the emitted order.
+// projects?, claude?, zoom?, audio?, hotkeys? (omitted when falsy/empty/
+// default) — .sideline.json is read by capture/ tooling too, so this order
+// is contract (see docs/data-model.md). Object spread preserves insertion
+// order for these string keys, so the order below is exactly the emitted
+// order.
 export function serializeConfig(cfg: ConfigWrite): string {
   return JSON.stringify(
     {
@@ -235,6 +255,12 @@ export function serializeConfig(cfg: ConfigWrite): string {
       ...(cfg.overrides.prompts ? { prompts: cfg.overrides.prompts } : {}),
       ...(cfg.overrides.models ? { models: cfg.overrides.models } : {}),
       ...(cfg.overrides.projects ? { projects: cfg.overrides.projects } : {}),
+      // Boolean override — unlike the object overrides above, `false` is a
+      // meaningful value, so this checks `!== undefined` rather than
+      // truthiness (a truthy check would silently drop `"claude": false`).
+      ...(cfg.overrides.claude !== undefined
+        ? { claude: cfg.overrides.claude }
+        : {}),
       ...(cfg.zoom !== 1 ? { zoom: cfg.zoom } : {}),
       ...(cfg.overrides.audio ? { audio: cfg.overrides.audio } : {}),
       ...(cfg.overrides.hotkeys ? { hotkeys: cfg.overrides.hotkeys } : {}),

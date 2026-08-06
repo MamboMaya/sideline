@@ -13,6 +13,7 @@ import {
   needsTitle,
   TITLE_PROMPT,
   sanitizeTitle,
+  localTitle,
   groupByFirstTag,
 } from "../lib/format";
 import { buildBatchPrompt, parseBatchReply } from "../lib/batch";
@@ -41,6 +42,11 @@ export interface UseTriageParams {
   // Project tags a note can be routed on: a note carrying one skips Claude
   // entirely and becomes a todo entry instead.
   projectTags: string[];
+  // `.sideline.json`'s `claude` key (default true). `false` = no-Claude
+  // mode: every non-project triage flow skips `send_to_claude` — titles
+  // fall back to `localTitle`, notes file plain with a normal success toast
+  // instead of an appendix + CLI-failure toast.
+  claude: boolean;
   // From useTodosData — refetches todos/ after a routing write so the Todos
   // view shows the new entry.
   loadTodos: () => Promise<void>;
@@ -99,6 +105,7 @@ export function useTriage({
   prompts,
   models,
   projectTags,
+  claude,
   loadTodos,
   showToast,
   dismissToast,
@@ -122,6 +129,17 @@ export function useTriage({
       const long = notesToTitle.filter((n) => needsTitle(n.body));
       const titles = new Map<string, string>();
       if (long.length === 0) return titles;
+      if (!claude) {
+        // No-Claude mode: derive each title locally (first non-empty line,
+        // sanitized) instead of a Haiku call — same needsTitle gate, no CLI
+        // round-trip. All three triage flows share this choke point, so
+        // they inherit local titles automatically.
+        for (const note of long) {
+          const title = localTitle(note.body);
+          if (title) titles.set(note.raw, title);
+        }
+        return titles;
+      }
       const body = long.map((n, i) => `${i + 1}.\n${n.body}`).join("\n\n");
       try {
         const reply = await sendToClaude(
@@ -140,7 +158,7 @@ export function useTriage({
       }
       return titles;
     },
-    [models],
+    [models, claude],
   );
 
   // Single-note completion after a successful filing: drop the note from
@@ -243,17 +261,18 @@ export function useTriage({
           return;
         }
 
-        const prompt = `${prompts.triage}\n\n${note.body}`;
-
         // Header call runs concurrently with the triage call, so long notes
         // don't pay double latency.
         const titlesPromise = generateTitles([note]);
         let reply: string | undefined;
         let cliError: string | undefined;
-        try {
-          reply = await sendToClaude(prompt, models.triage);
-        } catch (e) {
-          cliError = String(e).split("\n")[0] || "claude failed";
+        if (claude) {
+          const prompt = `${prompts.triage}\n\n${note.body}`;
+          try {
+            reply = await sendToClaude(prompt, models.triage);
+          } catch (e) {
+            cliError = String(e).split("\n")[0] || "claude failed";
+          }
         }
         const noteTitle = (await titlesPromise).get(note.raw);
 
@@ -281,8 +300,10 @@ export function useTriage({
 
         // Note is guaranteed non-project here — project-tagged notes already
         // returned via the section B branch above — so no repo routing to
-        // do; just file it.
-        const filename = await fileNote(note, reply!, noteTitle);
+        // do; just file it. In no-Claude mode `reply` stays undefined,
+        // which files plain (no appendix) under this same normal-success
+        // toast — no error wording, because nothing failed.
+        const filename = await fileNote(note, reply, noteTitle);
         completeFiling(
           current,
           currentIdx,
@@ -303,7 +324,16 @@ export function useTriage({
     // stable identity from useInbox, so listing it costs nothing (it never
     // churns this callback) while making the dependency visible instead of
     // silently captured.
-    [prompts, models, projectTags, sending, loadTodos, generateTitles, persist],
+    [
+      prompts,
+      models,
+      projectTags,
+      claude,
+      sending,
+      loadTodos,
+      generateTitles,
+      persist,
+    ],
   );
 
   // Batch triage (`Shift+T` / "✨ All (N)"): one shared `claude` CLI call for
@@ -416,16 +446,23 @@ export function useTriage({
 
       // The non-project remainder: ONE Claude call for all of them, grouped
       // by first tag — a 2+ note unit gets one merged reply and one
-      // combined roundup file instead of one reply/file per note.
+      // combined roundup file instead of one reply/file per note. In
+      // no-Claude mode this call is skipped entirely — `reply` stays
+      // undefined, so every unit below (solo or group) falls through to its
+      // existing "no section" branch: per-note plain filing with local
+      // titles, no roundup files, and `claudeFailed` never flips (so the
+      // batch toast carries no "Claude failed" wording for something that
+      // was never attempted).
       if (rest.length > 0) {
         const units = groupByFirstTag(rest);
-        const prompt = buildBatchPrompt(prompts.batch, units);
-
         let reply: string | undefined;
-        try {
-          reply = await sendToClaude(prompt, models.batch);
-        } catch {
-          claudeFailed = true;
+        if (claude) {
+          const prompt = buildBatchPrompt(prompts.batch, units);
+          try {
+            reply = await sendToClaude(prompt, models.batch);
+          } catch {
+            claudeFailed = true;
+          }
         }
 
         const sectionMap =
@@ -539,6 +576,7 @@ export function useTriage({
     prompts,
     models,
     projectTags,
+    claude,
     batchRunning,
     sending,
     loadTodos,

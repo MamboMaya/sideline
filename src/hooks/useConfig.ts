@@ -54,6 +54,15 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [projectsOverride, setProjectsOverride] = useState<
     ProjectsConfig | undefined
   >(undefined);
+  // No-Claude-mode switch: `.sideline.json`'s `claude` key, merged against
+  // the default of `true`. `false` routes every non-project triage flow
+  // through useTriage's local, CLI-free fallback instead of `send_to_claude`.
+  const [claude, setClaude] = useState(true);
+  // Raw `claude` value as read from the file (undefined = key absent) — kept
+  // only so a pin/zoom/hide write doesn't clobber a hand-edited `false`.
+  const [claudeOverride, setClaudeOverride] = useState<boolean | undefined>(
+    undefined,
+  );
   // Opaque passthrough for the native recorder's `audio` config key (e.g.
   // `{ "device": "AirPods" }`, see docs/data-model.md) — no settings UI yet,
   // this just stops pin/zoom writes from erasing a hand-edited value.
@@ -66,13 +75,15 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     HotkeysConfig | undefined
   >(undefined);
 
-  // The 5 opaque `.sideline.json` overrides, read from current state —
+  // The 6 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
-  // clobbers a hand-edited prompts/models/projects/audio/hotkeys value.
+  // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys
+  // value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
     projects: projectsOverride,
+    claude: claudeOverride,
     audio: audioOverride,
     hotkeys: hotkeysOverride,
   });
@@ -100,6 +111,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setModelsOverride(config.modelsOverride);
     setProjectTags(config.projectTags);
     setProjectsOverride(config.projectsOverride);
+    setClaude(config.claude);
+    setClaudeOverride(config.claudeOverride);
     setZoom(config.zoom);
     setAudioOverride(config.audioOverride);
     setHotkeysOverride(config.hotkeysOverride);
@@ -165,6 +178,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     prompts,
     models,
     projectTags,
+    claude,
     hotkeysOverride,
     applyConfig,
     togglePin,

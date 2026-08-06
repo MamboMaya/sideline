@@ -49,6 +49,14 @@ it there anytime).
 Optional: install the [`claude` CLI](https://claude.com/claude-code) to enable
 Claude-assisted triage and note headers. Everything else works without it.
 
+### Using without Claude
+
+No `claude` CLI or subscription? Set `"claude": false` in
+`~/notes/.sideline.json`. Capture and transcription are already fully local
+(Whisper); with this set, triage stops calling out too — notes file with
+locally-derived headers (the note's own first line) instead of Haiku-written
+ones, and no `## Claude` reply appendix.
+
 ## Permissions
 
 Sideline needs exactly **one** macOS permission: the microphone, asked once on
@@ -79,7 +87,7 @@ you want recording off the app's permission identity or you live in Raycast:
 ## Configuration
 
 `~/notes/.sideline.json` — pinned tags, hidden tags, zoom, triage prompts and
-models, project routing, audio input device. Schema in
+models, project routing, the no-Claude toggle, audio input device. Schema in
 [docs/data-model.md](docs/data-model.md).
 
 ## Docs

@@ -48,6 +48,12 @@
   `"projects": { "<tag>": "<repo path>" }` (legacy shape, path unused) or a
   plain array of tags — opts a tag into todo routing. Only the
   tag itself matters; no repo path is ever read or written to. Also
+  optional `"claude": false` (default `true`) — no-Claude mode: every
+  non-project triage flow (single-note and batch) skips `send_to_claude`
+  entirely, deriving titles locally instead of a Haiku call (first
+  non-empty line of the body, sanitized) and filing notes plain with a
+  normal success toast — for users without the `claude` CLI or a
+  subscription (see docs/ui.md's Triage section). Also
   optional `"audio": { "device": "<substring>" }` — case-insensitive
   substring match against the system's input device names, picking the
   in-app recorder's mic (see docs/backend.md); omitted = system default

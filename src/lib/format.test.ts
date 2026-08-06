@@ -7,6 +7,7 @@ import {
   escapeRegex,
   needsTitle,
   sanitizeTitle,
+  localTitle,
   groupByFirstTag,
   tagLabel,
   tagChipClass,
@@ -164,6 +165,40 @@ describe("sanitizeTitle", () => {
   test("caps length at 80 characters", () => {
     const out = sanitizeTitle("x".repeat(100));
     expect(out).toHaveLength(80);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// localTitle
+// ---------------------------------------------------------------------------
+
+describe("localTitle", () => {
+  test("uses the first non-empty line as the title", () => {
+    const body = "Kafka rebalancing loop\nsome more detail\nand more";
+    expect(localTitle(body)).toBe("Kafka rebalancing loop");
+  });
+
+  test("skips leading blank lines to find the first non-empty one", () => {
+    const body = "\n\n  \nActual first line\nsecond line";
+    expect(localTitle(body)).toBe("Actual first line");
+  });
+
+  test("runs the chosen line through sanitizeTitle (markdown/quote noise stripped, 80-char cap)", () => {
+    expect(localTitle('# "Kafka rebalancing loop`\nmore')).toBe(
+      "Kafka rebalancing loop",
+    );
+    const long = "x".repeat(100);
+    expect(localTitle(long)).toHaveLength(80);
+  });
+
+  test("an all-blank body produces an empty string", () => {
+    expect(localTitle("\n  \n\t\n")).toBe("");
+  });
+
+  test("a single-line body just sanitizes that line", () => {
+    expect(localTitle("Quick reminder to check the logs.")).toBe(
+      "Quick reminder to check the logs.",
+    );
   });
 });
 
