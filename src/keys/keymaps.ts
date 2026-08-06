@@ -64,7 +64,6 @@ export const globalKeymap: Keymap = {
     else ctx.hideWindow();
   },
   "?": (ctx) => ctx.setShowShortcuts((v) => !v),
-  s: (ctx) => ctx.setView((v) => (v === "inbox" ? "todos" : "inbox")),
   u: (ctx) => ctx.runUndo(),
   "/": (ctx, e) => {
     // Without this, the same keystroke's default action types "/" into the

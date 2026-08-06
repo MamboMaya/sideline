@@ -138,7 +138,7 @@ describe("keymap tables", () => {
 
   it("binds exactly the documented global keys", () => {
     expect(Object.keys(globalKeymap).sort()).toEqual(
-      ["/", "?", "Escape", "r", "s", "u"].sort(),
+      ["/", "?", "Escape", "r", "u"].sort(),
     );
   });
 
@@ -252,20 +252,20 @@ describe("dispatchKey — guards", () => {
   it("ignores every non-⌘ key while an input or textarea has focus", () => {
     const ctx = makeCtx({ view: "todos", mergedFlat: [] });
     for (const tagName of ["INPUT", "TEXTAREA"]) {
-      press("s", ctx, { tagName });
+      press("r", ctx, { tagName });
       press("Escape", ctx, { tagName });
       press("?", ctx, { tagName });
     }
-    expect(ctx.setView).not.toHaveBeenCalled();
+    expect(ctx.toggleRecording).not.toHaveBeenCalled();
     expect(ctx.hideWindow).not.toHaveBeenCalled();
     expect(ctx.setShowShortcuts).not.toHaveBeenCalled();
   });
 
   it("ignores ⌃/⌥ combos, but treats Shift as a plain key", () => {
     const ctx = makeCtx();
-    press("s", ctx, { ctrlKey: true });
-    press("s", ctx, { altKey: true });
-    expect(ctx.setView).not.toHaveBeenCalled();
+    press("r", ctx, { ctrlKey: true });
+    press("r", ctx, { altKey: true });
+    expect(ctx.toggleRecording).not.toHaveBeenCalled();
     // `?` and `T` only exist as shifted keys.
     press("?", ctx);
     expect(ctx.setShowShortcuts).toHaveBeenCalledTimes(1);
@@ -292,13 +292,8 @@ describe("dispatchKey — Escape layering", () => {
 });
 
 describe("dispatchKey — global keys", () => {
-  it("toggles view, undoes, opens search, records", () => {
+  it("undoes, opens search, records", () => {
     const ctx = makeCtx();
-    press("s", ctx);
-    const toggle = (ctx.setView as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(toggle("inbox")).toBe("todos");
-    expect(toggle("todos")).toBe("inbox");
-
     press("u", ctx);
     expect(ctx.runUndo).toHaveBeenCalledTimes(1);
 

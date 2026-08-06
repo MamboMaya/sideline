@@ -36,9 +36,6 @@ export function ShortcutsModal({
             <kbd>⌘1/2</kbd> switch view
           </div>
           <div className="shortcut">
-            <kbd>s</kbd> toggle view
-          </div>
-          <div className="shortcut">
             <kbd>↑ ↓</kbd> navigate
           </div>
           <div className="shortcut">
@@ -93,7 +90,7 @@ export function ShortcutsModal({
             <kbd>Enter</kbd> expand
           </div>
           <div className="shortcut">
-            <kbd>← →</kbd> fold group
+            <kbd>← →</kbd> fold / unfold section
           </div>
           <div className="shortcut">
             <kbd>d</kbd> done
