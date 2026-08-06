@@ -11,8 +11,8 @@ below is a behavior spec over that surface, not a file-by-file walkthrough.
 
 ## Views & navigation
 
-Card list (newest first). Two views, toggled by `s`, jumped to by `⌘1`/`⌘2`,
-or the header tabs (`Inbox (N)` / `Todos (P)`). `Esc` hides the popover from
+Card list (newest first). Two views, jumped to by `⌘1`/`⌘2` or the header
+tabs (`Inbox (N)` / `Todos (P)`). `Esc` hides the popover from
 any view — open layers like the shortcuts panel or tag input absorb one Esc
 first; `?` toggles a shortcuts panel. Reopening the popover resets
 scroll/selection/search to the top but keeps the last-used tab; tab switches
@@ -22,7 +22,13 @@ name); `Esc` on the input itself clears and closes it first. `⌘+`/`⌘-` step
 UI zoom 0.7–1.5 (`⌘0` resets; persisted as `zoom` in .sideline.json, applied
 as CSS zoom on body). `r` toggles in-app voice recording from either view —
 the same action as the ⌥⌘R global hotkey, but only while the popover has
-focus.
+focus. While recording, a small pill HUD (🔴 elapsed m:ss + live level
+bars, then "Transcribing…"/"Downloading model…") floats bottom-center of
+the monitor holding the cursor, 20% up the screen — mirroring the popover's
+20%-down spot — always on top, never focused, visible whether
+or not the popover is open — and disappears at idle; the popover header
+keeps its own identical indicator (both render `RecBars` off the same
+`audio-level` stream).
 
 ## Tags
 
@@ -107,6 +113,16 @@ along in the copy bundles. This is the one exception to $0 project routing
 (short routed notes still route with no Claude call); group roundup files
 skip it — the tag names them. Re-route (see Tags) generates a missing header
 too.
+
+NO-CLAUDE MODE: `.sideline.json`'s `"claude": false` (default `true`) turns
+every non-project triage flow CLI-free — no `send_to_claude` call anywhere,
+so users without the `claude` CLI or a subscription never see a failure
+toast. Headers fall back to the note's own first non-empty line (sanitized)
+instead of a Haiku headline; single-note triage files plain with the normal
+`Triaged → notes/<filename>` toast (no `## Claude` appendix, no error
+wording); batch triage files every unit plain too, one file per note — no
+merged replies means no group roundup files. Project-tagged routing is
+unaffected either way (it never called Claude).
 
 ## Todos view
 
