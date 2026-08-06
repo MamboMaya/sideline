@@ -23,6 +23,17 @@ triage calls.
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
   and undo.
 
+<!-- demo GIF goes here: assets/demo.gif -->
+
+## How this was built
+
+I designed and built Sideline over roughly two weeks of supervised Claude
+Code sessions. `CLAUDE.md` at the repo root is the standing contract those
+sessions follow. Every change is gated by CI: tsc, Biome, Prettier
+(markdown/YAML), vitest, cargo fmt, cargo test, and clippy with warnings as
+errors — 260+ tests in total. The public history starts from a single
+squashed commit; the working history lived locally.
+
 ## Setup
 
 ```bash
