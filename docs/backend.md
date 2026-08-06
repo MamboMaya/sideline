@@ -4,7 +4,8 @@ Module map: `lib.rs` (plugin/builder wiring, `invoke_handler`, `.setup()`)
 delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`),
 `commands/notes.rs` + `commands/open.rs` (the IPC commands below, grouped by
 concern), `claude.rs` (`send_to_claude`), `archive.rs` (purge-archive flow),
-`window.rs` (popover positioning), `hotkeys.rs` (config + registration),
+`window.rs` (popover positioning + the recording-pill overlay window),
+`hotkeys.rs` (config + registration),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
 watcher), and `autostart.rs` (one-time launch-at-login consent: a native
 dialog on first run — "Launch at Login" enables, "Not Now" disables, either
@@ -117,6 +118,31 @@ Title only, no icon swap. A transcript that comes back empty (or any
 failure — no input device, model download error, etc.) emits
 `capture-error` (string payload) and the state machine still lands back on
 Idle.
+
+Every transition also drives the recording-pill overlay: `sync_overlay`
+(window.rs), called from the same `emit_state` choke point, shows the
+`overlay` window (declared hidden in tauri.conf.json — 220×48, transparent,
+no decorations, always-on-top, `focusable: false`) bottom-center of the
+monitor holding the cursor (its bottom edge 20% up the screen, mirroring
+the popover's 20%-down top edge) while recording, keeps it up through
+transcribing/downloading, and hides it at idle. `focusable: false` is what
+makes showing it safe: tao's macOS `show()` is `makeKeyAndOrderFront`, so a
+focusable window steals keyboard focus every time it appears (which also
+closed the popover via hide-on-focus-loss); non-focusable means
+`canBecomeKeyWindow` is false and the pill can never take a keystroke. The
+window also needs its own capability grant — capabilities/overlay.json
+gives it `core:event:default` and nothing else — because
+capabilities/default.json only covers `main`, and a webview without an
+event grant fails `listen()` silently: the window shows but never hears
+`recording-state`. Both invariants are locked by
+`src/overlay-config.test.ts`. Its frontend is the tiny Overlay root (src/main.tsx
+branches on `?window=overlay` before importing App) listening only to
+`recording-state`/`audio-level`. Window transparency on macOS requires
+Tauri's `macos-private-api` cargo feature + `macOSPrivateApi` config flag —
+enabled deliberately: it affects compositing only and is NOT a TCC
+permission surface (no prompt, no System Settings entry); the only cost is
+Mac App Store ineligibility, which doesn't apply to this directly-signed
+app.
 
 Silence gate: before transcription, the post-resample buffer is scanned in
 100 ms RMS windows (`max_window_rms`); if no window reaches

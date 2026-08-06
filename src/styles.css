@@ -29,6 +29,27 @@ body {
   flex-direction: column;
   height: 100vh;
 }
+/* Recording-pill overlay window only (main.tsx adds this class when
+   `?window=overlay` — see src-tauri/tauri.conf.json's `overlay` window,
+   which is `transparent: true`). Overrides the opaque `body` background
+   above so only the rounded `.overlay-pill` div is visible; the rest of
+   the window stays see-through to the desktop behind it. */
+body.overlay {
+  background: transparent;
+}
+.overlay-pill {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 24px;
+  background: rgba(20, 20, 24, 0.85);
+  font-size: 12px;
+  -webkit-user-select: none;
+  user-select: none;
+}
 header {
   display: flex;
   align-items: center;

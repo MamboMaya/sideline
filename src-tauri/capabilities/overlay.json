@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Recording-pill overlay: event listening only — it renders recorder state pushed from Rust and never invokes window/clipboard/notes commands itself.",
+  "windows": ["overlay"],
+  "permissions": ["core:event:default"]
+}

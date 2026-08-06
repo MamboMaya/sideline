@@ -72,13 +72,15 @@ impl Inner {
     }
 }
 
-/// Emits the `recording-state` event and updates the tray title to match.
-/// Shared with whisper.rs so the download/transcribe phases (which happen
-/// inside `toggle_recording`'s spawned finish work) report through the same
-/// path as start/stop.
+/// Emits the `recording-state` event, updates the tray title, and
+/// shows/positions/hides the recording-pill overlay window to match. Shared
+/// with whisper.rs so the download/transcribe phases (which happen inside
+/// `toggle_recording`'s spawned finish work) report through the same path
+/// as start/stop.
 pub(crate) fn emit_state(app: &AppHandle, state: RecState) {
     let _ = app.emit("recording-state", state.as_str());
     set_tray_title(app, state, None);
+    crate::window::sync_overlay(app, state);
 }
 
 /// Tray title: `🔴 m:ss` while recording, `…` while transcribing or
