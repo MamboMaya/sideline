@@ -9,7 +9,7 @@ triage calls.
 
 ## What it does
 
-- **Capture**: global hotkey (⌥⌘R) records a voice note, transcribes it
+- **Capture**: global hotkey (⌥⌘R by default) records a voice note, transcribes it
   on-device with Whisper (Metal-accelerated), and appends it to
   `~/notes/inbox.md`. The tray shows a live 🔴 REC timer; the popover shows a
   level meter so you know the mic is hot.
@@ -24,6 +24,9 @@ triage calls.
   and undo.
 
 ![Record a voice note, watch it land in the inbox, triage it to a project todo](assets/demo.gif)
+
+_In the demo I record with ⌥⌘V — both hotkeys are remappable via `hotkeys` in
+`~/notes/.sideline.json`._
 
 ## How this was built
 
@@ -97,8 +100,9 @@ you want recording off the app's permission identity or you live in Raycast:
 
 ## Configuration
 
-`~/notes/.sideline.json` — pinned tags, hidden tags, zoom, triage prompts and
-models, project routing, the no-Claude toggle, audio input device. Schema in
+`~/notes/.sideline.json` — pinned tags, hidden tags, zoom, hotkeys, triage
+prompts and models, project routing, the no-Claude toggle, audio input device.
+Schema in
 [docs/data-model.md](docs/data-model.md).
 
 ## Docs
