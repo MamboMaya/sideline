@@ -8,3 +8,4 @@ src-tauri/gen
 docs/superpowers/
 CLAUDE.local.md
 .superpowers/
+*.mov

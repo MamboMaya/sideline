@@ -23,7 +23,7 @@ triage calls.
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
   and undo.
 
-<!-- demo GIF goes here: assets/demo.gif -->
+![Record a voice note, watch it land in the inbox, triage it to a project todo](assets/demo.gif)
 
 ## How this was built
 
