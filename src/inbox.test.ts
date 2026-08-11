@@ -23,6 +23,7 @@ import {
   toGroupFile,
   slugFor,
   todoEntry,
+  patchTodoTitle,
   type Note,
   type TodoEntry,
 } from "./inbox";
@@ -940,6 +941,104 @@ describe("todoEntry", () => {
 
   test("includes an optional generated title", () => {
     const entry = todoEntry(note, "Wire up hotkey loader");
+    expect(entry.title).toBe("Wire up hotkey loader");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// patchTodoTitle — background title backfill for single-note PROJECT
+// triage (useTriage.ts): routing files the entry with no title, this
+// patches one in once the Haiku call resolves, moments later.
+// ---------------------------------------------------------------------------
+
+describe("patchTodoTitle", () => {
+  const note: Note = {
+    icon: "🎙️",
+    timestamp: "2026-07-29 14:32",
+    tags: ["sideline"],
+    body: "Wire up the new hotkey config loader.",
+    raw: "",
+  };
+
+  test("patches the title into the matching entry, leaving every other entry byte-identical", () => {
+    const content =
+      "### ⬜ 2026-07-28 09:00 #sideline\n\n" +
+      "An earlier, unrelated entry.\n\n" +
+      "### ⬜ 2026-07-29 14:32 #sideline\n\n" +
+      "Wire up the new hotkey config loader.\n\n" +
+      "### ✅ 2026-07-30 10:00 #sideline\n\n" +
+      "A later, unrelated entry.\n";
+
+    const out = patchTodoTitle(content, note, "Wire up hotkey loader");
+    expect(out).not.toBeNull();
+    const entries = parseTodos(out!);
+    expect(entries).toHaveLength(3);
+    expect(entries[0]).toMatchObject({
+      timestamp: "2026-07-28 09:00",
+      body: "An earlier, unrelated entry.",
+    });
+    expect(entries[0].title).toBeUndefined();
+    expect(entries[1]).toMatchObject({
+      timestamp: "2026-07-29 14:32",
+      title: "Wire up hotkey loader",
+      body: "Wire up the new hotkey config loader.",
+    });
+    expect(entries[2]).toMatchObject({
+      status: "done",
+      timestamp: "2026-07-30 10:00",
+      body: "A later, unrelated entry.",
+    });
+    expect(entries[2].title).toBeUndefined();
+  });
+
+  test("no-ops (returns null) when no entry matches timestamp+body — e.g. undone, edited, or completed+purged", () => {
+    const content =
+      "### ⬜ 2026-07-28 09:00 #sideline\n\nSome other entry entirely.\n";
+    expect(patchTodoTitle(content, note, "A title")).toBeNull();
+
+    // Same timestamp, different body (e.g. edited since routing).
+    const editedBody =
+      "### ⬜ 2026-07-29 14:32 #sideline\n\nA different body now.\n";
+    expect(patchTodoTitle(editedBody, note, "A title")).toBeNull();
+
+    // Empty file (e.g. undo restored empty prevTodoContent).
+    expect(patchTodoTitle("", note, "A title")).toBeNull();
+  });
+
+  test("no-ops (returns null) when the matching entry already has a title", () => {
+    const content =
+      "### ⬜ 2026-07-29 14:32 #sideline\n\n" +
+      "**Already titled**\n\n" +
+      "Wire up the new hotkey config loader.\n";
+    expect(patchTodoTitle(content, note, "A new title")).toBeNull();
+  });
+
+  test("two entries share a timestamp but differ in body: patches only the one matching the note's body", () => {
+    const content =
+      "### ⬜ 2026-07-29 14:32 #sideline\n\n" +
+      "A different note captured the same minute.\n\n" +
+      "### ⬜ 2026-07-29 14:32 #sideline\n\n" +
+      "Wire up the new hotkey config loader.\n";
+
+    const out = patchTodoTitle(content, note, "Wire up hotkey loader");
+    const entries = parseTodos(out!);
+    expect(entries[0].title).toBeUndefined();
+    expect(entries[0].body).toBe("A different note captured the same minute.");
+    expect(entries[1].title).toBe("Wire up hotkey loader");
+    expect(entries[1].body).toBe("Wire up the new hotkey config loader.");
+  });
+
+  test("preserves a status flip or tag edit that landed on the entry before the backfill arrived", () => {
+    // Entry was marked done and re-tagged between routing and the backfill
+    // resolving — the patch must not reset either back to the note's
+    // original pending status / original tags.
+    const content =
+      "### ✅ 2026-07-29 14:32 #sideline #urgent\n\n" +
+      "Wire up the new hotkey config loader.\n";
+    const out = patchTodoTitle(content, note, "Wire up hotkey loader");
+    const [entry] = parseTodos(out!);
+    expect(entry.status).toBe("done");
+    expect(entry.tags).toEqual(["sideline", "urgent"]);
     expect(entry.title).toBe("Wire up hotkey loader");
   });
 });

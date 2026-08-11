@@ -79,10 +79,13 @@ both files).
 Triage (✓ / `t`) and delete (✕ / `x`) per card. Untagged notes cannot be
 triaged: `t` toasts "tag it first" and batch triage leaves them in the inbox
 (reported as "N untagged left") — only `x` (archive) moves an untagged note
-out. Triage is instant — no Claude call at all — for project-tagged notes,
-which append a pending entry to that project's `~/notes/todos/<tag>.md`;
-Claude (`prompts.triage` / `models.triage`, default Haiku) still runs for
-everything else. Batch triage (`Shift+T` / "✨ All (N)" button) triages the
+out. Triage is instant — no Claude call at all before routing — for
+project-tagged notes, which append a pending entry to that project's
+`~/notes/todos/<tag>.md`; a long note's Haiku header (see HEADERS) is never
+waited on here, even in single-note triage — it backfills into the entry in
+the background moments later. Claude (`prompts.triage` / `models.triage`,
+default Haiku) still runs for everything else. Batch triage (`Shift+T` /
+"✨ All (N)" button) triages the
 whole inbox in one pass: project-tagged notes route instantly as above, and
 every other note is triaged in a single `send_to_claude` call
 (`prompts.batch` / `models.batch`, default Haiku) instead of one call per
@@ -109,10 +112,20 @@ body line on todo entries. A titled card leads with the 14px bold headline
 and clamps the raw body to ONE grey line until expanded — Enter or card click
 toggles, for BOTH row kinds (`todoExpanded` joins `triagedExpanded`,
 session-only; chip/tag clicks don't toggle). Titles are searchable and ride
-along in the copy bundles. This is the one exception to $0 project routing
-(short routed notes still route with no Claude call); group roundup files
-skip it — the tag names them. Re-route (see Tags) generates a missing header
-too.
+along in the copy bundles. Group roundup files skip it — the tag names them.
+Re-route (see Tags) generates a missing header too.
+
+Single-note PROJECT triage is the one path where the header call never
+blocks filing: the entry routes immediately with no title, then the Haiku
+call runs in the background and, on success, patches the title into that
+same entry (matched by timestamp + body) and refreshes the Todos view.
+Nothing waits on it and nothing surfaces if it fails or never lands — if the
+entry was undone, edited, completed, or archived before the title arrives,
+the backfill silently does nothing rather than resurrecting or misfiling it.
+This is also still the one exception to $0 project routing (short routed
+notes route with no Claude call at all, foreground or background); batch
+triage's project routing is unaffected — its title call already runs
+concurrently with the rest of the batch, same as before.
 
 NO-CLAUDE MODE: `.sideline.json`'s `"claude": false` (default `true`) turns
 every non-project triage flow CLI-free — no `send_to_claude` call anywhere,

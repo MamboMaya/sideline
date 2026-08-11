@@ -3,6 +3,7 @@ import type { MutableRefObject } from "react";
 import {
   type Note,
   parseTodos,
+  patchTodoTitle,
   serializeTodos,
   slugFor,
   toGroupFile,
@@ -223,9 +224,17 @@ export function useTriage({
           // is left in the inbox (nothing removed, nothing to undo) rather
           // than manufacturing a plain notes/ file that would just be a
           // second copy once routing is retried.
-          // Long notes cost one Haiku header call before routing (the one
-          // exception to $0 routing); short notes still route instantly.
-          const titles = await generateTitles([note]);
+          // In Claude mode, routing is ALWAYS instant: it routes with no
+          // title (empty map) rather than waiting on the Haiku header call —
+          // that call is cosmetic, and a long note shouldn't sit blocked on
+          // a CLI round-trip for it. The title backfills into the entry in
+          // the background after routing succeeds (below). In no-Claude
+          // mode the title is local and instant, so it's still computed
+          // inline — backgrounding it would only double the todos-file
+          // write for no latency benefit.
+          const titles = claude
+            ? new Map<string, string>()
+            : await generateTitles([note]);
           let prevTodoContent: string;
           try {
             const pairs = await readTodos();
@@ -258,6 +267,36 @@ export function useTriage({
             persist(insertNoteAt(notesRef.current, routed, currentIdx));
             dismissToast();
           });
+
+          // Background title backfill (Claude mode only — no-Claude already
+          // has its title inline above). Not awaited by the triage flow:
+          // routing has already completed and the card is already gone from
+          // the inbox by the time this resolves. Reads the project's todo
+          // file fresh at patch time and matches the entry via
+          // `patchTodoTitle` (timestamp + body, same shape `todoEntry`
+          // wrote), so it's safe against the undo closure above restoring
+          // `prevTodoContent`, the entry having been completed/edited/swept
+          // to archive since, or a second routed note. Every failure —
+          // Haiku call, the re-read, the entry no longer existing or already
+          // titled, the write — is swallowed: a title is best-effort, never
+          // a stuck note or an error toast.
+          if (claude) {
+            generateTitles([note])
+              .then(async (backfillTitles) => {
+                const title = backfillTitles.get(note.raw);
+                if (!title) return;
+                const pairs = await readTodos();
+                const existing = pairs.find(([p]) => p === project);
+                if (!existing) return;
+                const patched = patchTodoTitle(existing[1], note, title);
+                if (patched === null) return;
+                await writeTodos(project, patched);
+                loadTodos();
+              })
+              .catch(() => {
+                // Best-effort only — see comment above.
+              });
+          }
           return;
         }
 

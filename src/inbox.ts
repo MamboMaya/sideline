@@ -373,3 +373,32 @@ export function todoEntry(note: Note, title?: string): TodoEntry {
     body: note.body,
   };
 }
+
+// Patches a Haiku-generated title into an already-routed todo entry — the
+// background title backfill for single-note PROJECT triage (see
+// useTriage.ts's project branch): routing files the entry with no title so
+// a long note is never blocked on the Haiku round-trip, then this patches
+// the title in once one arrives, moments later. Matches on timestamp + body
+// — the exact shape `todoEntry(note, undefined)` wrote at routing time —
+// rather than any position/index, so it stays correct no matter what
+// happened to the file in the meantime: undo restoring the pre-routing
+// content, the entry marked done/iced or swept to archive, a user edit, or
+// (deliberately handled) two entries sharing a timestamp with different
+// bodies. Only the matched entry's `title` field is set — status, tags, and
+// body are left exactly as found, so a status flip or tag edit that landed
+// before the backfill arrived survives it. Returns null (a pure no-op) when
+// no matching untitled entry is found; every other entry round-trips
+// byte-identical via parseTodos/serializeTodos.
+export function patchTodoTitle(
+  content: string,
+  note: Note,
+  title: string,
+): string | null {
+  const entries = parseTodos(content);
+  const idx = entries.findIndex(
+    (e) => e.timestamp === note.timestamp && e.body === note.body,
+  );
+  if (idx === -1 || entries[idx].title) return null;
+  entries[idx] = { ...entries[idx], title };
+  return serializeTodos(entries);
+}
