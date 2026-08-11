@@ -14,7 +14,9 @@ below is a behavior spec over that surface, not a file-by-file walkthrough.
 Card list (newest first). Two views, jumped to by `⌘1`/`⌘2` or the header
 tabs (`Inbox (N)` / `Todos (P)`). `Esc` hides the popover from
 any view — open layers like the shortcuts panel or tag input absorb one Esc
-first; `?` toggles a shortcuts panel. Reopening the popover resets
+first; `?` toggles a shortcuts panel (its Everywhere column now also lists
+the dictate-to-clipboard hotkey, default ⇧⌘V — see docs/backend.md).
+Reopening the popover resets
 scroll/selection/search to the top but keeps the last-used tab; tab switches
 within one open session keep their place. `/` opens a compact header search
 input filtering the active view's list (body + tags +, in a todo row, project

@@ -13,6 +13,12 @@ triage calls.
   on-device with Whisper (Metal-accelerated), and appends it to
   `~/notes/inbox.md`. The tray shows a live 🔴 REC timer; the popover shows a
   level meter so you know the mic is hot.
+- **Dictate anywhere** (⇧⌘V by default): same on-device recording and
+  transcription, but the result is copied to the clipboard and auto-pasted
+  into whatever app is frontmost instead of going to the inbox — handy for
+  dictating straight into another app. Auto-paste needs the Accessibility
+  permission (asked once, on first use); without it, the transcript still
+  lands on the clipboard for a manual ⌘V.
 - **Live inbox**: the popover (⌥⌘Space) shows every note the second it lands.
   Quick tags (`#bug` `#todo` `#idea`), pinned custom tags, and `@project` tags
   with keyboard-first triage.
@@ -73,10 +79,14 @@ ones, and no `## Claude` reply appendix.
 
 ## Permissions
 
-Sideline needs exactly **one** macOS permission: the microphone, asked once on
-your first recording. Everything else is deliberately prompt-free — notes live
-in `~/notes`, which is not a TCC-protected folder (Documents/Desktop/Downloads
-are; that's why the location is fixed).
+Sideline needs exactly **two** macOS permissions: the microphone, asked once
+on your first recording, and Accessibility, asked once on your first
+dictation (⇧⌘V) — needed only for the synthetic ⌘V that auto-pastes the
+transcript into the frontmost app. Skip granting it and dictation still
+works; the transcript just stays on the clipboard for you to paste yourself.
+Everything else is deliberately prompt-free — notes live in `~/notes`, which
+is not a TCC-protected folder (Documents/Desktop/Downloads are; that's why
+the location is fixed).
 
 If you rebuild the app yourself, sign it with a stable identity so macOS
 remembers your permission answers across builds:

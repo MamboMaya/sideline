@@ -12,15 +12,25 @@ export type RecState =
   | "transcribing"
   | "downloading-model";
 
+// Mirrors audio.rs's `RecMode` — which pipeline a recording session feeds:
+// `note` appends the transcript to inbox.md, `dictate` copies it to the
+// clipboard and auto-pastes into the frontmost app. Only meaningful while
+// `recState !== "idle"`; stays at its last value otherwise (harmless, since
+// nothing reads it at idle).
+export type RecMode = "note" | "dictate";
+
 // Native recorder state (audio.rs's `RecState`, mirrored via the
-// `recording-state` event) + live level (0..1, `audio-level` event, ~20 Hz
-// while recording) + elapsed m:ss while recording. No toast/toggle wiring —
-// just the read side, so it's shared as-is by the popover's useRecorder
-// (below) and the recording-pill overlay window (src/Overlay.tsx), which
-// has no toast UI and never calls toggleRecording itself. Works even while
-// the popover window is hidden since Tauri events aren't visibility-gated.
+// `recording-state` event) + mode (`recording-mode`, emitted once per
+// recording start from the same emit_state choke point) + live level
+// (0..1, `audio-level` event, ~20 Hz while recording) + elapsed m:ss while
+// recording. No toast/toggle wiring — just the read side, so it's shared
+// as-is by the popover's useRecorder (below) and the recording-pill overlay
+// window (src/Overlay.tsx), which has no toast UI and never calls
+// toggleRecording itself. Works even while the popover window is hidden
+// since Tauri events aren't visibility-gated.
 export function useRecorderStatus() {
   const [recState, setRecState] = useState<RecState>("idle");
+  const [recMode, setRecMode] = useState<RecMode>("note");
   const [audioLevel, setAudioLevel] = useState(0);
   const [recElapsed, setRecElapsed] = useState(0);
 
@@ -37,11 +47,17 @@ export function useRecorderStatus() {
         if (s !== "recording") setAudioLevel(0);
       }
     });
+    const unMode = listen<string>("recording-mode", (e) => {
+      if (e.payload === "note" || e.payload === "dictate") {
+        setRecMode(e.payload);
+      }
+    });
     const unLevel = listen<number>("audio-level", (e) =>
       setAudioLevel(e.payload),
     );
     return () => {
       unState.then((f) => f());
+      unMode.then((f) => f());
       unLevel.then((f) => f());
     };
   }, []);
@@ -63,7 +79,7 @@ export function useRecorderStatus() {
     return () => clearInterval(id);
   }, [recState]);
 
-  return { recState, audioLevel, recElapsed };
+  return { recState, recMode, audioLevel, recElapsed };
 }
 
 // Adds toast-surfaced error/fallback events and the toggle action on top of
@@ -73,7 +89,7 @@ export function useRecorderStatus() {
 export function useRecorder(
   showToast: (message: string, undo?: () => void) => void,
 ) {
-  const { recState, audioLevel, recElapsed } = useRecorderStatus();
+  const { recState, recMode, audioLevel, recElapsed } = useRecorderStatus();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
   useEffect(() => {
@@ -107,5 +123,5 @@ export function useRecorder(
     );
   };
 
-  return { recState, audioLevel, recElapsed, toggleRecording };
+  return { recState, recMode, audioLevel, recElapsed, toggleRecording };
 }

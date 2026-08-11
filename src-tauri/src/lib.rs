@@ -7,6 +7,7 @@ mod audio;
 mod autostart;
 mod claude;
 mod commands;
+mod dictate;
 mod hotkeys;
 mod paths;
 mod tray;
@@ -15,11 +16,13 @@ mod whisper;
 mod window;
 
 pub fn run() {
-    let (toggle, record) = hotkeys::load_hotkeys();
+    let (toggle, record, dictate) = hotkeys::load_hotkeys();
     let active_toggle = Arc::new(Mutex::new(toggle));
     let active_record = Arc::new(Mutex::new(record));
+    let active_dictate = Arc::new(Mutex::new(dictate));
     let handler_toggle = active_toggle.clone();
     let handler_record = active_record.clone();
+    let handler_dictate = active_dictate.clone();
 
     tauri::Builder::default()
         .manage(audio::AudioState::default())
@@ -39,6 +42,8 @@ pub fn run() {
                         window::toggle_window(app, None);
                     } else if *shortcut == *handler_record.lock().unwrap() {
                         let _ = audio::toggle_recording(app.clone());
+                    } else if *shortcut == *handler_dictate.lock().unwrap() {
+                        let _ = audio::toggle_dictation(app.clone());
                     }
                 })
                 .build(),
@@ -85,6 +90,13 @@ pub fn run() {
                 record,
                 hotkeys::default_record_shortcut(),
                 "record",
+            );
+            hotkeys::register_hotkey_with_fallback(
+                app.handle(),
+                &active_dictate,
+                dictate,
+                hotkeys::default_dictate_shortcut(),
+                "dictate",
             );
 
             tray::setup_tray(app.handle())?;

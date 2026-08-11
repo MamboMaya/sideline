@@ -32,6 +32,29 @@ impl RecState {
     }
 }
 
+/// What a recording session is for: `Note` appends the transcript to
+/// inbox.md (⌥⌘R, "Record voice note"), `Dictate` copies it to the
+/// clipboard and auto-pastes into the frontmost app instead (⇧⌘V default,
+/// "Dictate to clipboard" — see dictate.rs). Only meaningful while `state`
+/// is non-`Idle`; carried on `Inner` alongside `state_val` so a press of
+/// the OTHER mode's hotkey while a session is active can be told apart from
+/// a same-mode stop/no-op (see `toggle_recording_mode`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum RecMode {
+    #[default]
+    Note,
+    Dictate,
+}
+
+impl RecMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RecMode::Note => "note",
+            RecMode::Dictate => "dictate",
+        }
+    }
+}
+
 /// What the capture thread hands back when recording stops: downmixed mono
 /// samples at the device's native sample rate (resampling to 16 kHz happens
 /// after handoff, off the audio thread).
@@ -61,6 +84,7 @@ impl AudioState {
 #[derive(Default)]
 struct Inner {
     state_val: Option<RecState>, // None == Idle
+    mode: RecMode,               // only meaningful while state_val != Idle
     stop_tx: Option<mpsc::Sender<()>>,
     result_rx: Option<mpsc::Receiver<Result<CaptureResult, String>>>,
     recording_flag: Option<Arc<AtomicBool>>,
@@ -79,6 +103,16 @@ impl Inner {
 /// as start/stop.
 pub(crate) fn emit_state(app: &AppHandle, state: RecState) {
     let _ = app.emit("recording-state", state.as_str());
+    // Recording-start only: tells the overlay pill (and anything else
+    // listening) which mode this session is in, so it can show a hint that
+    // dictated words are going to the clipboard, not the inbox. Read from
+    // AudioState rather than threaded through every emit_state call site —
+    // by the time this fires `Inner::mode` is already committed (set
+    // before the caller drops its lock and calls in).
+    if state == RecState::Recording {
+        let mode = app.state::<AudioState>().lock().mode;
+        let _ = app.emit("recording-mode", mode.as_str());
+    }
     set_tray_title(app, state, None);
     crate::window::sync_overlay(app, state);
 }
@@ -340,16 +374,46 @@ fn capture_thread(
     }));
 }
 
-/// Starts or stops+transcribes+appends a voice note. Returns the new state
-/// immediately (`"recording"` / `"transcribing"`) — the eventual `"idle"`
-/// transition (and any `capture-error`) arrives later via the
-/// `recording-state`/`capture-error` events, since transcription runs in
-/// the background after this returns.
+/// Starts or stops+transcribes a voice note in `RecMode::Note` (⌥⌘R / tray
+/// "Record voice note" / popover `r`) — the transcript is appended to
+/// inbox.md. Returns the new state immediately (`"recording"` /
+/// `"transcribing"`) — the eventual `"idle"` transition (and any
+/// `capture-error`) arrives later via the `recording-state`/`capture-error`
+/// events, since transcription runs in the background after this returns.
 #[tauri::command]
 pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
+    toggle_recording_mode(app, RecMode::Note)
+}
+
+/// Starts or stops+transcribes a voice note in `RecMode::Dictate` (⇧⌘V
+/// default / tray "Dictate to clipboard") — the transcript goes to the
+/// clipboard and an auto-paste attempt instead of inbox.md (see
+/// dictate.rs). Not exposed to the frontend as a `#[tauri::command]`:
+/// unlike `toggle_recording`, nothing in the popover UI ever needs to
+/// trigger it — only the global hotkey handler and the tray menu do, both
+/// Rust-side already.
+pub(crate) fn toggle_dictation(app: AppHandle) -> Result<String, String> {
+    toggle_recording_mode(app, RecMode::Dictate)
+}
+
+/// Shared toggle implementation behind `toggle_recording`/`toggle_dictation`.
+/// A press while a session is active in the OTHER mode is ignored outright
+/// (`capture-error` "Already recording") — the recorder never silently
+/// switches modes mid-recording; a same-mode press follows the existing
+/// state machine unchanged (Idle → Recording → stop triggers Transcribing,
+/// Transcribing/DownloadingModel just no-ops).
+fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String> {
     let audio_state = app.state::<AudioState>();
     let mut inner = audio_state.lock();
-    match inner.state() {
+    let state = inner.state();
+
+    if state != RecState::Idle && inner.mode != mode {
+        drop(inner);
+        let _ = app.emit("capture-error", "Already recording");
+        return Ok(state.as_str().to_string());
+    }
+
+    match state {
         RecState::Idle => {
             let (stop_tx, stop_rx) = mpsc::channel::<()>();
             let (result_tx, result_rx) = mpsc::channel::<Result<CaptureResult, String>>();
@@ -367,6 +431,7 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
             }
 
             inner.state_val = Some(RecState::Recording);
+            inner.mode = mode;
             inner.stop_tx = Some(stop_tx);
             inner.result_rx = Some(result_rx);
             inner.recording_flag = Some(recording_flag.clone());
@@ -421,6 +486,7 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
             let stop_tx = inner.stop_tx.take();
             let result_rx = inner.result_rx.take();
             let recording_flag = inner.recording_flag.take();
+            let mode = inner.mode; // == `mode` param here (checked above); read back for finish_recording
             inner.state_val = Some(RecState::Transcribing);
             drop(inner);
 
@@ -433,7 +499,7 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
             }
 
             let app2 = app.clone();
-            tauri::async_runtime::spawn_blocking(move || finish_recording(app2, result_rx));
+            tauri::async_runtime::spawn_blocking(move || finish_recording(app2, result_rx, mode));
 
             Ok(RecState::Transcribing.as_str().to_string())
         }
@@ -453,11 +519,14 @@ fn reset_idle(app: &AppHandle) {
 }
 
 /// The stop-side tail: receive the buffered samples from the capture
-/// thread, resample, transcribe, append to inbox.md, and always land back
-/// on Idle. Runs inside `spawn_blocking` — never on the async runtime.
+/// thread, resample, transcribe, hand the transcript off per `mode`
+/// (inbox.md for `Note`, clipboard+paste for `Dictate` — see dictate.rs),
+/// and always land back on Idle. Runs inside `spawn_blocking` — never on
+/// the async runtime.
 fn finish_recording(
     app: AppHandle,
     result_rx: Option<mpsc::Receiver<Result<CaptureResult, String>>>,
+    mode: RecMode,
 ) {
     let capture = match result_rx.and_then(|rx| rx.recv().ok()) {
         Some(Ok(c)) => c,
@@ -488,11 +557,16 @@ fn finish_recording(
     }
 
     match crate::whisper::transcribe(&app, &pcm) {
-        Ok(text) if !text.trim().is_empty() => {
-            if let Err(e) = crate::commands::notes::append_inbox_text(&text) {
-                let _ = app.emit("capture-error", e);
+        // `transcribe` already runs the Claude mis-hear correction pass for
+        // every caller, so `text` here is corrected regardless of mode.
+        Ok(text) if !text.trim().is_empty() => match mode {
+            RecMode::Note => {
+                if let Err(e) = crate::commands::notes::append_inbox_text(&text) {
+                    let _ = app.emit("capture-error", e);
+                }
             }
-        }
+            RecMode::Dictate => crate::dictate::finish_dictation(&app, &text),
+        },
         Ok(_) => {
             let _ = app.emit("capture-error", "Transcription came back empty".to_string());
         }

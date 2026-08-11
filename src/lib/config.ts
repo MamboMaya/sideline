@@ -54,13 +54,18 @@ export const DEFAULT_MODELS: Models = { triage: "haiku", batch: "haiku" };
 export type ProjectsConfig = Record<string, string> | string[];
 
 // `.sideline.json`'s `hotkeys` field — human-friendly combo strings (e.g.
-// `"alt+cmd+space"`) for the two global shortcuts. Parsing/registration is
+// `"alt+cmd+space"`) for the three global shortcuts. Parsing/registration is
 // entirely Rust-side (src-tauri/src/lib.rs, read at startup, restart
 // required); this type only backs the shortcuts modal's display and the
 // opaque `hotkeysOverride` passthrough so pin/zoom writes don't erase it.
 export interface HotkeysConfig {
   toggle?: string;
   record?: string;
+  // Dictation mode: records like `record`, but the transcript goes to the
+  // clipboard + an auto-paste attempt instead of inbox.md — see
+  // docs/backend.md. Default ⇧⌘V (src-tauri/src/hotkeys.rs's
+  // `default_dictate_shortcut`).
+  dictate?: string;
 }
 
 // Everything loadConfig produces from `.sideline.json` — one field per

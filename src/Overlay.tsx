@@ -10,12 +10,23 @@ import { useRecorderStatus } from "./hooks/useRecorder";
 // itself on every recording-state transition (see audio.rs's emit_state);
 // this component only has to render the right thing for the current state.
 export default function Overlay() {
-  const { recState, audioLevel, recElapsed } = useRecorderStatus();
+  const { recState, recMode, audioLevel, recElapsed } = useRecorderStatus();
 
   if (recState === "idle") return null;
 
+  // Dictation mode never touches the inbox — words go to the clipboard (and
+  // auto-paste into whatever app is frontmost) instead, so the pill needs a
+  // visible tell apart from the normal REC look, not just a tooltip the
+  // user won't see mid-dictation.
+  const dictating = recMode === "dictate";
+
   return (
-    <div className="overlay-pill">
+    <div
+      className={
+        dictating ? "overlay-pill overlay-pill-dictate" : "overlay-pill"
+      }
+    >
+      {dictating && <span className="rec-mode-badge">Dictate</span>}
       {recState === "recording" && (
         <>
           <span className="rec-dot" />

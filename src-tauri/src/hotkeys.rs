@@ -17,6 +17,10 @@ pub(crate) fn default_record_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::ALT | Modifiers::SUPER), Code::KeyR)
 }
 
+pub(crate) fn default_dictate_shortcut() -> Shortcut {
+    Shortcut::new(Some(Modifiers::SHIFT | Modifiers::SUPER), Code::KeyV)
+}
+
 /// Normalizes a human-friendly hotkey combo (e.g. `"opt+cmd+v"`) into the
 /// `"alt+super+KeyV"` form `Shortcut::from_str` expects. Modifier tokens are
 /// matched case-insensitively via aliases; the one remaining token is the
@@ -89,12 +93,12 @@ pub(crate) fn parse_hotkey_or_default(
     }
 }
 
-/// Reads `hotkeys.toggle` / `hotkeys.record` from `.sideline.json`. Fully
-/// failure-tolerant: missing file, malformed JSON, and a missing/invalid
-/// key each just fall back to the hardcoded default (current ⌥⌘Space /
-/// ⌥⌘R behavior). Changing this file requires an app restart to take
-/// effect.
-pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut) {
+/// Reads `hotkeys.toggle` / `hotkeys.record` / `hotkeys.dictate` from
+/// `.sideline.json`. Fully failure-tolerant: missing file, malformed JSON,
+/// and a missing/invalid key each just fall back to the hardcoded default
+/// (current ⌥⌘Space / ⌥⌘R / ⇧⌘V behavior). Changing this file requires an
+/// app restart to take effect.
+pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut, Shortcut) {
     let raw = fs::read_to_string(notes_dir().join(".sideline.json")).unwrap_or_default();
     let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
     let hotkeys = parsed.get("hotkeys");
@@ -104,9 +108,13 @@ pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut) {
     let record_raw = hotkeys
         .and_then(|h| h.get("record"))
         .and_then(|v| v.as_str());
+    let dictate_raw = hotkeys
+        .and_then(|h| h.get("dictate"))
+        .and_then(|v| v.as_str());
     (
         parse_hotkey_or_default(toggle_raw, "toggle", default_toggle_shortcut()),
         parse_hotkey_or_default(record_raw, "record", default_record_shortcut()),
+        parse_hotkey_or_default(dictate_raw, "dictate", default_dictate_shortcut()),
     )
 }
 

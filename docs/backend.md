@@ -11,25 +11,26 @@ watcher), and `autostart.rs` (one-time launch-at-login consent: a native
 dialog on first run — "Launch at Login" enables, "Not Now" disables, either
 answer writes an `autostart-prompted` sentinel to Application Support so the
 question never returns, and System Settings > Login Items is authoritative
-from then on) — plus `audio.rs` and `whisper.rs` for in-app voice recording,
-documented separately below.
+from then on) — plus `audio.rs`, `whisper.rs`, and `dictate.rs` for in-app
+voice recording (note capture and dictation-to-clipboard), documented
+separately below.
 
 Tray icon + popover window toggle (tray click anchors under the icon for that
 click only; the ⌥⌘Space hotkey opens top-center of the monitor holding the
-cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording), fs watcher on
-`~/notes` emitting `inbox-changed`, and the commands:
+cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⇧⌘V dictation), fs
+watcher on `~/notes` emitting `inbox-changed`, and the commands:
 
 - Hotkeys are configurable via `.sideline.json`'s `hotkeys.toggle`/
-  `hotkeys.record` (see docs/data-model.md), read directly at startup
-  (`load_hotkeys` in hotkeys.rs, not through `read_config`) and normalized
-  (modifier aliases, bare letter/digit/`space` → `Code` name) before
-  `Shortcut::from_str`; a missing key, unparseable combo, or OS-level
-  registration failure all fall back to the hardcoded ⌥⌘Space/⌥⌘R default —
-  the app never loses a hotkey to a typo. An OS-level registration failure
-  (combo claimed by another app; the default also failing) additionally
-  emits `hotkey-fallback`, which the frontend toasts — a silently-switched
-  or silently-dead binding must not be discoverable only by pressing it.
-  Takes effect on next launch only, no live reload.
+  `hotkeys.record`/`hotkeys.dictate` (see docs/data-model.md), read directly
+  at startup (`load_hotkeys` in hotkeys.rs, not through `read_config`) and
+  normalized (modifier aliases, bare letter/digit/`space` → `Code` name)
+  before `Shortcut::from_str`; a missing key, unparseable combo, or OS-level
+  registration failure all fall back to the hardcoded ⌥⌘Space/⌥⌘R/⇧⌘V
+  default — the app never loses a hotkey to a typo. An OS-level registration
+  failure (combo claimed by another app; the default also failing)
+  additionally emits `hotkey-fallback`, which the frontend toasts — a
+  silently-switched or silently-dead binding must not be discoverable only by
+  pressing it. Takes effect on next launch only, no live reload.
 
 - The fs watcher emits `watcher-dead` (frontend toasts "restart Sideline")
   on any exit path — setup failure or channel close — since a dead watcher
@@ -119,6 +120,20 @@ failure — no input device, model download error, etc.) emits
 `capture-error` (string payload) and the state machine still lands back on
 Idle.
 
+Orthogonal to `RecState` is `audio::RecMode` (`Note` | `Dictate`), carried on
+the same managed `Inner` alongside the state — which pipeline a session
+feeds, not what phase it's in. `toggle_recording` (⌥⌘R / tray "Record voice
+note" / popover `r`) and `toggle_dictation` (⇧⌘V / tray "Dictate to
+clipboard") both funnel into one `toggle_recording_mode(app, mode)`: Idle
+starts a session and records `mode`; a same-mode press while Recording stops
+it exactly as before; a press in the OTHER mode while a session is already
+active (any non-Idle state) is ignored outright and emits `capture-error`
+"Already recording" — the recorder never silently switches modes
+mid-recording. `emit_state` additionally emits `recording-mode` (`"note"`/
+`"dictate"` string payload) once, at the moment a session enters Recording,
+so the overlay pill can tell the two apart; it does not change the
+`recording-state` payload shape.
+
 Every transition also drives the recording-pill overlay: `sync_overlay`
 (window.rs), called from the same `emit_state` choke point, shows the
 `overlay` window (declared hidden in tauri.conf.json — 220×48, transparent,
@@ -162,16 +177,44 @@ subsequent recording. `FullParams` greedy, English, no timestamps,
 `set_initial_prompt` biased toward "Claude, Claude Code, Sideline, Raycast,
 Tauri, triage, inbox". Output runs through the same Claude mis-hear
 correction regexes as capture/voice-note.sh's perl pass (`clod`/`claw(ed)`/
-`clawd`/`clode` → `Claude`/`Claude Code`) before being appended via
-`append_inbox_text`.
+`clawd`/`clode` → `Claude`/`Claude Code`) before `whisper::transcribe`
+returns — this runs for BOTH modes, so `audio::finish_recording` branches
+purely on destination: `RecMode::Note` appends via `append_inbox_text` as
+before; `RecMode::Dictate` hands the corrected text to
+`dictate::finish_dictation` and never touches inbox.md.
+
+Dictation mode (`dictate.rs`): clipboard write happens first and
+unconditionally (`app.clipboard().write_text(...)` via the
+`tauri-plugin-clipboard-manager` `ClipboardExt` trait, Rust-side — the
+transcript is never lost even if everything below fails), then an
+Accessibility (AX) trust check gates a synthetic paste. Trusted
+(`AXIsProcessTrusted()`): a ~50ms settle delay, then a synthetic ⌘V — a
+`core-graphics` `CGEventSource` (HID system state) posts a keycode-9
+(kVK_ANSI_V) key-down + key-up, Command flag set, to the HID event tap, so
+it lands on whatever app is currently frontmost (Sideline's own windows
+never take focus, so this is never Sideline itself — see the popover/overlay
+focus notes above). Not trusted: `AXIsProcessTrustedWithOptions` is called
+with `kAXTrustedCheckOptionPrompt` set, which triggers the one-time system
+Accessibility dialog, the paste is skipped, and `capture-error` explains the
+text is already on the clipboard for a manual ⌘V. Both `AXIsProcessTrusted`
+and `AXIsProcessTrustedWithOptions`/`kAXTrustedCheckOptionPrompt` are
+declared by hand as `extern "C"` from the `ApplicationServices` framework
+(no crate wraps them); no Info.plist key is needed for Accessibility — macOS
+gates it entirely through System Settings > Privacy & Security >
+Accessibility plus this API.
 
 ⌥⌘R (global hotkey, alongside ⌥⌘Space) and the tray menu's "Record voice
-note" both call `audio::toggle_recording` directly. Mic access requires
-`src-tauri/Info.plist` (`NSMicrophoneUsageDescription`, auto-merged by
-Tauri) and `src-tauri/Entitlements.plist`
+note" both call `audio::toggle_recording` directly, appending to inbox.md.
+⇧⌘V and the tray menu's "Dictate to clipboard" call `audio::toggle_dictation`
+the same way, routing to the clipboard/paste flow above instead — dictation
+output is never appended to inbox.md, `notes/`, or `todos/`. Mic access
+requires `src-tauri/Info.plist` (`NSMicrophoneUsageDescription`, auto-merged
+by Tauri) and `src-tauri/Entitlements.plist`
 (`com.apple.security.device.audio-input`, wired via
-`tauri.conf.json`'s `bundle.macOS.entitlements`) — no other new TCC
-surface.
+`tauri.conf.json`'s `bundle.macOS.entitlements`). Accessibility (dictation's
+auto-paste, above) is the one other TCC surface in the app — see CLAUDE.md's
+"exactly ONE... plus Accessibility" convention bullet for why that's a
+deliberate, discussed exception rather than scope creep.
 
 All notes file access is confined to `~/notes` via one of two mechanisms in
 `paths.rs`. Single-component names (project names, triaged filenames) go
@@ -186,5 +229,6 @@ and `notes_dir()` and requires `starts_with` — this defeats a symlink
 planted at an intermediate directory (and handles `~/notes` itself being a
 symlink) at the cost of also rejecting a confined file that is itself a
 symlink pointing outside `~/notes`. No exceptions beyond that; the
-`tauri-plugin-clipboard-manager` plugin (write-text only) is the one other
-capability beyond notes I/O.
+`tauri-plugin-clipboard-manager` plugin (write-text only) and dictation's
+synthetic-paste path (`dictate.rs`, above) are the only other capabilities
+beyond notes I/O.

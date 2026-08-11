@@ -25,6 +25,11 @@ whisper-rs = { version = "0.16.0", features = ["metal"] }
 regex = "1.13.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls"] }
+# Dictation mode's synthetic ⌘V paste (core-graphics) and the
+# AXIsProcessTrustedWithOptions/kAXTrustedCheckOptionPrompt extern
+# declaration (core-foundation types) — see src-tauri/src/dictate.rs.
+core-graphics = "0.25"
+core-foundation = "0.10"
 
 [lib]
 name = "sideline_lib"

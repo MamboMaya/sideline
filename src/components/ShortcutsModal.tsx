@@ -63,6 +63,10 @@ export function ShortcutsModal({
             <kbd>r / {formatHotkey(hotkeysOverride?.record, "⌥⌘R")}</kbd> record
             voice note
           </div>
+          <div className="shortcut">
+            <kbd>{formatHotkey(hotkeysOverride?.dictate, "⇧⌘V")}</kbd> dictate
+            to clipboard
+          </div>
         </div>
       </div>
       <div className="shortcuts-row">

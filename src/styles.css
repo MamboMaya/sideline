@@ -50,6 +50,16 @@ body.overlay {
   -webkit-user-select: none;
   user-select: none;
 }
+/* Dictation mode: transcript goes to the clipboard/frontmost app, never the
+   inbox — an inset ring in the project-tag blue plus a "Dictate" badge
+   tells it apart from the normal (red) REC pill at a glance. */
+.overlay-pill-dictate {
+  box-shadow: inset 0 0 0 1.5px var(--project);
+}
+.rec-mode-badge {
+  color: var(--project);
+  font-weight: 600;
+}
 header {
   display: flex;
   align-items: center;

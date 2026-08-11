@@ -53,12 +53,14 @@ Exact rules: docs/data-model.md.
 ## Conventions
 
 - No new macOS permission surfaces without discussion. The app needs exactly
-  ONE TCC permission — the microphone, for in-app recording — and nothing
-  else (no screen recording, no protected folders): notes I/O stays in
-  `~/notes`. This covers child processes too: `send_to_claude` runs the
-  `claude` CLI with `--setting-sources "" --strict-mcp-config` so no user
-  hook/plugin/MCP server runs under Sideline's TCC identity (one touching
-  ~/Documents would trigger a popup blamed on Sideline).
+  TWO TCC permissions — the microphone (in-app recording) and Accessibility
+  (dictation mode's synthetic ⌘V auto-paste only, requested on first use,
+  deliberately approved 2026-08-11) — and nothing else (no screen recording,
+  no protected folders): notes I/O stays in `~/notes`. This covers child
+  processes too: `send_to_claude` runs the `claude` CLI with
+  `--setting-sources "" --strict-mcp-config` so no user hook/plugin/MCP
+  server runs under Sideline's TCC identity (one touching ~/Documents would
+  trigger a popup blamed on Sideline).
 - Frontend mutations: parse → modify in TS → `write_inbox` full content.
   In-app voice capture is the exception: Rust `append_inbox_text` appends
   directly so it can't race frontend writes or external capture scripts.
