@@ -7,6 +7,16 @@ project todo list, or delete it. Everything is plain Markdown under `~/notes`,
 and nothing ever leaves your machine except the (optional) Claude-assisted
 triage calls.
 
+> **New — dictation pass-through.** Sideline started as capture-only: talk,
+> and a note lands in your inbox. It now also does straight dictation: press
+> ⌥⌘V, talk, and the transcript is pasted into whatever app you're in — the
+> inbox is never involved. This is the one feature that asks for a second
+> macOS permission (Accessibility, used only to send the auto-paste ⌘V);
+> decline it and the transcript still lands on the clipboard for a manual
+> paste. Like every Sideline hotkey, ⌥⌘V is just the default — remap it in
+> Settings (⌘,). Details under [What it does](#what-it-does) and
+> [Permissions](#permissions).
+
 ## What it does
 
 - **Capture**: global hotkey (⌥⌘R by default) records a voice note, transcribes it
