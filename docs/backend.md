@@ -15,6 +15,13 @@ from then on) — plus `audio.rs`, `whisper.rs`, and `dictate.rs` for in-app
 voice recording (note capture and dictation-to-clipboard), documented
 separately below.
 
+Quit path: the run-loop callback in lib.rs handles `RunEvent::Exit` with
+`libc::_exit(0)`, skipping C-runtime exit finalizers — ggml (whisper's Metal
+backend) otherwise aborts in a static destructor on every quit after a
+transcription, which died as a SIGABRT crash report and could leave a ghost
+tray icon. All notes writes are atomic temp+rename, so nothing needs those
+finalizers.
+
 `tauri-plugin-single-instance` is registered first (its docs require it): a
 second launch of the app — a stale AppleScript-era login item firing
 alongside the current LaunchAgent registration, or a manual open while

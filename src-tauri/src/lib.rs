@@ -130,6 +130,21 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Sideline");
+        .build(tauri::generate_context!())
+        .expect("error while running Sideline")
+        .run(|_app, event| {
+            // Quit-path workaround for a whisper.cpp/ggml bug: once a
+            // transcription has run, ggml's Metal device is torn down by a
+            // C++ static destructor during normal `exit()` finalizers — and
+            // that teardown calls ggml_abort (SIGABRT), so every quit after
+            // a recording died as a crash (see the ggml_metal_rsets_free
+            // reports in ~/Library/Logs/DiagnosticReports) and could leave
+            // a ghost tray icon behind. Nothing needs those finalizers:
+            // every notes write is already atomic (temp+rename) and long
+            // flushed by the time RunEvent::Exit fires, so skip straight to
+            // _exit(), which ends the process without running them.
+            if let tauri::RunEvent::Exit = event {
+                unsafe { libc::_exit(0) }
+            }
+        });
 }
