@@ -29,7 +29,7 @@ already running — exits immediately instead of showing a second tray icon.
 
 Tray icon + popover window toggle (tray click anchors under the icon for that
 click only; the ⌥⌘Space hotkey opens top-center of the monitor holding the
-cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⇧⌘V dictation), fs
+cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⌥⌘V dictation), fs
 watcher on `~/notes` emitting `inbox-changed`, and the commands:
 
 - Hotkeys are configurable via `.sideline.json`'s `hotkeys.toggle`/
@@ -37,7 +37,7 @@ watcher on `~/notes` emitting `inbox-changed`, and the commands:
   at startup (`load_hotkeys` in hotkeys.rs, not through `read_config`) and
   normalized (modifier aliases, bare letter/digit/`space` → `Code` name)
   before `Shortcut::from_str`; a missing key, unparseable combo, or OS-level
-  registration failure all fall back to the hardcoded ⌥⌘Space/⌥⌘R/⇧⌘V
+  registration failure all fall back to the hardcoded ⌥⌘Space/⌥⌘R/⌥⌘V
   default — the app never loses a hotkey to a typo. An OS-level registration
   failure (combo claimed by another app; the default also failing)
   additionally emits `hotkey-fallback`, which the frontend toasts — a
@@ -159,7 +159,7 @@ Idle.
 Orthogonal to `RecState` is `audio::RecMode` (`Note` | `Dictate`), carried on
 the same managed `Inner` alongside the state — which pipeline a session
 feeds, not what phase it's in. `toggle_recording` (⌥⌘R / tray "Record voice
-note" / popover `r`) and `toggle_dictation` (⇧⌘V / tray "Dictate to
+note" / popover `r`) and `toggle_dictation` (⌥⌘V / tray "Dictate to
 clipboard") both funnel into one `toggle_recording_mode(app, mode)`: Idle
 starts a session and records `mode`; a same-mode press while Recording stops
 it exactly as before; a press in the OTHER mode while a session is already
@@ -241,7 +241,7 @@ Accessibility plus this API.
 
 ⌥⌘R (global hotkey, alongside ⌥⌘Space) and the tray menu's "Record voice
 note" both call `audio::toggle_recording` directly, appending to inbox.md.
-⇧⌘V and the tray menu's "Dictate to clipboard" call `audio::toggle_dictation`
+⌥⌘V and the tray menu's "Dictate to clipboard" call `audio::toggle_dictation`
 the same way, routing to the clipboard/paste flow above instead — dictation
 output is never appended to inbox.md, `notes/`, or `todos/`. Mic access
 requires `src-tauri/Info.plist` (`NSMicrophoneUsageDescription`, auto-merged

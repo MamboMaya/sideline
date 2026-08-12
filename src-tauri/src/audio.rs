@@ -34,7 +34,7 @@ impl RecState {
 
 /// What a recording session is for: `Note` appends the transcript to
 /// inbox.md (⌥⌘R, "Record voice note"), `Dictate` copies it to the
-/// clipboard and auto-pastes into the frontmost app instead (⇧⌘V default,
+/// clipboard and auto-pastes into the frontmost app instead (⌥⌘V default,
 /// "Dictate to clipboard" — see dictate.rs). Only meaningful while `state`
 /// is non-`Idle`; carried on `Inner` alongside `state_val` so a press of
 /// the OTHER mode's hotkey while a session is active can be told apart from
@@ -385,7 +385,7 @@ pub fn toggle_recording(app: AppHandle) -> Result<String, String> {
     toggle_recording_mode(app, RecMode::Note)
 }
 
-/// Starts or stops+transcribes a voice note in `RecMode::Dictate` (⇧⌘V
+/// Starts or stops+transcribes a voice note in `RecMode::Dictate` (⌥⌘V
 /// default / tray "Dictate to clipboard") — the transcript goes to the
 /// clipboard and an auto-paste attempt instead of inbox.md (see
 /// dictate.rs). Not exposed to the frontend as a `#[tauri::command]`:

@@ -13,7 +13,7 @@ triage calls.
   on-device with Whisper (Metal-accelerated), and appends it to
   `~/notes/inbox.md`. The tray shows a live 🔴 REC timer; the popover shows a
   level meter so you know the mic is hot.
-- **Dictate anywhere** (⇧⌘V by default): same on-device recording and
+- **Dictate anywhere** (⌥⌘V by default): same on-device recording and
   transcription, but the result is copied to the clipboard and auto-pasted
   into whatever app is frontmost instead of going to the inbox — handy for
   dictating straight into another app. Auto-paste needs the Accessibility
@@ -34,8 +34,8 @@ triage calls.
 
 ![Record a voice note, watch it land in the inbox, triage it to a project todo](assets/demo.gif)
 
-_In the demo I record with ⌥⌘V — all three hotkeys are remappable in
-Settings (⌘,)._
+_In the demo I record with ⌥⌘V instead of the default ⌥⌘R — all three
+hotkeys are remappable in Settings (⌘,)._
 
 ## How this was built
 
@@ -84,7 +84,7 @@ ones, and no `## Claude` reply appendix.
 
 Sideline needs exactly **two** macOS permissions: the microphone, asked once
 on your first recording, and Accessibility, asked once on your first
-dictation (⇧⌘V) — needed only for the synthetic ⌘V that auto-pastes the
+dictation (⌥⌘V) — needed only for the synthetic ⌘V that auto-pastes the
 transcript into the frontmost app. Skip granting it and dictation still
 works; the transcript just stays on the clipboard for you to paste yourself.
 Everything else is deliberately prompt-free — notes live in `~/notes`, which

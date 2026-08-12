@@ -15,7 +15,7 @@ Card list (newest first). Two views, jumped to by `⌘1`/`⌘2` or the header
 tabs (`Inbox (N)` / `Todos (P)`). `Esc` hides the popover from
 any view — open layers like the shortcuts panel, the Settings pane, or the
 tag input absorb one Esc first; `?` toggles a shortcuts panel (its Everywhere
-column now also lists the dictate-to-clipboard hotkey, default ⇧⌘V, and
+column now also lists the dictate-to-clipboard hotkey, default ⌥⌘V, and
 `⌘,` — see docs/backend.md and Settings below). Reopening the popover resets
 scroll/selection/search to the top but keeps the last-used tab (and closes
 Settings/the shortcuts panel if either was open); tab switches
@@ -64,7 +64,7 @@ untouched. Five sections, one scrollable pane:
 1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
    `record`/`dictate` (`HotkeyCaptureField` in
    `src/components/SettingsPane.tsx`), each showing its current effective
-   combo next to the field (override, or the ⌥⌘Space/⌥⌘R/⇧⌘V default) as an
+   combo next to the field (override, or the ⌥⌘Space/⌥⌘R/⌥⌘V default) as an
    ⌥⌘-style symbol hint. There is no typing: the field is a button, not a
    text input. Click it (or Tab to it — focus alone starts capture) and it
    shows "press shortcut…"; press the actual shortcut and it captures the

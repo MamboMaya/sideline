@@ -67,8 +67,8 @@ const HOTKEY_FIELDS = [
   {
     key: "dictate" as const,
     label: "Dictate to clipboard",
-    placeholder: "shift+cmd+v",
-    fallback: "⇧⌘V",
+    placeholder: "alt+cmd+v",
+    fallback: "⌥⌘V",
   },
 ];
 

@@ -150,7 +150,7 @@ export interface HotkeysConfig {
   record?: string;
   // Dictation mode: records like `record`, but the transcript goes to the
   // clipboard + an auto-paste attempt instead of inbox.md — see
-  // docs/backend.md. Default ⇧⌘V (src-tauri/src/hotkeys.rs's
+  // docs/backend.md. Default ⌥⌘V (src-tauri/src/hotkeys.rs's
   // `default_dictate_shortcut`).
   dictate?: string;
 }

@@ -67,7 +67,7 @@ export function ShortcutsModal({
             voice note
           </div>
           <div className="shortcut">
-            <kbd>{formatHotkey(hotkeysOverride?.dictate, "⇧⌘V")}</kbd> dictate
+            <kbd>{formatHotkey(hotkeysOverride?.dictate, "⌥⌘V")}</kbd> dictate
             to clipboard
           </div>
         </div>

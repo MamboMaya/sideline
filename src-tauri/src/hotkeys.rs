@@ -18,7 +18,7 @@ pub(crate) fn default_record_shortcut() -> Shortcut {
 }
 
 pub(crate) fn default_dictate_shortcut() -> Shortcut {
-    Shortcut::new(Some(Modifiers::SHIFT | Modifiers::SUPER), Code::KeyV)
+    Shortcut::new(Some(Modifiers::ALT | Modifiers::SUPER), Code::KeyV)
 }
 
 /// Normalizes a human-friendly hotkey combo (e.g. `"opt+cmd+v"`) into the
@@ -96,7 +96,7 @@ pub(crate) fn parse_hotkey_or_default(
 /// Reads `hotkeys.toggle` / `hotkeys.record` / `hotkeys.dictate` from
 /// `.sideline.json`. Fully failure-tolerant: missing file, malformed JSON,
 /// and a missing/invalid key each just fall back to the hardcoded default
-/// (current ⌥⌘Space / ⌥⌘R / ⇧⌘V behavior). Changing this file requires an
+/// (current ⌥⌘Space / ⌥⌘R / ⌥⌘V behavior). Changing this file requires an
 /// app restart to take effect.
 pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut, Shortcut) {
     let raw = fs::read_to_string(notes_dir().join(".sideline.json")).unwrap_or_default();
@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn resolve_combo_valid_combo_resolves_to_its_shortcut() {
         assert_eq!(
-            resolve_combo(Some("shift+cmd+v"), default_record_shortcut()),
+            resolve_combo(Some("alt+cmd+v"), default_record_shortcut()),
             Ok(default_dictate_shortcut())
         );
     }

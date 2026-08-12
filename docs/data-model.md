@@ -58,14 +58,14 @@
   substring match against the system's input device names, picking the
   in-app recorder's mic (see docs/backend.md); omitted = system default
   input device. Also optional `"hotkeys": { "toggle": "alt+cmd+space",
-"record": "alt+cmd+r", "dictate": "shift+cmd+v" }` — human-friendly combo
+"record": "alt+cmd+r", "dictate": "alt+cmd+v" }` — human-friendly combo
   strings for the three global shortcuts (`dictate` triggers the same
   record→transcribe pipeline as `record`, but the transcript is copied to
   the clipboard and auto-pasted into the frontmost app instead of being
   appended to inbox.md — see docs/backend.md; aliases:
   `cmd`/`command`/`super`/`meta`, `opt`/`option`/`alt`, `ctrl`/`control`,
   `shift`; key token is a bare letter/digit/`space` or a W3C `Code` name like
-  `F5`/`Comma`); missing or invalid falls back to the ⌥⌘Space/⌥⌘R/⇧⌘V
+  `F5`/`Comma`); missing or invalid falls back to the ⌥⌘Space/⌥⌘R/⌥⌘V
   default, read once at startup — changing it needs an app restart to take
   effect, UNLESS it's changed through the Settings pane's Hotkeys section
   (the gear button in the header), which additionally calls the
