@@ -9,6 +9,11 @@ import {
   serializeConfig,
   DEFAULT_PROMPTS,
   DEFAULT_MODELS,
+  mergeModels,
+  mergePrompts,
+  projectTagsFrom,
+  projectsAdd,
+  projectsRemove,
   type SidelineConfig,
 } from "./config";
 
@@ -433,5 +438,88 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.zoom).toBe(original.zoom);
     expect(rewritten.audio).toEqual(original.audio);
     expect(rewritten.hotkeys).toEqual(original.hotkeys);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergePrompts / mergeModels — the Settings pane's local recompute, factored
+// out of parseConfig so both call sites share one merge rule.
+// ---------------------------------------------------------------------------
+
+describe("mergePrompts / mergeModels", () => {
+  test("undefined override falls back to the defaults entirely", () => {
+    expect(mergePrompts(undefined)).toEqual(DEFAULT_PROMPTS);
+    expect(mergeModels(undefined)).toEqual(DEFAULT_MODELS);
+  });
+
+  test("a blank/whitespace field falls back to its default even when the key is present", () => {
+    expect(mergeModels({ triage: "   " }).triage).toBe(DEFAULT_MODELS.triage);
+    expect(mergePrompts({ batch: "" }).batch).toBe(DEFAULT_PROMPTS.batch);
+  });
+
+  test("a non-blank field overrides its default, the other field stays default", () => {
+    const merged = mergeModels({ triage: "opus" });
+    expect(merged).toEqual({ triage: "opus", batch: DEFAULT_MODELS.batch });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// projectTagsFrom / projectsAdd / projectsRemove — Settings' Tags section
+// project-routing add/remove, preserving whichever shape is on disk.
+// ---------------------------------------------------------------------------
+
+describe("projectTagsFrom", () => {
+  test("undefined produces no tags", () => {
+    expect(projectTagsFrom(undefined)).toEqual([]);
+  });
+
+  test("array shape is sanitized", () => {
+    expect(projectTagsFrom(["Side Line", "kafka"])).toEqual([
+      "side-line",
+      "kafka",
+    ]);
+  });
+
+  test("object shape keys are NOT sanitized (matches parseConfig's asymmetry)", () => {
+    expect(projectTagsFrom({ "Side Line": "", kafka: "" })).toEqual([
+      "Side Line",
+      "kafka",
+    ]);
+  });
+});
+
+describe("projectsAdd", () => {
+  test("undefined starts a brand-new array shape", () => {
+    expect(projectsAdd(undefined, "sideline")).toEqual(["sideline"]);
+  });
+
+  test("array shape: appends, no duplicate on a tag already present", () => {
+    expect(projectsAdd(["a"], "b")).toEqual(["a", "b"]);
+    expect(projectsAdd(["a"], "a")).toEqual(["a"]);
+  });
+
+  test("object shape: adds with an empty (unused) path, preserves existing entries", () => {
+    expect(projectsAdd({ a: "/path/a" }, "b")).toEqual({
+      a: "/path/a",
+      b: "",
+    });
+    // Already present: untouched, existing path not clobbered.
+    expect(projectsAdd({ a: "/path/a" }, "a")).toEqual({ a: "/path/a" });
+  });
+});
+
+describe("projectsRemove", () => {
+  test("array shape: removes the tag, returns undefined once empty", () => {
+    expect(projectsRemove(["a", "b"], "a")).toEqual(["b"]);
+    expect(projectsRemove(["a"], "a")).toBeUndefined();
+  });
+
+  test("object shape: removes the entry, returns undefined once empty", () => {
+    expect(projectsRemove({ a: "/x", b: "/y" }, "a")).toEqual({ b: "/y" });
+    expect(projectsRemove({ a: "/x" }, "a")).toBeUndefined();
+  });
+
+  test("undefined input is returned as-is", () => {
+    expect(projectsRemove(undefined, "a")).toBeUndefined();
   });
 });

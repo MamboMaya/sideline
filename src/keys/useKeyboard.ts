@@ -12,6 +12,22 @@ import type { DispatchableKeyEvent, KeyContext } from "./types";
 // whole contract — it is what decides, for a given keypress, which of the
 // four tables in keymaps.ts (if any) gets to act:
 //
+//   0. Settings gate — FIRST, before even the ⌘ layer: while the Settings
+//      pane is open, none of the app's own keymap actions may fire (it has
+//      real controls — dropdowns, toggles, chip buttons — that aren't all
+//      INPUT/TEXTAREA, so the in-field guard in step 2 alone wouldn't catch
+//      a stray `t`/`d`/arrow landing on, say, a focused <select>). TWO
+//      things still get through this layer: Escape closes Settings, unless
+//      focus is inside an INPUT/TEXTAREA (where the field's own onKeyDown
+//      blurs first — a second Escape then lands here with a non-field
+//      target); and ⌘, (see commandKeymap) closes it regardless of focus,
+//      mirroring the ⌘ layer's firesInFields:true for the SAME key's
+//      closed→open direction below. Every other key is left completely
+//      alone (no preventDefault), so native input/select/button behavior
+//      inside the pane is unaffected. While `ctx.hotkeyCapturing` is true
+//      (a hotkey field is mid-capture), this layer does nothing at all —
+//      not even Escape/⌘, — since the field itself owns Escape-cancels and
+//      Delete-clears for that keystroke.
 //   1. ⌘ layer — BEFORE the in-field guard, so ⌘1/⌘2, ⌘=/⌘−/⌘0 and ⌘Z work
 //      with the search input focused (⌘Z excepted: it yields to the field's
 //      native text undo). A ⌘ combo with no binding falls through to 2/3,
@@ -24,6 +40,23 @@ import type { DispatchableKeyEvent, KeyContext } from "./types";
 export function dispatchKey(e: DispatchableKeyEvent, ctx: KeyContext): void {
   const target = e.target as HTMLElement | null;
   const inField = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
+
+  if (ctx.settingsOpen) {
+    // A hotkey capture field owns every key while it's recording — see
+    // KeyContext.hotkeyCapturing's comment. Neither ⌘, nor Esc may act
+    // below while this is true.
+    if (ctx.hotkeyCapturing) return;
+    if (e.metaKey && !e.ctrlKey && !e.altKey && e.key === ",") {
+      e.preventDefault();
+      ctx.toggleSettings();
+      return;
+    }
+    if (e.key === "Escape" && !inField) {
+      e.preventDefault();
+      ctx.closeSettings();
+    }
+    return;
+  }
 
   if (e.metaKey && !e.ctrlKey && !e.altKey) {
     const binding = commandKeymap[e.key.toLowerCase()];

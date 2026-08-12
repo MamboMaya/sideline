@@ -69,14 +69,20 @@ header {
   border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
+/* Shrinkable (min-width:0, not flex-shrink:0) so a wide rec-indicator can
+   squeeze it — down to ellipsis-truncated tab labels in the extreme case —
+   rather than pushing the fixed-width buttons at the right of the header
+   off-screen. See .rec-indicator/.rec-bars below for the other shrinkable
+   region, and header .ghost for the buttons that never shrink. */
 .tabs {
   display: flex;
   gap: 2px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 .header-spacer {
   flex: 1;
-  min-width: 4px;
+  min-width: 0;
 }
 .tab {
   background: none;
@@ -86,6 +92,9 @@ header {
   font-size: 12px;
   padding: 2px 6px;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tab:hover {
   color: var(--text);
@@ -98,7 +107,9 @@ header {
 }
 /* Header buttons after the tabs (batch, show-done, search, Finder, VS
    Code) share the header's remaining space; icon-only ones keep a fixed
-   width so the row never reflows/wraps at the popover's 380px width. */
+   width and NEVER shrink, so this cluster always stays fully visible —
+   the tabs and the rec-indicator are the regions that give way instead
+   (see .tabs and .rec-indicator/.rec-bars). */
 header .ghost {
   flex-shrink: 0;
   white-space: nowrap;
@@ -106,13 +117,25 @@ header .ghost {
 header .ghost.active {
   color: var(--accent);
 }
+/* The ⚙ glyph renders visibly smaller than the header's other icons (🔍,
+   ?) at the same font-size — bumped up, with matching padding, so its
+   visual weight and click target match the rest of the cluster. */
+header .ghost.gear {
+  font-size: 16px;
+  padding: 2px 5px;
+}
 /* Voice-note recording indicator, right after the header spacer — hidden
-   entirely at idle (see the `recState !== "idle"` guard in the JSX). */
+   entirely at idle (see the `recState !== "idle"` guard in the JSX).
+   flex-shrink here (well above the tabs' 1) means it gives up room before
+   the tabs do; internally the dot and elapsed timer refuse to shrink
+   (flex-shrink:0 below) so ALL of that shrinkage lands on .rec-bars, which
+   can compress down to nothing before the indicator ever touches the
+   dot/timer or the header's fixed-width buttons. */
 .rec-indicator {
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-shrink: 0;
+  flex-shrink: 4;
   font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -123,6 +146,7 @@ header .ghost.active {
   border-radius: 50%;
   background: var(--danger);
   animation: rec-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
 }
 @keyframes rec-pulse {
   0%,
@@ -136,12 +160,16 @@ header .ghost.active {
 .rec-elapsed {
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
+  flex-shrink: 0;
 }
 .rec-bars {
   display: flex;
   align-items: flex-end;
   gap: 1.5px;
   height: 13px;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .rec-bar {
   width: 2.5px;
@@ -613,6 +641,149 @@ header .ghost.active {
 .error {
   color: var(--danger);
   padding: 12px;
+}
+/* Settings pane: swapped into the `.cards` region (same flex:1/overflow-y
+   shape as `.cards` itself — see App.tsx) rather than an overlay, so the
+   popover never resizes to fit it. */
+.settings {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.settings-section-title {
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.settings-row-column {
+  flex-direction: column;
+  align-items: stretch;
+}
+.settings-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.settings-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.settings-row-column .settings-label {
+  flex: none;
+}
+.settings-input,
+.settings-textarea {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+.settings-input:focus,
+.settings-textarea:focus {
+  border-color: var(--accent);
+}
+.settings-input.error {
+  border-color: var(--danger);
+}
+/* Press-to-record hotkey fields (SettingsPane.tsx's HotkeyCaptureField) are
+   <button>s, not text inputs — reset the button chrome .settings-input
+   doesn't already cover, then layer on the idle-placeholder and
+   mid-capture looks. */
+.settings-hotkey-btn {
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-hotkey-btn.placeholder {
+  color: var(--text-muted);
+}
+.settings-hotkey-btn.capturing {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.settings-textarea {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+  line-height: 1.4;
+}
+.settings-hint {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.settings-row-column .settings-hint {
+  white-space: normal;
+}
+.settings-error {
+  color: var(--danger);
+  font-size: 10px;
+}
+.settings-subrow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-sublabel {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.settings-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.settings-chip-row .tag-input {
+  width: 120px;
+}
+.settings-zoom {
+  gap: 8px;
+}
+.settings-zoom span {
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
 }
 .toast {
   display: flex;

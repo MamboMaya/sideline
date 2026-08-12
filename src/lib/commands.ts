@@ -94,3 +94,35 @@ export function openTodos(project: string): Promise<void> {
 export function openInboxInVscode(): Promise<void> {
   return invoke<void>("open_inbox_in_vscode");
 }
+
+// Registered but not called elsewhere in the app today — the Settings
+// pane's Voice section device picker is its one caller.
+export function listAudioDevices(): Promise<string[]> {
+  return invoke<string[]>("list_audio_devices");
+}
+
+// One result per hotkey — see src-tauri/src/hotkeys.rs's
+// HotkeyApplyResult/ApplyHotkeysResponse. `ok: false` means the PREVIOUS
+// shortcut is still live and `error` explains why the new one wasn't
+// (invalid combo or an OS-level registration conflict); the Settings pane
+// marks that field and toasts the message.
+export interface HotkeyApplyResult {
+  ok: boolean;
+  error: string | null;
+}
+export interface ApplyHotkeysResponse {
+  toggle: HotkeyApplyResult;
+  record: HotkeyApplyResult;
+  dictate: HotkeyApplyResult;
+}
+
+// Live-applies the three global hotkeys (undefined/blank = default for that
+// key) — see docs/backend.md. `.sideline.json` itself is written separately
+// via writeConfig; this only syncs the OS-level registration to match.
+export function applyHotkeys(combos: {
+  toggle?: string;
+  record?: string;
+  dictate?: string;
+}): Promise<ApplyHotkeysResponse> {
+  return invoke<ApplyHotkeysResponse>("apply_hotkeys", combos);
+}

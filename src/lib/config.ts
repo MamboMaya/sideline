@@ -53,6 +53,93 @@ export const DEFAULT_MODELS: Models = { triage: "haiku", batch: "haiku" };
 // verbatim via `projectsOverride`; internally only the tag list matters.
 export type ProjectsConfig = Record<string, string> | string[];
 
+// Merges a raw `prompts`/`models` override object against the built-in
+// defaults — extracted out of parseConfig so the Settings pane's write path
+// (useConfig's updateConfig) can compute the same merged value locally
+// without re-parsing the whole file. A blank/missing field falls back to its
+// default, same tolerance as parseConfig itself.
+export function mergePrompts(raw: Partial<Prompts> | undefined): Prompts {
+  return {
+    triage:
+      typeof raw?.triage === "string" && raw.triage.trim()
+        ? raw.triage
+        : DEFAULT_PROMPTS.triage,
+    batch:
+      typeof raw?.batch === "string" && raw.batch.trim()
+        ? raw.batch
+        : DEFAULT_PROMPTS.batch,
+  };
+}
+
+export function mergeModels(raw: Partial<Models> | undefined): Models {
+  return {
+    triage:
+      typeof raw?.triage === "string" && raw.triage.trim()
+        ? raw.triage
+        : DEFAULT_MODELS.triage,
+    batch:
+      typeof raw?.batch === "string" && raw.batch.trim()
+        ? raw.batch
+        : DEFAULT_MODELS.batch,
+  };
+}
+
+// Derives the routing tag list from a raw `projects` value, in either shape
+// — same derivation parseConfig does inline, extracted so updateConfig can
+// recompute `projectTags` after an add/remove without re-parsing the file.
+export function projectTagsFrom(
+  projects: ProjectsConfig | undefined,
+): string[] {
+  if (Array.isArray(projects)) {
+    return projects
+      .map((t) => (typeof t === "string" ? sanitizeTag(t) : ""))
+      .filter(Boolean);
+  }
+  if (projects && typeof projects === "object") {
+    return Object.keys(projects);
+  }
+  return [];
+}
+
+// Adds a project tag to `projects`, preserving whichever shape (array or
+// legacy `{tag: path}` map) is already on disk; a brand-new `projects` key
+// (currently absent) defaults to the array shape — the map shape only
+// exists for backward compatibility with hand-edited files, never written
+// fresh. A tag already present is left untouched (no duplicate entries).
+export function projectsAdd(
+  current: ProjectsConfig | undefined,
+  tag: string,
+): ProjectsConfig {
+  if (Array.isArray(current)) {
+    return current.includes(tag) ? current : [...current, tag];
+  }
+  if (current && typeof current === "object") {
+    return tag in current ? current : { ...current, [tag]: "" };
+  }
+  return [tag];
+}
+
+// Removes a project tag from `projects`, in whichever shape it's in;
+// returns undefined (key omitted entirely) once the last entry is removed,
+// matching serializeConfig's "omit when empty" convention for every other
+// override.
+export function projectsRemove(
+  current: ProjectsConfig | undefined,
+  tag: string,
+): ProjectsConfig | undefined {
+  if (Array.isArray(current)) {
+    const next = current.filter((t) => t !== tag);
+    return next.length ? next : undefined;
+  }
+  if (current && typeof current === "object") {
+    const next = Object.fromEntries(
+      Object.entries(current).filter(([t]) => t !== tag),
+    );
+    return Object.keys(next).length ? next : undefined;
+  }
+  return current;
+}
+
 // `.sideline.json`'s `hotkeys` field — human-friendly combo strings (e.g.
 // `"alt+cmd+space"`) for the three global shortcuts. Parsing/registration is
 // entirely Rust-side (src-tauri/src/lib.rs, read at startup, restart
@@ -136,45 +223,25 @@ export function parseConfig(raw: string): SidelineConfig {
       parsed?.prompts && typeof parsed.prompts === "object"
         ? (parsed.prompts as Partial<Prompts>)
         : undefined;
-    const mergedPrompts: Prompts = {
-      triage:
-        typeof rawPrompts?.triage === "string" && rawPrompts.triage.trim()
-          ? rawPrompts.triage
-          : DEFAULT_PROMPTS.triage,
-      batch:
-        typeof rawPrompts?.batch === "string" && rawPrompts.batch.trim()
-          ? rawPrompts.batch
-          : DEFAULT_PROMPTS.batch,
-    };
+    const mergedPrompts = mergePrompts(rawPrompts);
     const rawModels =
       parsed?.models && typeof parsed.models === "object"
         ? (parsed.models as Partial<Models>)
         : undefined;
-    const mergedModels: Models = {
-      triage:
-        typeof rawModels?.triage === "string" && rawModels.triage.trim()
-          ? rawModels.triage
-          : DEFAULT_MODELS.triage,
-      batch:
-        typeof rawModels?.batch === "string" && rawModels.batch.trim()
-          ? rawModels.batch
-          : DEFAULT_MODELS.batch,
-    };
+    const mergedModels = mergeModels(rawModels);
     let projectTags: string[] = [];
     let projectsOverride: ProjectsConfig | undefined;
     if (Array.isArray(parsed?.projects)) {
-      projectTags = parsed.projects
-        .map((t: unknown) => (typeof t === "string" ? sanitizeTag(t) : ""))
-        .filter(Boolean);
       projectsOverride = parsed.projects;
+      projectTags = projectTagsFrom(projectsOverride);
     } else if (parsed?.projects && typeof parsed.projects === "object") {
       const rawProjects = Object.fromEntries(
         Object.entries(parsed.projects as Record<string, unknown>).filter(
           (entry): entry is [string, string] => typeof entry[1] === "string",
         ),
       );
-      projectTags = Object.keys(rawProjects);
       projectsOverride = rawProjects;
+      projectTags = projectTagsFrom(projectsOverride);
     }
     const claudeOverride =
       typeof parsed?.claude === "boolean" ? parsed.claude : undefined;

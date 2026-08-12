@@ -3,6 +3,7 @@
 import { describe, expect, test } from "vitest";
 import {
   formatHotkey,
+  macHotkeyCombo,
   sanitizeTag,
   escapeRegex,
   needsTitle,
@@ -11,6 +12,8 @@ import {
   groupByFirstTag,
   tagLabel,
   tagChipClass,
+  comboFromKeyEvent,
+  heldHotkeyModifiers,
 } from "./format";
 import type { Note } from "../inbox";
 
@@ -58,6 +61,149 @@ describe("formatHotkey", () => {
 
   test("stacks multiple modifier symbols in token order", () => {
     expect(formatHotkey("ctrl+shift+alt+cmd+q", "fb")).toBe("⌃⇧⌥⌘Q");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// macHotkeyCombo
+// ---------------------------------------------------------------------------
+
+describe("macHotkeyCombo", () => {
+  test("rewrites alt/super/meta/ctrl to the Mac words, lowercased", () => {
+    expect(macHotkeyCombo("alt+cmd+space")).toBe("option+cmd+space");
+    expect(macHotkeyCombo("super+ALT+R")).toBe("cmd+option+r");
+    expect(macHotkeyCombo("meta+ctrl+V")).toBe("cmd+control+v");
+  });
+
+  test("leaves already-Mac-worded tokens (cmd, option, control, shift) as-is, lowercased", () => {
+    expect(macHotkeyCombo("shift+cmd+v")).toBe("shift+cmd+v");
+    expect(macHotkeyCombo("Control+Option+Q")).toBe("control+option+q");
+  });
+
+  test("passes an unrecognized token (the actual key) through lowercased", () => {
+    expect(macHotkeyCombo("alt+cmd+space")).toContain("space");
+    expect(macHotkeyCombo("cmd+F5")).toBe("cmd+f5");
+  });
+
+  test("undefined or empty input produces an empty string, not a fallback", () => {
+    expect(macHotkeyCombo(undefined)).toBe("");
+    expect(macHotkeyCombo("")).toBe("");
+    expect(macHotkeyCombo("   ")).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// comboFromKeyEvent / heldHotkeyModifiers
+// ---------------------------------------------------------------------------
+
+const keyEvent = (
+  overrides: Partial<Parameters<typeof comboFromKeyEvent>[0]>,
+) => ({
+  code: "",
+  metaKey: false,
+  altKey: false,
+  ctrlKey: false,
+  shiftKey: false,
+  ...overrides,
+});
+
+describe("comboFromKeyEvent", () => {
+  test("a letter key (by physical code) with cmd produces cmd+<lowercase letter>", () => {
+    expect(
+      comboFromKeyEvent(keyEvent({ code: "KeyV", metaKey: true })),
+    ).toEqual({ combo: "cmd+v", modifierOnly: false });
+  });
+
+  test("a digit key with a modifier produces the bare digit", () => {
+    expect(
+      comboFromKeyEvent(keyEvent({ code: "Digit3", ctrlKey: true })),
+    ).toEqual({ combo: "control+3", modifierOnly: false });
+  });
+
+  test("Space with modifiers produces the 'space' token", () => {
+    expect(
+      comboFromKeyEvent(
+        keyEvent({ code: "Space", altKey: true, metaKey: true }),
+      ),
+    ).toEqual({ combo: "option+cmd+space", modifierOnly: false });
+  });
+
+  test("an F-key code passes through exactly as e.code spells it", () => {
+    expect(comboFromKeyEvent(keyEvent({ code: "F5", metaKey: true }))).toEqual({
+      combo: "cmd+F5",
+      modifierOnly: false,
+    });
+  });
+
+  test("Comma passes through exactly as e.code spells it", () => {
+    expect(
+      comboFromKeyEvent(
+        keyEvent({ code: "Comma", shiftKey: true, metaKey: true }),
+      ),
+    ).toEqual({ combo: "shift+cmd+Comma", modifierOnly: false });
+  });
+
+  test("modifiers are emitted in a stable macOS order regardless of the flag-setting order", () => {
+    expect(
+      comboFromKeyEvent(
+        keyEvent({
+          code: "KeyQ",
+          shiftKey: true,
+          metaKey: true,
+          ctrlKey: true,
+          altKey: true,
+        }),
+      ),
+    ).toEqual({ combo: "control+option+shift+cmd+q", modifierOnly: false });
+  });
+
+  test("a modifier key going down by itself is modifierOnly, with a null combo", () => {
+    for (const code of [
+      "ControlLeft",
+      "ControlRight",
+      "AltLeft",
+      "AltRight",
+      "ShiftLeft",
+      "ShiftRight",
+      "MetaLeft",
+      "MetaRight",
+    ]) {
+      expect(
+        comboFromKeyEvent(
+          keyEvent({ code, ctrlKey: code.startsWith("Control") }),
+        ),
+      ).toEqual({ combo: null, modifierOnly: true });
+    }
+  });
+
+  test("a bare non-modifier key with no modifiers held is invalid, not modifierOnly", () => {
+    expect(comboFromKeyEvent(keyEvent({ code: "KeyA" }))).toEqual({
+      combo: null,
+      modifierOnly: false,
+    });
+  });
+});
+
+describe("heldHotkeyModifiers", () => {
+  test("returns an empty array when nothing is held", () => {
+    expect(heldHotkeyModifiers(keyEvent({}))).toEqual([]);
+  });
+
+  test("orders held modifiers as control, option, shift, cmd", () => {
+    expect(
+      heldHotkeyModifiers(
+        keyEvent({
+          metaKey: true,
+          shiftKey: true,
+          ctrlKey: true,
+          altKey: true,
+        }),
+      ),
+    ).toEqual(["control", "option", "shift", "cmd"]);
+  });
+
+  test("only includes the modifiers actually held", () => {
+    expect(heldHotkeyModifiers(keyEvent({ metaKey: true }))).toEqual(["cmd"]);
   });
 });
 

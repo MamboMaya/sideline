@@ -23,9 +23,19 @@ pub fn run() {
     let handler_toggle = active_toggle.clone();
     let handler_record = active_record.clone();
     let handler_dictate = active_dictate.clone();
+    // A second clone of each Arc, managed as one struct so the Settings
+    // pane's `apply_hotkeys` command can reach all three through a single
+    // `tauri::State` — same Arcs the handler closure above compares
+    // against, so updating one here is what the handler sees too.
+    let managed_shortcuts = hotkeys::ActiveShortcuts {
+        toggle: active_toggle.clone(),
+        record: active_record.clone(),
+        dictate: active_dictate.clone(),
+    };
 
     tauri::Builder::default()
         .manage(audio::AudioState::default())
+        .manage(managed_shortcuts)
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -67,9 +77,13 @@ pub fn run() {
             commands::open::open_todos,
             audio::toggle_recording,
             // Not called by the frontend today: intentional surface for a
-            // planned recording-device-picker UI.
+            // planned recording-state-polling UI (get_recording_state) — the
+            // frontend currently only ever reads state off the
+            // `recording-state` event. list_audio_devices IS called now, by
+            // the Settings pane's Voice section device picker.
             audio::get_recording_state,
-            audio::list_audio_devices
+            audio::list_audio_devices,
+            hotkeys::apply_hotkeys
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,

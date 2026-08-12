@@ -66,10 +66,17 @@
   `cmd`/`command`/`super`/`meta`, `opt`/`option`/`alt`, `ctrl`/`control`,
   `shift`; key token is a bare letter/digit/`space` or a W3C `Code` name like
   `F5`/`Comma`); missing or invalid falls back to the ⌥⌘Space/⌥⌘R/⇧⌘V
-  default, read once at startup — changing it needs an app restart (see
-  docs/backend.md). Frontend-owned schema (the `audio` key is read/written
-  Rust-side by audio.rs, `hotkeys` is read-only Rust-side at startup by
-  lib.rs, everything else by src/App.tsx); not touched by capture/ scripts.
+  default, read once at startup — changing it needs an app restart to take
+  effect, UNLESS it's changed through the Settings pane's Hotkeys section
+  (the gear button in the header), which additionally calls the
+  `apply_hotkeys` command to swap the OS-level registration live, no
+  restart needed (see docs/backend.md); a hand-edit to this file directly
+  still only takes effect on next launch. Frontend-owned schema (the
+  `audio` key is read/written Rust-side by audio.rs, `hotkeys` is read-only
+  Rust-side at startup by lib.rs — the Settings pane's live-apply path is
+  the one exception, reading it only via the frontend's already-loaded
+  config state, never re-reading the file itself — everything else by
+  src/App.tsx); not touched by capture/ scripts.
 
 - **`~/notes/todos/<project>.md`** — todo entries routed from triage, one
   file per project tag (`project` IS the tag — no repo path involved).

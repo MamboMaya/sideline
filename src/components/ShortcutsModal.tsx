@@ -33,6 +33,9 @@ export function ShortcutsModal({
             <kbd>Esc</kbd> close
           </div>
           <div className="shortcut">
+            <kbd>⌘,</kbd> settings
+          </div>
+          <div className="shortcut">
             <kbd>⌘1/2</kbd> switch view
           </div>
           <div className="shortcut">

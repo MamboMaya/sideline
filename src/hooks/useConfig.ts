@@ -8,8 +8,14 @@ import {
   type HotkeysConfig,
   type SidelineConfig,
   type ConfigOverrides,
+  mergeModels,
+  mergePrompts,
+  projectTagsFrom,
+  projectsAdd,
+  projectsRemove,
   writeConfig,
 } from "../lib/config";
+import { sanitizeTag } from "../lib/format";
 import { useZoom } from "./useZoom";
 
 export interface UseConfigParams {
@@ -98,6 +104,139 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   };
   const { zoom, setZoom, adjustZoom } = useZoom(persistZoom, showToast);
 
+  // The Settings pane's one write path: a partial patch of any
+  // `.sideline.json`-backed slice, applied to local state AND persisted in
+  // one call — same read-modify-write shape as persistPinnedTags/hideTag
+  // above, just parameterized over every slice instead of duplicated per
+  // field. `"key" in patch` (not `patch.key !== undefined`) is what lets a
+  // caller explicitly CLEAR an override to undefined (a blanked model/prompt
+  // field, "Claude" toggled back to its default) — `patch.claude === false`
+  // needs the same explicit-key distinction serializeConfig's own claude
+  // handling needs, for the same reason.
+  const updateConfig = async (patch: {
+    pinnedTags?: string[];
+    hiddenTags?: string[];
+    zoom?: number;
+    prompts?: Partial<Prompts> | undefined;
+    models?: Partial<Models> | undefined;
+    projects?: ProjectsConfig | undefined;
+    claude?: boolean | undefined;
+    audio?: unknown;
+    hotkeys?: HotkeysConfig | undefined;
+  }) => {
+    const nextPinned = patch.pinnedTags ?? pinnedTags;
+    const nextHidden = patch.hiddenTags ?? hiddenTags;
+    const nextZoom = patch.zoom ?? zoom;
+    const nextPromptsOverride =
+      "prompts" in patch ? patch.prompts : promptsOverride;
+    const nextModelsOverride =
+      "models" in patch ? patch.models : modelsOverride;
+    const nextProjectsOverride =
+      "projects" in patch ? patch.projects : projectsOverride;
+    const nextClaudeOverride =
+      "claude" in patch ? patch.claude : claudeOverride;
+    const nextAudioOverride = "audio" in patch ? patch.audio : audioOverride;
+    const nextHotkeysOverride =
+      "hotkeys" in patch ? patch.hotkeys : hotkeysOverride;
+
+    setPinnedTags(nextPinned);
+    setHiddenTags(nextHidden);
+    setZoom(nextZoom);
+    setPromptsOverride(nextPromptsOverride);
+    setPrompts(mergePrompts(nextPromptsOverride));
+    setModelsOverride(nextModelsOverride);
+    setModels(mergeModels(nextModelsOverride));
+    setProjectsOverride(nextProjectsOverride);
+    setProjectTags(projectTagsFrom(nextProjectsOverride));
+    setClaudeOverride(nextClaudeOverride);
+    setClaude(nextClaudeOverride ?? true);
+    setAudioOverride(nextAudioOverride);
+    setHotkeysOverride(nextHotkeysOverride);
+
+    await writeConfig({
+      pinnedTags: nextPinned,
+      hiddenTags: nextHidden,
+      zoom: nextZoom,
+      overrides: {
+        prompts: nextPromptsOverride,
+        models: nextModelsOverride,
+        projects: nextProjectsOverride,
+        claude: nextClaudeOverride,
+        audio: nextAudioOverride,
+        hotkeys: nextHotkeysOverride,
+      },
+    });
+  };
+
+  // Un-hides a tag (Settings' Tags section ✕ on a hiddenTags chip) — the
+  // inverse of hideTag, no undo toast (hideTag already has one, and
+  // un-hiding is itself already "the undo" of a mistaken hide).
+  const unhideTag = (tag: string) => {
+    const next = hiddenTags.filter((t) => t !== tag);
+    if (next.length === hiddenTags.length) return;
+    updateConfig({ hiddenTags: next });
+  };
+
+  // Settings' Claude section: model/prompt text inputs. A blank value
+  // removes the key from the override entirely so the built-in default
+  // applies (see config.ts's DEFAULT_PROMPTS/DEFAULT_MODELS) — this is the
+  // ONE write path in the app that can put a key back to "unset".
+  const setModelOverride = (key: keyof Models, value: string) => {
+    const trimmed = value.trim();
+    const next = { ...(modelsOverride ?? {}) };
+    if (trimmed) next[key] = trimmed;
+    else delete next[key];
+    updateConfig({ models: Object.keys(next).length ? next : undefined });
+  };
+
+  const setPromptOverride = (key: keyof Prompts, value: string) => {
+    const trimmed = value.trim();
+    const next = { ...(promptsOverride ?? {}) };
+    if (trimmed) next[key] = trimmed;
+    else delete next[key];
+    updateConfig({ prompts: Object.keys(next).length ? next : undefined });
+  };
+
+  // The Claude on/off toggle. `enabled` (the default) clears the override
+  // entirely rather than writing an explicit `"claude": true` — same
+  // omit-at-default convention zoom/hiddenTags already follow.
+  const setClaudeEnabled = (enabled: boolean) => {
+    updateConfig({ claude: enabled ? undefined : false });
+  };
+
+  // The Voice section's device picker. `device` undefined/empty = "System
+  // default", which removes `audio.device` — an empty leftover `audio: {}`
+  // is cleared to undefined entirely so it doesn't linger in the file for
+  // no reason. Any OTHER key a hand-edit might have added under `audio` is
+  // preserved (audioOverride is opaque on purpose — see its declaration).
+  const setAudioDevice = (device: string) => {
+    const base =
+      audioOverride && typeof audioOverride === "object"
+        ? (audioOverride as Record<string, unknown>)
+        : {};
+    let next: Record<string, unknown>;
+    if (device) {
+      next = { ...base, device };
+    } else {
+      const { device: _omit, ...rest } = base;
+      next = rest;
+    }
+    updateConfig({ audio: Object.keys(next).length ? next : undefined });
+  };
+
+  // Settings' Tags section: add/remove a `projects` entry, preserving
+  // whichever shape (array or legacy tag->path map) is already on disk —
+  // see projectsAdd/projectsRemove in config.ts.
+  const addProject = (tag: string) => {
+    const sanitized = sanitizeTag(tag);
+    if (!sanitized) return;
+    updateConfig({ projects: projectsAdd(projectsOverride, sanitized) });
+  };
+
+  const removeProject = (tag: string) => {
+    updateConfig({ projects: projectsRemove(projectsOverride, tag) });
+  };
+
   // Applies a loaded SidelineConfig to the corresponding state slices — the
   // "load AND SET all config state" half of what useInbox's reload() does;
   // reload() calls it as a named step so the read+parse-inbox,
@@ -184,5 +323,23 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     togglePin,
     hideTag,
     adjustZoom,
+    // Settings-pane-only surface: raw overrides (so the pane can tell "at
+    // default" apart from "explicitly set", and preserve unknown sub-keys
+    // when it writes one field), zoom's numeric value (adjustZoom only
+    // exposes the +/-/reset actions), and the write helpers above.
+    zoom,
+    promptsOverride,
+    modelsOverride,
+    projectsOverride,
+    claudeOverride,
+    audioOverride,
+    unhideTag,
+    setModelOverride,
+    setPromptOverride,
+    setClaudeEnabled,
+    setAudioDevice,
+    addProject,
+    removeProject,
+    updateConfig,
   };
 }

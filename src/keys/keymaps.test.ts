@@ -60,6 +60,10 @@ function makeCtx(overrides: Partial<KeyContext> = {}): KeyContext {
     setView: vi.fn(),
     showShortcuts: false,
     setShowShortcuts: vi.fn(),
+    settingsOpen: false,
+    closeSettings: vi.fn(),
+    toggleSettings: vi.fn(),
+    hotkeyCapturing: false,
     setSearchOpen: vi.fn(),
     setSearchQuery: vi.fn(),
     hideWindow: vi.fn(),
@@ -132,7 +136,7 @@ beforeEach(() => {
 describe("keymap tables", () => {
   it("binds exactly the documented ⌘ layer", () => {
     expect(Object.keys(commandKeymap).sort()).toEqual(
-      ["+", "-", "0", "1", "2", "=", "z"].sort(),
+      ["+", "-", "0", "1", "2", "=", ",", "z"].sort(),
     );
   });
 
@@ -236,6 +240,13 @@ describe("dispatchKey — ⌘ layer runs before the in-field guard", () => {
     expect(ctx.runUndo).toHaveBeenCalledTimes(2);
   });
 
+  it("opens Settings with ⌘, — including from inside a focused field", () => {
+    const ctx = makeCtx();
+    const e = press(",", ctx, { metaKey: true, tagName: "INPUT" });
+    expect(ctx.toggleSettings).toHaveBeenCalledTimes(1);
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
   it("leaves unbound ⌘ combos and ⌃/⌥ variants alone", () => {
     const ctx = makeCtx({ view: "todos" });
     const copy = press("c", ctx, { metaKey: true });
@@ -269,6 +280,68 @@ describe("dispatchKey — guards", () => {
     // `?` and `T` only exist as shifted keys.
     press("?", ctx);
     expect(ctx.setShowShortcuts).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dispatchKey — Settings gate", () => {
+  it("suppresses every key except a non-field Escape while Settings is open", () => {
+    const ctx = makeCtx({ view: "todos", mergedFlat: [], settingsOpen: true });
+    press("r", ctx);
+    press("t", ctx);
+    press("ArrowDown", ctx);
+    press("?", ctx);
+    press("z", ctx, { metaKey: true });
+    expect(ctx.toggleRecording).not.toHaveBeenCalled();
+    expect(ctx.setShowShortcuts).not.toHaveBeenCalled();
+    expect(ctx.setTodosSelected).not.toHaveBeenCalled();
+    expect(ctx.runUndo).not.toHaveBeenCalled();
+    expect(ctx.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it("closes Settings on Escape when focus is outside a field", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    const e = press("Escape", ctx, { tagName: "DIV" });
+    expect(ctx.closeSettings).toHaveBeenCalledTimes(1);
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  it("does NOT close Settings on Escape while an input/textarea has focus — the field blurs first", () => {
+    for (const tagName of ["INPUT", "TEXTAREA"]) {
+      const ctx = makeCtx({ settingsOpen: true });
+      press("Escape", ctx, { tagName });
+      expect(ctx.closeSettings).not.toHaveBeenCalled();
+    }
+  });
+
+  it("leaves a SELECT/BUTTON target's Escape to the close-Settings branch (not treated as a field)", () => {
+    for (const tagName of ["SELECT", "BUTTON"]) {
+      const ctx = makeCtx({ settingsOpen: true });
+      press("Escape", ctx, { tagName });
+      expect(ctx.closeSettings).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("closes Settings on ⌘, regardless of field focus, via toggleSettings not closeSettings", () => {
+    for (const tagName of ["DIV", "INPUT", "TEXTAREA", "SELECT"]) {
+      const ctx = makeCtx({ settingsOpen: true });
+      const e = press(",", ctx, { metaKey: true, tagName });
+      expect(ctx.toggleSettings).toHaveBeenCalledTimes(1);
+      expect(ctx.closeSettings).not.toHaveBeenCalled();
+      expect(e.preventDefault).toHaveBeenCalled();
+    }
+  });
+
+  it("does nothing at all — not even ⌘, or a non-field Escape — while a hotkey field is capturing", () => {
+    const capturingCtx = () =>
+      makeCtx({ settingsOpen: true, hotkeyCapturing: true });
+
+    let ctx = capturingCtx();
+    press("Escape", ctx, { tagName: "DIV" });
+    expect(ctx.closeSettings).not.toHaveBeenCalled();
+
+    ctx = capturingCtx();
+    press(",", ctx, { metaKey: true, tagName: "BUTTON" });
+    expect(ctx.toggleSettings).not.toHaveBeenCalled();
   });
 });
 

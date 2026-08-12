@@ -41,6 +41,120 @@ export const formatHotkey = (
   return `${mods}${key[0].toUpperCase()}${key.slice(1)}`;
 };
 
+// Same alias table as HOTKEY_MOD_SYMBOLS, but spelled out as the words macOS
+// itself uses (System Settings > Keyboard Shortcuts renders combos this
+// way) instead of the ⌥⌘ symbols — used for the Settings pane's hotkey text
+// INPUTS, where a symbol can't be typed back in. Unlike formatHotkey, this
+// never falls back to a default: it's a pure per-token rewrite, so a blank
+// override still displays blank (the field's placeholder covers that case).
+const HOTKEY_MOD_WORDS: Record<string, string> = {
+  cmd: "cmd",
+  command: "cmd",
+  super: "cmd",
+  meta: "cmd",
+  opt: "option",
+  option: "option",
+  alt: "option",
+  ctrl: "control",
+  control: "control",
+  shift: "shift",
+};
+
+export const macHotkeyCombo = (combo: string | undefined): string =>
+  (combo ?? "")
+    .split("+")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((tok) => HOTKEY_MOD_WORDS[tok.toLowerCase()] ?? tok.toLowerCase())
+    .join("+");
+
+// ---------------------------------------------------------------------------
+// Press-to-record hotkey capture (Settings pane's HotkeyCaptureField)
+// ---------------------------------------------------------------------------
+
+// The four physical modifier keys, by their KeyboardEvent.code — a keydown
+// on one of these is a "modifier went down" event, never a combo by itself.
+const HOTKEY_MODIFIER_CODES = new Set([
+  "ControlLeft",
+  "ControlRight",
+  "AltLeft",
+  "AltRight",
+  "ShiftLeft",
+  "ShiftRight",
+  "MetaLeft",
+  "MetaRight",
+]);
+
+// The slice of a native KeyboardEvent comboFromKeyEvent needs — deliberately
+// narrow (not the whole KeyboardEvent) so it stays trivially testable with
+// plain object literals.
+export interface HotkeyKeyEvent {
+  code: string;
+  metaKey: boolean;
+  altKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+}
+
+// Reads the four modifier flags off any KeyboardEvent-shaped object into the
+// Mac-vocabulary word list, in macOS's own display order (⌃⌥⇧⌘ — control,
+// option, shift, cmd) regardless of the order the keys were actually
+// pressed in. Shared by comboFromKeyEvent (below, for the token order in a
+// committed combo) and the Settings pane's live "which modifiers are
+// currently held" capture preview.
+export const heldHotkeyModifiers = (e: {
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  metaKey: boolean;
+}): string[] =>
+  [
+    e.ctrlKey && "control",
+    e.altKey && "option",
+    e.shiftKey && "shift",
+    e.metaKey && "cmd",
+  ].filter((x): x is string => Boolean(x));
+
+// KeyboardEvent.code → the token normalize_combo (src-tauri/src/hotkeys.rs)
+// expects for that key: a bare lowercase letter/digit or "space" for the
+// keys it special-cases into KeyX/DigitX/Space itself, everything else
+// passed through EXACTLY as `code` spells it (F5, Comma, …) — Rust's
+// fallback branch stores the token verbatim, uppercase and all.
+const hotkeyKeyToken = (code: string): string => {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (code === "Space") return "space";
+  return code;
+};
+
+// A capture keydown's outcome. `combo` is non-null only when the keystroke
+// is ready to commit (a non-modifier key held with at least one modifier);
+// `modifierOnly` distinguishes "just a modifier went down" (live-preview
+// update, never commits) from a bare non-modifier key pressed alone (needs
+// a modifier — combo stays null, but modifierOnly is false so the caller
+// can show the "add a modifier" hint instead of silently doing nothing).
+export interface ComboCaptureResult {
+  combo: string | null;
+  modifierOnly: boolean;
+}
+
+// Builds a hotkey combo string from a keydown event the way the Settings
+// pane's press-to-record fields do — off the event's PHYSICAL key
+// (`e.code`), never `e.key` (on macOS, option+V yields `e.key === "√"`,
+// useless for a shortcut). Pure and DOM-free so it's unit-testable without
+// dispatching real keyboard events.
+export const comboFromKeyEvent = (e: HotkeyKeyEvent): ComboCaptureResult => {
+  if (HOTKEY_MODIFIER_CODES.has(e.code)) {
+    return { combo: null, modifierOnly: true };
+  }
+  const mods = heldHotkeyModifiers(e);
+  if (mods.length === 0) return { combo: null, modifierOnly: false };
+  return {
+    combo: [...mods, hotkeyKeyToken(e.code)].join("+"),
+    modifierOnly: false,
+  };
+};
+
 // The three built-in quick tags: chips 1-3 on an Inbox card, keys `1`-`3`,
 // and the tags the tag editor refuses to offer a pin/delete button for.
 // One definition, since every one of those sites has to agree on both the

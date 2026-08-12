@@ -66,6 +66,29 @@ export interface KeyContext {
   setView: Dispatch<SetStateAction<"inbox" | "todos">>;
   showShortcuts: boolean;
   setShowShortcuts: Dispatch<SetStateAction<boolean>>;
+  // Settings pane open flag — see dispatchKey's top-of-function gate. Unlike
+  // showShortcuts (a read-only overlay, closed by Escape alone), Settings
+  // has real controls (dropdowns, toggles, chip buttons) that a stray list
+  // key (`t`, `d`, arrows…) must never reach, so it gets its own dedicated
+  // suppression rather than reusing the showShortcuts pattern.
+  settingsOpen: boolean;
+  closeSettings: () => void;
+  // True while one of the Settings pane's press-to-record hotkey fields
+  // (`HotkeyCaptureField` in SettingsPane.tsx) is capturing a keystroke —
+  // set/cleared via that field's onFocus/exit. The field's own keydown
+  // handler already isolates every key with preventDefault/stopPropagation
+  // (it wins the DOM race: React's root-delegated bubble listener runs
+  // before this window-level one), so in practice this window listener
+  // never even sees a keystroke while capturing — this flag is a backstop
+  // that makes the settingsOpen gate below a no-op regardless, so ⌘, can
+  // never close the pane and Esc can never do so either while a capture is
+  // in progress, even if that DOM-ordering assumption ever stops holding.
+  hotkeyCapturing: boolean;
+  // ⌘, (the macOS Preferences convention): opens Settings from the ⌘ layer
+  // when closed, or — via dispatchKey's settingsOpen gate, which runs before
+  // that layer — closes it when open. One toggle function serves both
+  // directions; see useKeyboard.ts's step-0 comment.
+  toggleSettings: () => void;
   setSearchOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
   // Hides the popover (Escape's last resort). Injected rather than called

@@ -30,7 +30,29 @@ watcher on `~/notes` emitting `inbox-changed`, and the commands:
   failure (combo claimed by another app; the default also failing)
   additionally emits `hotkey-fallback`, which the frontend toasts — a
   silently-switched or silently-dead binding must not be discoverable only by
-  pressing it. Takes effect on next launch only, no live reload.
+  pressing it. This startup path is unchanged and still governs a
+  hand-edited `.sideline.json` — those still need a restart to take effect.
+- `apply_hotkeys` (hotkeys.rs) is the Settings pane's LIVE counterpart: takes
+  the three raw combo strings straight from the pane's text inputs (missing/
+  blank = default for that key) and, for each key that actually changed,
+  swaps the OS-level registration in place — no restart. The three
+  `Arc<Mutex<Shortcut>>` the global-shortcut handler in `lib.rs` compares
+  against (`active_toggle`/`active_record`/`active_dictate`) are cloned a
+  second time into a managed `hotkeys::ActiveShortcuts` struct
+  (`app.manage(...)`) precisely so this command can reach and mutate the
+  SAME Arcs the handler reads — updating one here is what the handler sees
+  on the very next keypress. Per key: resolve the raw string to a `Shortcut`
+  (reusing `normalize_combo`, but UNLIKE `parse_hotkey_or_default` this
+  returns an `Err` on a bad combo instead of silently substituting the
+  default — the pane needs to tell the user their edit didn't take, not
+  hide it); if it resolves to what's already active, no-op; otherwise
+  unregister the current shortcut, register the new one, and on failure
+  (OS conflict) re-register the CURRENT one so the hotkey is never left
+  dead. Returns one `{ ok, error }` result per key (`toggle`/`record`/
+  `dictate`), which the pane uses to mark the failing field and toast the
+  reason — `.sideline.json` itself is written separately by the frontend
+  (`write_config`, same path every other Settings field uses); this command
+  only syncs the live registration to match what was just written.
 
 - The fs watcher emits `watcher-dead` (frontend toasts "restart Sideline")
   on any exit path — setup failure or channel close — since a dead watcher
@@ -80,9 +102,11 @@ watcher on `~/notes` emitting `inbox-changed`, and the commands:
   returns the new state immediately — `"recording"`/`"transcribing"` — the
   eventual `"idle"` or a `capture-error` arrives later via events, since
   transcription runs in the background after the call returns)
-- `get_recording_state`, `list_audio_devices` (registered but not called by
-  the frontend today — intentional surface for a planned recording-device-
-  picker UI)
+- `get_recording_state` (registered but not called by the frontend today —
+  intentional surface for a planned recording-state-polling UI);
+  `list_audio_devices` (enumerates input device names — the Settings pane's
+  Voice section device picker is its one caller)
+- `apply_hotkeys` (hotkeys.rs) — see the hotkeys bullet above
 
 `append_inbox_text` (`commands/notes.rs`) is an O_APPEND write of one
 voice-note block — not an IPC command, just a plain fn the native recording

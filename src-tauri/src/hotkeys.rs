@@ -118,6 +118,150 @@ pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut, Shortcut) {
     )
 }
 
+/// The three hotkeys' live-registered state, managed via
+/// `app.manage(ActiveShortcuts { .. })` in lib.rs — the same three
+/// `Arc<Mutex<Shortcut>>` the global-shortcut handler compares against,
+/// bundled so `apply_hotkeys` (below) can reach all three through one
+/// `tauri::State`.
+pub struct ActiveShortcuts {
+    pub toggle: Arc<Mutex<Shortcut>>,
+    pub record: Arc<Mutex<Shortcut>>,
+    pub dictate: Arc<Mutex<Shortcut>>,
+}
+
+/// One key's outcome from `apply_hotkeys`: `ok: true` means the combo (or
+/// the default, if blank/omitted) is now the live-registered shortcut for
+/// that key; `ok: false` means the PREVIOUS shortcut is still registered
+/// (see `apply_one`) and `error` explains why the new one wasn't — invalid
+/// combo syntax or an OS-level registration conflict.
+#[derive(serde::Serialize)]
+pub struct HotkeyApplyResult {
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+/// `apply_hotkeys`'s full return value — one result per key, frontend-toasted
+/// per failing key.
+#[derive(serde::Serialize)]
+pub struct ApplyHotkeysResponse {
+    pub toggle: HotkeyApplyResult,
+    pub record: HotkeyApplyResult,
+    pub dictate: HotkeyApplyResult,
+}
+
+/// Resolves one `apply_hotkeys` argument to a target `Shortcut`: `None` or a
+/// blank string means "use the default" (same as a missing/empty
+/// `.sideline.json` key); a non-blank string must normalize AND parse, or
+/// this returns an error — UNLIKE `parse_hotkey_or_default`, which silently
+/// falls back to `default` on a bad combo. Startup wants "never lose the
+/// hotkey to a typo"; a live edit wants "tell the user their typo didn't
+/// take" — the caller (`apply_one`) is what still guarantees the hotkey
+/// itself is never left dead, by never touching the live registration when
+/// this returns Err.
+fn resolve_combo(raw: Option<&str>, default: Shortcut) -> Result<Shortcut, String> {
+    let raw = match raw {
+        None => return Ok(default),
+        Some(s) if s.trim().is_empty() => return Ok(default),
+        Some(s) => s,
+    };
+    let normalized = normalize_combo(raw).ok_or_else(|| format!("Invalid combo {raw:?}"))?;
+    Shortcut::from_str(&normalized).map_err(|e| format!("Invalid combo {raw:?}: {e}"))
+}
+
+/// Applies one key's new combo live. A no-op (`ok: true`, nothing
+/// registered/unregistered) when the resolved target already matches what's
+/// active. Otherwise: unregister the current shortcut, register the target;
+/// on failure, re-register the current shortcut so the hotkey is never left
+/// dead, update nothing, and report the error. `resolve_combo` failing
+/// (invalid syntax) is reported the same way, without touching the live
+/// registration at all — there's nothing to unregister/re-register for a
+/// combo that was never resolved.
+fn apply_one(
+    app: &tauri::AppHandle,
+    active: &Arc<Mutex<Shortcut>>,
+    raw: Option<&str>,
+    default: Shortcut,
+    label: &str,
+) -> HotkeyApplyResult {
+    let target = match resolve_combo(raw, default) {
+        Ok(t) => t,
+        Err(e) => {
+            return HotkeyApplyResult {
+                ok: false,
+                error: Some(e),
+            }
+        }
+    };
+    let current = *active.lock().unwrap();
+    if target == current {
+        return HotkeyApplyResult {
+            ok: true,
+            error: None,
+        };
+    }
+    let _ = app.global_shortcut().unregister(current);
+    match app.global_shortcut().register(target) {
+        Ok(()) => {
+            *active.lock().unwrap() = target;
+            HotkeyApplyResult {
+                ok: true,
+                error: None,
+            }
+        }
+        Err(e) => {
+            if let Err(e2) = app.global_shortcut().register(current) {
+                eprintln!(
+                    "failed to re-register previous {label} shortcut after a failed live update ({e2}); {label} hotkey may be unregistered"
+                );
+            }
+            HotkeyApplyResult {
+                ok: false,
+                error: Some(format!("Couldn't register — {e}")),
+            }
+        }
+    }
+}
+
+/// Live hotkey apply — the Settings pane's `apply_hotkeys` IPC command.
+/// Takes the three raw combo strings straight from the pane's text inputs
+/// (`None`/blank = default); for each key that actually changed, swaps the
+/// OS-level registration in place (see `apply_one`) so the new combo works
+/// immediately, no restart. `.sideline.json` itself is written separately by
+/// the frontend (`write_config`, same read-modify-write path as every other
+/// setting) — this command only syncs the live registration to match.
+#[tauri::command]
+pub fn apply_hotkeys(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ActiveShortcuts>,
+    toggle: Option<String>,
+    record: Option<String>,
+    dictate: Option<String>,
+) -> ApplyHotkeysResponse {
+    ApplyHotkeysResponse {
+        toggle: apply_one(
+            &app,
+            &state.toggle,
+            toggle.as_deref(),
+            default_toggle_shortcut(),
+            "toggle",
+        ),
+        record: apply_one(
+            &app,
+            &state.record,
+            record.as_deref(),
+            default_record_shortcut(),
+            "record",
+        ),
+        dictate: apply_one(
+            &app,
+            &state.dictate,
+            dictate.as_deref(),
+            default_dictate_shortcut(),
+            "dictate",
+        ),
+    }
+}
+
 /// Registers `resolved`; on failure (e.g. the combo is already claimed by
 /// another app) falls back to registering `default` instead and updates
 /// `active` so the shared handler's `==` comparison follows the switch —
@@ -292,5 +436,44 @@ mod tests {
         assert_eq!(normalize_combo("cmd+alt+"), None); // trailing
         assert_eq!(normalize_combo("+cmd+r"), None); // leading
         assert_eq!(normalize_combo("cmd++r"), None); // doubled
+    }
+
+    // --- resolve_combo ---------------------------------------------------
+    // The live-apply path's stricter counterpart to parse_hotkey_or_default:
+    // a bad combo is an Err here, never a silent fallback to `default`.
+
+    #[test]
+    fn resolve_combo_none_is_the_default() {
+        assert_eq!(
+            resolve_combo(None, default_record_shortcut()),
+            Ok(default_record_shortcut())
+        );
+    }
+
+    #[test]
+    fn resolve_combo_blank_string_is_the_default() {
+        assert_eq!(
+            resolve_combo(Some("   "), default_record_shortcut()),
+            Ok(default_record_shortcut())
+        );
+    }
+
+    #[test]
+    fn resolve_combo_valid_combo_resolves_to_its_shortcut() {
+        assert_eq!(
+            resolve_combo(Some("shift+cmd+v"), default_record_shortcut()),
+            Ok(default_dictate_shortcut())
+        );
+    }
+
+    #[test]
+    fn resolve_combo_invalid_syntax_is_an_error_not_a_silent_default() {
+        // Two key tokens — normalize_combo itself rejects this.
+        assert!(resolve_combo(Some("cmd+r+t"), default_record_shortcut()).is_err());
+    }
+
+    #[test]
+    fn resolve_combo_modifiers_only_is_an_error() {
+        assert!(resolve_combo(Some("cmd+alt"), default_record_shortcut()).is_err());
     }
 }

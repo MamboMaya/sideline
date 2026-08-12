@@ -30,6 +30,11 @@ export const commandKeymap: CommandKeymap = {
   "+": { firesInFields: true, run: (ctx) => ctx.adjustZoom(0.1) },
   "-": { firesInFields: true, run: (ctx) => ctx.adjustZoom(-0.1) },
   "0": { firesInFields: true, run: (ctx) => ctx.adjustZoom(0) },
+  // ⌘, — the standard macOS Preferences shortcut — toggles Settings. This
+  // entry only ever fires while Settings is CLOSED: dispatchKey's
+  // settingsOpen gate returns before the ⌘ layer runs, and handles the
+  // open→close direction itself (see useKeyboard.ts's step-0 comment).
+  ",": { firesInFields: true, run: (ctx) => ctx.toggleSettings() },
   // The one ⌘ binding that yields to a focused field: inside an input,
   // native text undo wins.
   z: { firesInFields: false, run: (ctx) => ctx.runUndo() },

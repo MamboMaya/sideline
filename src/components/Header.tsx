@@ -29,6 +29,8 @@ interface HeaderProps {
   onOpenSearch: () => void;
   showShortcuts: boolean;
   onToggleShortcuts: () => void;
+  showSettings: boolean;
+  onToggleSettings: () => void;
 }
 
 // Tabs, rec indicator, batch/show-done actions, search box, shortcuts
@@ -53,6 +55,8 @@ export function Header({
   onOpenSearch,
   showShortcuts,
   onToggleShortcuts,
+  showSettings,
+  onToggleSettings,
 }: HeaderProps) {
   return (
     <header>
@@ -144,6 +148,14 @@ export function Header({
         onClick={onToggleShortcuts}
       >
         ?
+      </button>
+      <button
+        type="button"
+        className={showSettings ? "ghost gear active" : "ghost gear"}
+        title="Settings (⌘,)"
+        onClick={onToggleSettings}
+      >
+        ⚙
       </button>
     </header>
   );

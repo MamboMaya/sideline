@@ -30,6 +30,7 @@ import { useEditRow } from "./hooks/useEditRow";
 import { useKeyboard } from "./keys/useKeyboard";
 import { Toast } from "./components/Toast";
 import { ShortcutsModal } from "./components/ShortcutsModal";
+import { SettingsPane } from "./components/SettingsPane";
 import { Header } from "./components/Header";
 import { SectionHeader } from "./components/SectionHeader";
 import { TodoCard } from "./components/TodoCard";
@@ -47,6 +48,12 @@ export default function App() {
   // inbox-changed.
   const [view, setView] = useState<"inbox" | "todos">("inbox");
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // Settings pane (gear button in the header) — a swapped-in view over the
+  // `.cards` region, not a new window; see docs/ui.md's Settings section.
+  const [showSettings, setShowSettings] = useState(false);
+  // True while a Settings-pane hotkey field is mid-capture — see
+  // KeyContext.hotkeyCapturing's comment (src/keys/types.ts).
+  const [hotkeyCapturing, setHotkeyCapturing] = useState(false);
   const {
     searchOpen,
     setSearchOpen,
@@ -76,6 +83,18 @@ export default function App() {
     togglePin,
     hideTag,
     adjustZoom,
+    zoom,
+    promptsOverride,
+    modelsOverride,
+    audioOverride,
+    unhideTag,
+    setModelOverride,
+    setPromptOverride,
+    setClaudeEnabled,
+    setAudioDevice,
+    addProject,
+    removeProject,
+    updateConfig,
   } = useConfig({ showToast, dismissToast });
 
   // Inbox view state (preamble/notes/error/selection) plus the
@@ -219,6 +238,7 @@ export default function App() {
       setSearchOpen(false);
       setSearchQuery("");
       setShowShortcuts(false);
+      setShowSettings(false);
     });
     return () => {
       un.then((f) => f());
@@ -335,6 +355,10 @@ export default function App() {
     setView,
     showShortcuts,
     setShowShortcuts,
+    settingsOpen: showSettings,
+    closeSettings: () => setShowSettings(false),
+    toggleSettings: () => setShowSettings((v) => !v),
+    hotkeyCapturing,
     setSearchOpen,
     setSearchQuery,
     hideWindow: () => {
@@ -400,6 +424,8 @@ export default function App() {
         onOpenSearch={() => setSearchOpen(true)}
         showShortcuts={showShortcuts}
         onToggleShortcuts={() => setShowShortcuts((v) => !v)}
+        showSettings={showSettings}
+        onToggleSettings={() => setShowSettings((v) => !v)}
       />
       {showShortcuts && (
         <ShortcutsModal
@@ -407,395 +433,278 @@ export default function App() {
           onClose={() => setShowShortcuts(false)}
         />
       )}
-      {view === "inbox" && error && <div className="error">{error}</div>}
-      <div className="cards" ref={cardsContainerRef}>
-        {view === "inbox" && filteredNotes.length === 0 && !error && (
-          <div className="empty">
-            {notes.length === 0
-              ? "Inbox zero. Go build something."
-              : "No matches."}
-          </div>
-        )}
-        {view === "todos" && mergedFlat.length === 0 && (
-          <div className="empty">
-            {todos.length === 0 && triaged.length === 0
-              ? "Nothing here yet."
-              : "No matches."}
-          </div>
-        )}
-        {view === "inbox" &&
-          [...filteredNotes].reverse().map((note, revIdx) => {
-            // Reference equality, NOT raw-content matching: two captures in
-            // the same minute with identical text are byte-identical, and a
-            // content match would give both cards the first twin's index —
-            // duplicate React keys corrupt the list (a deleted card's ghost
-            // can stick to the top) and × on the second twin deletes the
-            // first.
-            const idx = notes.indexOf(note);
-            const isSelected = revIdx === selected;
-            const isSending = sending.has(note.raw);
-            const isEditingThis =
-              editing?.kind === "inbox" && editing.key === note.raw;
-            return (
-              <InboxCard
-                key={idx}
-                note={note}
-                isSelected={isSelected}
-                isSending={isSending}
-                isEditing={isEditingThis}
-                editArea={editArea}
-                cardRef={(el) => {
-                  cardRefs.current[revIdx] = el;
-                }}
-                onEdit={() => {
-                  setSelected(revIdx);
-                  openEdit({ kind: "inbox", key: note.raw }, note.body);
-                }}
-                onTriage={() => triageWithClaude(idx)}
-                onDelete={() => remove(idx)}
-                onToggleTag={(t) => toggleTag(idx, t)}
-                onOpenTagEditor={() => {
-                  setSelected(revIdx);
-                  tagEditor.open();
-                }}
-                quickTags={QUICK_TAGS}
-                projectTags={projectTags}
-                pinnedTags={pinnedTags}
-                togglePin={togglePin}
-                hideTag={hideTag}
-                tagEditor={tagEditor}
-              />
-            );
-          })}
-        {view === "todos" && (
-          <>
-            {/* Project sections first (A-Z), then tag sections (A-Z, untagged
+      {showSettings ? (
+        <SettingsPane
+          hotkeysOverride={hotkeysOverride}
+          audioOverride={audioOverride}
+          setAudioDevice={setAudioDevice}
+          claude={claude}
+          setClaudeEnabled={setClaudeEnabled}
+          models={models}
+          modelsOverride={modelsOverride}
+          setModelOverride={setModelOverride}
+          prompts={prompts}
+          promptsOverride={promptsOverride}
+          setPromptOverride={setPromptOverride}
+          pinnedTags={pinnedTags}
+          hiddenTags={hiddenTags}
+          togglePin={togglePin}
+          hideTag={hideTag}
+          unhideTag={unhideTag}
+          projectTags={projectTags}
+          addProject={addProject}
+          removeProject={removeProject}
+          zoom={zoom}
+          adjustZoom={adjustZoom}
+          updateConfig={updateConfig}
+          showToast={showToast}
+          onClose={() => setShowSettings(false)}
+          onHotkeyCapturingChange={setHotkeyCapturing}
+        />
+      ) : (
+        <>
+          {view === "inbox" && error && <div className="error">{error}</div>}
+          <div className="cards" ref={cardsContainerRef}>
+            {view === "inbox" && filteredNotes.length === 0 && !error && (
+              <div className="empty">
+                {notes.length === 0
+                  ? "Inbox zero. Go build something."
+                  : "No matches."}
+              </div>
+            )}
+            {view === "todos" && mergedFlat.length === 0 && (
+              <div className="empty">
+                {todos.length === 0 && triaged.length === 0
+                  ? "Nothing here yet."
+                  : "No matches."}
+              </div>
+            )}
+            {view === "inbox" &&
+              [...filteredNotes].reverse().map((note, revIdx) => {
+                // Reference equality, NOT raw-content matching: two captures in
+                // the same minute with identical text are byte-identical, and a
+                // content match would give both cards the first twin's index —
+                // duplicate React keys corrupt the list (a deleted card's ghost
+                // can stick to the top) and × on the second twin deletes the
+                // first.
+                const idx = notes.indexOf(note);
+                const isSelected = revIdx === selected;
+                const isSending = sending.has(note.raw);
+                const isEditingThis =
+                  editing?.kind === "inbox" && editing.key === note.raw;
+                return (
+                  <InboxCard
+                    key={idx}
+                    note={note}
+                    isSelected={isSelected}
+                    isSending={isSending}
+                    isEditing={isEditingThis}
+                    editArea={editArea}
+                    cardRef={(el) => {
+                      cardRefs.current[revIdx] = el;
+                    }}
+                    onEdit={() => {
+                      setSelected(revIdx);
+                      openEdit({ kind: "inbox", key: note.raw }, note.body);
+                    }}
+                    onTriage={() => triageWithClaude(idx)}
+                    onDelete={() => remove(idx)}
+                    onToggleTag={(t) => toggleTag(idx, t)}
+                    onOpenTagEditor={() => {
+                      setSelected(revIdx);
+                      tagEditor.open();
+                    }}
+                    quickTags={QUICK_TAGS}
+                    projectTags={projectTags}
+                    pinnedTags={pinnedTags}
+                    togglePin={togglePin}
+                    hideTag={hideTag}
+                    tagEditor={tagEditor}
+                  />
+                );
+              })}
+            {view === "todos" && (
+              <>
+                {/* Project sections first (A-Z), then tag sections (A-Z, untagged
                 last) — mirrors `mergedFlat`'s section order so the rendered
                 list and the keyboard-nav list always agree. */}
-            {projectSections.map(({ project, rows }) => {
-              const sectionKey = `project::${project}`;
-              const isCollapsed = collapsed.has(sectionKey);
-              const headerIdx = mergedIndexByKey.get(`header::${sectionKey}`);
-              const headerSelected =
-                headerIdx !== undefined && headerIdx === todosSelected;
-              return (
-                <div className="section" key={sectionKey}>
-                  <SectionHeader
-                    label={
-                      <>
-                        <span className="project-name">
-                          {tagLabel(project, projectTags)}
-                        </span>{" "}
-                        (
-                        {
-                          rows.filter((r) => r.entry.status === "pending")
-                            .length
+                {projectSections.map(({ project, rows }) => {
+                  const sectionKey = `project::${project}`;
+                  const isCollapsed = collapsed.has(sectionKey);
+                  const headerIdx = mergedIndexByKey.get(
+                    `header::${sectionKey}`,
+                  );
+                  const headerSelected =
+                    headerIdx !== undefined && headerIdx === todosSelected;
+                  return (
+                    <div className="section" key={sectionKey}>
+                      <SectionHeader
+                        label={
+                          <>
+                            <span className="project-name">
+                              {tagLabel(project, projectTags)}
+                            </span>{" "}
+                            (
+                            {
+                              rows.filter((r) => r.entry.status === "pending")
+                                .length
+                            }
+                            )
+                          </>
                         }
-                        )
-                      </>
-                    }
-                    collapsed={isCollapsed}
-                    selected={headerSelected}
-                    onToggle={() => {
-                      setCollapsed((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(sectionKey)) next.delete(sectionKey);
-                        else next.add(sectionKey);
-                        return next;
-                      });
-                      if (!isCollapsed)
-                        pendingSelectKeyRef.current = `header::${sectionKey}`;
-                    }}
-                    headerRef={(el) => {
-                      if (headerIdx !== undefined)
-                        todosCardRefs.current[headerIdx] = el;
-                    }}
-                    onCopy={() => copyProjectTodos(project)}
-                  />
-                  {!isCollapsed &&
-                    rows.map((row) => {
-                      const idx =
-                        mergedIndexByKey.get(
-                          `todo::${row.project}::${row.entryIndex}`,
-                        ) ?? -1;
-                      const isSelected = idx === todosSelected;
-                      const isExpanded = todoExpanded.has(
-                        `${row.project}::${row.entryIndex}`,
-                      );
-                      const isEditingThis =
-                        editing?.kind === "todo" &&
-                        editing.project === row.project &&
-                        editing.entryIndex === row.entryIndex;
-                      return (
-                        <TodoCard
-                          key={`${row.project}::${row.entryIndex}`}
-                          variant="normal"
-                          entry={row.entry}
-                          isSelected={isSelected}
-                          isExpanded={isExpanded}
-                          isEditing={isEditingThis}
-                          editArea={editArea}
-                          cardRef={(el) => {
-                            todosCardRefs.current[idx] = el;
-                          }}
-                          onSelect={() => {
-                            setTodosSelected(idx);
-                            // Expandable cards toggle on click, mirroring
-                            // triaged cards; status stays click-the-glyph only.
-                            if (todoRowDisplay(row.entry).expandable) {
-                              toggleTodoExpanded(row.project, row.entryIndex);
-                            }
-                          }}
-                          onEdit={() => {
-                            setTodosSelected(idx);
-                            openEdit(
-                              {
-                                kind: "todo",
-                                project: row.project,
-                                entryIndex: row.entryIndex,
-                              },
-                              row.entry.body,
-                            );
-                          }}
-                          onToggleDone={() =>
-                            toggleTodoEntry(row.project, row.entryIndex)
-                          }
-                          onToggleIced={() =>
-                            toggleTodoIced(row.project, row.entryIndex)
-                          }
-                          onDelete={() =>
-                            deleteTodoEntry(row.project, row.entryIndex)
-                          }
-                          onToggleTag={(t) =>
-                            updateTodoTags(row.project, row.entryIndex, t)
-                          }
-                          onOpenTagEditor={() => {
-                            setTodosSelected(idx);
-                            tagEditor.open();
-                          }}
-                          projectTags={projectTags}
-                          pinnedTags={pinnedTags}
-                          togglePin={togglePin}
-                          hideTag={hideTag}
-                          tagEditor={tagEditor}
-                        />
-                      );
-                    })}
-                </div>
-              );
-            })}
-            {tagSections.map((section) => {
-              const sectionKey = `tag::${section.tag ?? "untagged"}`;
-              const isCollapsed = collapsed.has(sectionKey);
-              const headerIdx = mergedIndexByKey.get(`header::${sectionKey}`);
-              const headerSelected =
-                headerIdx !== undefined && headerIdx === todosSelected;
-              return (
-                <div className="section" key={sectionKey}>
-                  <SectionHeader
-                    label={
-                      <>
-                        {section.tag
-                          ? tagLabel(section.tag, projectTags)
-                          : "#untagged"}{" "}
-                        ({section.notes.length})
-                      </>
-                    }
-                    collapsed={isCollapsed}
-                    selected={headerSelected}
-                    onToggle={() => {
-                      setCollapsed((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(sectionKey)) next.delete(sectionKey);
-                        else next.add(sectionKey);
-                        return next;
-                      });
-                      if (!isCollapsed)
-                        pendingSelectKeyRef.current = `header::${sectionKey}`;
-                    }}
-                    headerRef={(el) => {
-                      if (headerIdx !== undefined)
-                        todosCardRefs.current[headerIdx] = el;
-                    }}
-                  />
-                  {!isCollapsed &&
-                    section.notes.map((note) => {
-                      const idx =
-                        mergedIndexByKey.get(`triaged::${note.filename}`) ?? -1;
-                      const isSelected = idx === todosSelected;
-                      const isExpanded = triagedExpanded.has(note.filename);
-                      const isEditingThis =
-                        editing?.kind === "triaged" &&
-                        editing.filename === note.filename;
-                      return (
-                        <TriagedCard
-                          key={note.filename}
-                          variant="normal"
-                          note={note}
-                          isSelected={isSelected}
-                          isExpanded={isExpanded}
-                          isEditing={isEditingThis}
-                          editArea={editArea}
-                          cardRef={(el) => {
-                            todosCardRefs.current[idx] = el;
-                          }}
-                          onSelect={() => {
-                            setTodosSelected(idx);
-                            setTriagedExpanded((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(note.filename))
-                                next.delete(note.filename);
-                              else next.add(note.filename);
-                              return next;
-                            });
-                          }}
-                          onEdit={() => {
-                            setTodosSelected(idx);
-                            openEdit(
-                              { kind: "triaged", filename: note.filename },
-                              note.body,
-                            );
-                          }}
-                          onToggleDone={() => toggleTriagedDone(note)}
-                          onToggleIced={() => toggleTriagedIced(note)}
-                          onDelete={() => deleteTriagedNote(note)}
-                          onOpenInEditor={() => openTriaged(note.filename)}
-                          onToggleTag={(t) => toggleTriagedTag(note, t)}
-                          onOpenTagEditor={() => {
-                            setTodosSelected(idx);
-                            tagEditor.open();
-                          }}
-                          projectTags={projectTags}
-                          pinnedTags={pinnedTags}
-                          togglePin={togglePin}
-                          hideTag={hideTag}
-                          tagEditor={tagEditor}
-                        />
-                      );
-                    })}
-                </div>
-              );
-            })}
-            {icedRows.length + icedTriaged.length > 0 &&
-              (() => {
-                const isCollapsed = collapsed.has("icebox");
-                const headerIdx = mergedIndexByKey.get("header::icebox");
-                const headerSelected =
-                  headerIdx !== undefined && headerIdx === todosSelected;
-                return (
-                  <div className="section" key="icebox">
-                    <SectionHeader
-                      label={
-                        <>🧊 icebox ({icedRows.length + icedTriaged.length})</>
-                      }
-                      collapsed={isCollapsed}
-                      selected={headerSelected}
-                      onToggle={() => {
-                        setCollapsed((prev) => {
-                          const next = new Set(prev);
-                          if (next.has("icebox")) next.delete("icebox");
-                          else next.add("icebox");
-                          return next;
-                        });
-                        if (!isCollapsed)
-                          pendingSelectKeyRef.current = "header::icebox";
-                      }}
-                      headerRef={(el) => {
-                        if (headerIdx !== undefined)
-                          todosCardRefs.current[headerIdx] = el;
-                      }}
-                    />
-                    {!isCollapsed &&
-                      icedRows.map((row) => {
-                        const idx =
-                          mergedIndexByKey.get(
-                            `todo::${row.project}::${row.entryIndex}`,
-                          ) ?? -1;
-                        const isSelected = idx === todosSelected;
-                        const isExpanded = todoExpanded.has(
-                          `${row.project}::${row.entryIndex}`,
-                        );
-                        const isEditingThis =
-                          editing?.kind === "todo" &&
-                          editing.project === row.project &&
-                          editing.entryIndex === row.entryIndex;
-                        return (
-                          <TodoCard
-                            key={`iced::${row.project}::${row.entryIndex}`}
-                            variant="iced"
-                            entry={row.entry}
-                            isSelected={isSelected}
-                            isExpanded={isExpanded}
-                            isEditing={isEditingThis}
-                            editArea={editArea}
-                            cardRef={(el) => {
-                              todosCardRefs.current[idx] = el;
-                            }}
-                            onSelect={() => {
-                              setTodosSelected(idx);
-                              if (todoRowDisplay(row.entry).expandable) {
-                                toggleTodoExpanded(row.project, row.entryIndex);
+                        collapsed={isCollapsed}
+                        selected={headerSelected}
+                        onToggle={() => {
+                          setCollapsed((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(sectionKey)) next.delete(sectionKey);
+                            else next.add(sectionKey);
+                            return next;
+                          });
+                          if (!isCollapsed)
+                            pendingSelectKeyRef.current = `header::${sectionKey}`;
+                        }}
+                        headerRef={(el) => {
+                          if (headerIdx !== undefined)
+                            todosCardRefs.current[headerIdx] = el;
+                        }}
+                        onCopy={() => copyProjectTodos(project)}
+                      />
+                      {!isCollapsed &&
+                        rows.map((row) => {
+                          const idx =
+                            mergedIndexByKey.get(
+                              `todo::${row.project}::${row.entryIndex}`,
+                            ) ?? -1;
+                          const isSelected = idx === todosSelected;
+                          const isExpanded = todoExpanded.has(
+                            `${row.project}::${row.entryIndex}`,
+                          );
+                          const isEditingThis =
+                            editing?.kind === "todo" &&
+                            editing.project === row.project &&
+                            editing.entryIndex === row.entryIndex;
+                          return (
+                            <TodoCard
+                              key={`${row.project}::${row.entryIndex}`}
+                              variant="normal"
+                              entry={row.entry}
+                              isSelected={isSelected}
+                              isExpanded={isExpanded}
+                              isEditing={isEditingThis}
+                              editArea={editArea}
+                              cardRef={(el) => {
+                                todosCardRefs.current[idx] = el;
+                              }}
+                              onSelect={() => {
+                                setTodosSelected(idx);
+                                // Expandable cards toggle on click, mirroring
+                                // triaged cards; status stays click-the-glyph only.
+                                if (todoRowDisplay(row.entry).expandable) {
+                                  toggleTodoExpanded(
+                                    row.project,
+                                    row.entryIndex,
+                                  );
+                                }
+                              }}
+                              onEdit={() => {
+                                setTodosSelected(idx);
+                                openEdit(
+                                  {
+                                    kind: "todo",
+                                    project: row.project,
+                                    entryIndex: row.entryIndex,
+                                  },
+                                  row.entry.body,
+                                );
+                              }}
+                              onToggleDone={() =>
+                                toggleTodoEntry(row.project, row.entryIndex)
                               }
-                            }}
-                            onEdit={() => {
-                              setTodosSelected(idx);
-                              openEdit(
-                                {
-                                  kind: "todo",
-                                  project: row.project,
-                                  entryIndex: row.entryIndex,
-                                },
-                                row.entry.body,
-                              );
-                            }}
-                            onToggleDone={() =>
-                              toggleTodoEntry(row.project, row.entryIndex)
-                            }
-                            onToggleIced={() =>
-                              toggleTodoIced(row.project, row.entryIndex)
-                            }
-                            onDelete={() =>
-                              deleteTodoEntry(row.project, row.entryIndex)
-                            }
-                            onToggleTag={(t) =>
-                              updateTodoTags(row.project, row.entryIndex, t)
-                            }
-                            onOpenTagEditor={() => {
-                              setTodosSelected(idx);
-                              tagEditor.open();
-                            }}
-                            projectTags={projectTags}
-                            pinnedTags={pinnedTags}
-                            togglePin={togglePin}
-                            hideTag={hideTag}
-                            tagEditor={tagEditor}
-                          />
-                        );
-                      })}
-                    {!isCollapsed &&
-                      icedTriaged.map((note) => {
-                        const idx =
-                          mergedIndexByKey.get(`triaged::${note.filename}`) ??
-                          -1;
-                        const isSelected = idx === todosSelected;
-                        const isEditingThis =
-                          editing?.kind === "triaged" &&
-                          editing.filename === note.filename;
-                        return (
-                          <TriagedCard
-                            key={`iced::${note.filename}`}
-                            variant="iced"
-                            note={note}
-                            isSelected={isSelected}
-                            isExpanded={triagedExpanded.has(note.filename)}
-                            isEditing={isEditingThis}
-                            editArea={editArea}
-                            cardRef={(el) => {
-                              todosCardRefs.current[idx] = el;
-                            }}
-                            onSelect={() => {
-                              setTodosSelected(idx);
-                              if (note.title) {
+                              onToggleIced={() =>
+                                toggleTodoIced(row.project, row.entryIndex)
+                              }
+                              onDelete={() =>
+                                deleteTodoEntry(row.project, row.entryIndex)
+                              }
+                              onToggleTag={(t) =>
+                                updateTodoTags(row.project, row.entryIndex, t)
+                              }
+                              onOpenTagEditor={() => {
+                                setTodosSelected(idx);
+                                tagEditor.open();
+                              }}
+                              projectTags={projectTags}
+                              pinnedTags={pinnedTags}
+                              togglePin={togglePin}
+                              hideTag={hideTag}
+                              tagEditor={tagEditor}
+                            />
+                          );
+                        })}
+                    </div>
+                  );
+                })}
+                {tagSections.map((section) => {
+                  const sectionKey = `tag::${section.tag ?? "untagged"}`;
+                  const isCollapsed = collapsed.has(sectionKey);
+                  const headerIdx = mergedIndexByKey.get(
+                    `header::${sectionKey}`,
+                  );
+                  const headerSelected =
+                    headerIdx !== undefined && headerIdx === todosSelected;
+                  return (
+                    <div className="section" key={sectionKey}>
+                      <SectionHeader
+                        label={
+                          <>
+                            {section.tag
+                              ? tagLabel(section.tag, projectTags)
+                              : "#untagged"}{" "}
+                            ({section.notes.length})
+                          </>
+                        }
+                        collapsed={isCollapsed}
+                        selected={headerSelected}
+                        onToggle={() => {
+                          setCollapsed((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(sectionKey)) next.delete(sectionKey);
+                            else next.add(sectionKey);
+                            return next;
+                          });
+                          if (!isCollapsed)
+                            pendingSelectKeyRef.current = `header::${sectionKey}`;
+                        }}
+                        headerRef={(el) => {
+                          if (headerIdx !== undefined)
+                            todosCardRefs.current[headerIdx] = el;
+                        }}
+                      />
+                      {!isCollapsed &&
+                        section.notes.map((note) => {
+                          const idx =
+                            mergedIndexByKey.get(`triaged::${note.filename}`) ??
+                            -1;
+                          const isSelected = idx === todosSelected;
+                          const isExpanded = triagedExpanded.has(note.filename);
+                          const isEditingThis =
+                            editing?.kind === "triaged" &&
+                            editing.filename === note.filename;
+                          return (
+                            <TriagedCard
+                              key={note.filename}
+                              variant="normal"
+                              note={note}
+                              isSelected={isSelected}
+                              isExpanded={isExpanded}
+                              isEditing={isEditingThis}
+                              editArea={editArea}
+                              cardRef={(el) => {
+                                todosCardRefs.current[idx] = el;
+                              }}
+                              onSelect={() => {
+                                setTodosSelected(idx);
                                 setTriagedExpanded((prev) => {
                                   const next = new Set(prev);
                                   if (next.has(note.filename))
@@ -803,37 +712,203 @@ export default function App() {
                                   else next.add(note.filename);
                                   return next;
                                 });
-                              }
-                            }}
-                            onEdit={() => {
-                              setTodosSelected(idx);
-                              openEdit(
-                                { kind: "triaged", filename: note.filename },
-                                note.body,
-                              );
-                            }}
-                            onToggleDone={() => toggleTriagedDone(note)}
-                            onToggleIced={() => toggleTriagedIced(note)}
-                            onDelete={() => deleteTriagedNote(note)}
-                            onToggleTag={(t) => toggleTriagedTag(note, t)}
-                            onOpenTagEditor={() => {
-                              setTodosSelected(idx);
-                              tagEditor.open();
-                            }}
-                            projectTags={projectTags}
-                            pinnedTags={pinnedTags}
-                            togglePin={togglePin}
-                            hideTag={hideTag}
-                            tagEditor={tagEditor}
-                          />
-                        );
-                      })}
-                  </div>
-                );
-              })()}
-          </>
-        )}
-      </div>
+                              }}
+                              onEdit={() => {
+                                setTodosSelected(idx);
+                                openEdit(
+                                  { kind: "triaged", filename: note.filename },
+                                  note.body,
+                                );
+                              }}
+                              onToggleDone={() => toggleTriagedDone(note)}
+                              onToggleIced={() => toggleTriagedIced(note)}
+                              onDelete={() => deleteTriagedNote(note)}
+                              onOpenInEditor={() => openTriaged(note.filename)}
+                              onToggleTag={(t) => toggleTriagedTag(note, t)}
+                              onOpenTagEditor={() => {
+                                setTodosSelected(idx);
+                                tagEditor.open();
+                              }}
+                              projectTags={projectTags}
+                              pinnedTags={pinnedTags}
+                              togglePin={togglePin}
+                              hideTag={hideTag}
+                              tagEditor={tagEditor}
+                            />
+                          );
+                        })}
+                    </div>
+                  );
+                })}
+                {icedRows.length + icedTriaged.length > 0 &&
+                  (() => {
+                    const isCollapsed = collapsed.has("icebox");
+                    const headerIdx = mergedIndexByKey.get("header::icebox");
+                    const headerSelected =
+                      headerIdx !== undefined && headerIdx === todosSelected;
+                    return (
+                      <div className="section" key="icebox">
+                        <SectionHeader
+                          label={
+                            <>
+                              🧊 icebox ({icedRows.length + icedTriaged.length})
+                            </>
+                          }
+                          collapsed={isCollapsed}
+                          selected={headerSelected}
+                          onToggle={() => {
+                            setCollapsed((prev) => {
+                              const next = new Set(prev);
+                              if (next.has("icebox")) next.delete("icebox");
+                              else next.add("icebox");
+                              return next;
+                            });
+                            if (!isCollapsed)
+                              pendingSelectKeyRef.current = "header::icebox";
+                          }}
+                          headerRef={(el) => {
+                            if (headerIdx !== undefined)
+                              todosCardRefs.current[headerIdx] = el;
+                          }}
+                        />
+                        {!isCollapsed &&
+                          icedRows.map((row) => {
+                            const idx =
+                              mergedIndexByKey.get(
+                                `todo::${row.project}::${row.entryIndex}`,
+                              ) ?? -1;
+                            const isSelected = idx === todosSelected;
+                            const isExpanded = todoExpanded.has(
+                              `${row.project}::${row.entryIndex}`,
+                            );
+                            const isEditingThis =
+                              editing?.kind === "todo" &&
+                              editing.project === row.project &&
+                              editing.entryIndex === row.entryIndex;
+                            return (
+                              <TodoCard
+                                key={`iced::${row.project}::${row.entryIndex}`}
+                                variant="iced"
+                                entry={row.entry}
+                                isSelected={isSelected}
+                                isExpanded={isExpanded}
+                                isEditing={isEditingThis}
+                                editArea={editArea}
+                                cardRef={(el) => {
+                                  todosCardRefs.current[idx] = el;
+                                }}
+                                onSelect={() => {
+                                  setTodosSelected(idx);
+                                  if (todoRowDisplay(row.entry).expandable) {
+                                    toggleTodoExpanded(
+                                      row.project,
+                                      row.entryIndex,
+                                    );
+                                  }
+                                }}
+                                onEdit={() => {
+                                  setTodosSelected(idx);
+                                  openEdit(
+                                    {
+                                      kind: "todo",
+                                      project: row.project,
+                                      entryIndex: row.entryIndex,
+                                    },
+                                    row.entry.body,
+                                  );
+                                }}
+                                onToggleDone={() =>
+                                  toggleTodoEntry(row.project, row.entryIndex)
+                                }
+                                onToggleIced={() =>
+                                  toggleTodoIced(row.project, row.entryIndex)
+                                }
+                                onDelete={() =>
+                                  deleteTodoEntry(row.project, row.entryIndex)
+                                }
+                                onToggleTag={(t) =>
+                                  updateTodoTags(row.project, row.entryIndex, t)
+                                }
+                                onOpenTagEditor={() => {
+                                  setTodosSelected(idx);
+                                  tagEditor.open();
+                                }}
+                                projectTags={projectTags}
+                                pinnedTags={pinnedTags}
+                                togglePin={togglePin}
+                                hideTag={hideTag}
+                                tagEditor={tagEditor}
+                              />
+                            );
+                          })}
+                        {!isCollapsed &&
+                          icedTriaged.map((note) => {
+                            const idx =
+                              mergedIndexByKey.get(
+                                `triaged::${note.filename}`,
+                              ) ?? -1;
+                            const isSelected = idx === todosSelected;
+                            const isEditingThis =
+                              editing?.kind === "triaged" &&
+                              editing.filename === note.filename;
+                            return (
+                              <TriagedCard
+                                key={`iced::${note.filename}`}
+                                variant="iced"
+                                note={note}
+                                isSelected={isSelected}
+                                isExpanded={triagedExpanded.has(note.filename)}
+                                isEditing={isEditingThis}
+                                editArea={editArea}
+                                cardRef={(el) => {
+                                  todosCardRefs.current[idx] = el;
+                                }}
+                                onSelect={() => {
+                                  setTodosSelected(idx);
+                                  if (note.title) {
+                                    setTriagedExpanded((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(note.filename))
+                                        next.delete(note.filename);
+                                      else next.add(note.filename);
+                                      return next;
+                                    });
+                                  }
+                                }}
+                                onEdit={() => {
+                                  setTodosSelected(idx);
+                                  openEdit(
+                                    {
+                                      kind: "triaged",
+                                      filename: note.filename,
+                                    },
+                                    note.body,
+                                  );
+                                }}
+                                onToggleDone={() => toggleTriagedDone(note)}
+                                onToggleIced={() => toggleTriagedIced(note)}
+                                onDelete={() => deleteTriagedNote(note)}
+                                onToggleTag={(t) => toggleTriagedTag(note, t)}
+                                onOpenTagEditor={() => {
+                                  setTodosSelected(idx);
+                                  tagEditor.open();
+                                }}
+                                projectTags={projectTags}
+                                pinnedTags={pinnedTags}
+                                togglePin={togglePin}
+                                hideTag={hideTag}
+                                tagEditor={tagEditor}
+                              />
+                            );
+                          })}
+                      </div>
+                    );
+                  })()}
+              </>
+            )}
+          </div>
+        </>
+      )}
       <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );

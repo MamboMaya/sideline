@@ -28,11 +28,14 @@ triage calls.
   cheap models).
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
   and undo.
+- **Settings in-app** (⌘, or the gear in the header): remap the three global
+  hotkeys by pressing the new combo (applied live, no restart), pick the
+  input mic, toggle/tune Claude triage, manage tags, adjust zoom.
 
 ![Record a voice note, watch it land in the inbox, triage it to a project todo](assets/demo.gif)
 
-_In the demo I record with ⌥⌘V — both hotkeys are remappable via `hotkeys` in
-`~/notes/.sideline.json`._
+_In the demo I record with ⌥⌘V — all three hotkeys are remappable in
+Settings (⌘,)._
 
 ## How this was built
 
@@ -71,8 +74,8 @@ Claude-assisted triage and note headers. Everything else works without it.
 
 ### Using without Claude
 
-No `claude` CLI or subscription? Set `"claude": false` in
-`~/notes/.sideline.json`. Capture and transcription are already fully local
+No `claude` CLI or subscription? Flip the Claude toggle off in Settings
+(⌘,) — or set `"claude": false` in `~/notes/.sideline.json`. Capture and transcription are already fully local
 (Whisper); with this set, triage stops calling out too — notes file with
 locally-derived headers (the note's own first line) instead of Haiku-written
 ones, and no `## Claude` reply appendix.
@@ -112,7 +115,9 @@ you want recording off the app's permission identity or you live in Raycast:
 
 `~/notes/.sideline.json` — pinned tags, hidden tags, zoom, hotkeys, triage
 prompts and models, project routing, the no-Claude toggle, audio input device.
-Schema in
+All of it is editable in-app via the Settings pane (⌘,); the file is still
+plain JSON if you'd rather hand-edit (hotkey edits made that way need a
+restart; Settings applies them live). Schema in
 [docs/data-model.md](docs/data-model.md).
 
 ## Docs

@@ -13,11 +13,12 @@ below is a behavior spec over that surface, not a file-by-file walkthrough.
 
 Card list (newest first). Two views, jumped to by `⌘1`/`⌘2` or the header
 tabs (`Inbox (N)` / `Todos (P)`). `Esc` hides the popover from
-any view — open layers like the shortcuts panel or tag input absorb one Esc
-first; `?` toggles a shortcuts panel (its Everywhere column now also lists
-the dictate-to-clipboard hotkey, default ⇧⌘V — see docs/backend.md).
-Reopening the popover resets
-scroll/selection/search to the top but keeps the last-used tab; tab switches
+any view — open layers like the shortcuts panel, the Settings pane, or the
+tag input absorb one Esc first; `?` toggles a shortcuts panel (its Everywhere
+column now also lists the dictate-to-clipboard hotkey, default ⇧⌘V, and
+`⌘,` — see docs/backend.md and Settings below). Reopening the popover resets
+scroll/selection/search to the top but keeps the last-used tab (and closes
+Settings/the shortcuts panel if either was open); tab switches
 within one open session keep their place. `/` opens a compact header search
 input filtering the active view's list (body + tags +, in a todo row, project
 name); `Esc` on the input itself clears and closes it first. `⌘+`/`⌘-` step
@@ -31,6 +32,96 @@ the monitor holding the cursor, 20% up the screen — mirroring the popover's
 or not the popover is open — and disappears at idle; the popover header
 keeps its own identical indicator (both render `RecBars` off the same
 `audio-level` stream).
+
+## Settings
+
+The header's ⚙ button (`src/components/Header.tsx`) or `⌘,` (the standard
+macOS Preferences shortcut, works from anywhere including a focused search
+field) opens the Settings pane (`src/components/SettingsPane.tsx`) — a
+swapped-in view over the `.cards` region, not a new window or overlay: the
+popover keeps its normal size and the pane itself scrolls. `Esc` closes it
+(absorbed as the first Esc layer, per Views & navigation above); while focus
+is inside one of its text inputs/textareas, Esc blurs the field first, and a
+second Esc then closes the pane. `⌘,` closes it too, from anywhere,
+including with a field focused — no blur-first step, unlike Esc. While
+Settings is open, none of the app's list/card keymap
+actions fire — `src/keys/useKeyboard.ts`'s `dispatchKey` gates on
+`ctx.settingsOpen` before anything else runs, so a stray `t`/`d`/arrow key
+landing on a focused dropdown or button inside the pane can never triage,
+delete, or navigate the list underneath. One consolidated surface over every
+key `.sideline.json` knows about (see docs/data-model.md); no new keys, no
+format change.
+
+SAVE MODEL: there is no Save button. Every control writes the full config
+file on change/commit — same read-modify-write path pinned-tag toggles and
+every other existing config write already use (`useConfig`'s `updateConfig`
+in `src/hooks/useConfig.ts`, feeding `writeConfig`). A pane write always
+round-trips the 6 opaque overrides (`prompts`, `models`, `projects`,
+`claude`, `audio`, `hotkeys`) it isn't touching, so a key the pane doesn't
+render — or an unknown key hand-edited into one it does — survives
+untouched. Five sections, one scrollable pane:
+
+1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
+   `record`/`dictate` (`HotkeyCaptureField` in
+   `src/components/SettingsPane.tsx`), each showing its current effective
+   combo next to the field (override, or the ⌥⌘Space/⌥⌘R/⇧⌘V default) as an
+   ⌥⌘-style symbol hint. There is no typing: the field is a button, not a
+   text input. Click it (or Tab to it — focus alone starts capture) and it
+   shows "press shortcut…"; press the actual shortcut and it captures the
+   very next valid keystroke instead of doing anything else with it. The
+   combo is built from the keydown's PHYSICAL key (`e.code` — `KeyV`→`v`,
+   `Digit3`→`3`, `Space`→`space`; other codes like `F5`/`Comma` pass through
+   exactly as `e.code` spells them) plus its modifier flags, joined in
+   macOS's own display order — control, option, shift, cmd
+   (`comboFromKeyEvent` in `src/lib/format.ts`, round-tripped through
+   `macHotkeyCombo` same as before once committed). Holding a modifier alone
+   just updates a live preview of what's held; a bare key pressed with no
+   modifier shows an inline "add a modifier (⌘⌥⌃⇧)" hint and does NOT commit
+   (a modifier-less global hotkey would shadow ordinary typing system-wide);
+   a non-modifier key WITH at least one modifier commits immediately —
+   writes `.sideline.json` (same as every other section) AND calls the
+   `apply_hotkeys` Tauri command (`src-tauri/src/hotkeys.rs`) to swap the
+   OS-level registration live — no restart, unlike a hand-edited
+   `.sideline.json` (see docs/backend.md and the data-model.md caveat on
+   `hotkeys`). Escape cancels the capture and reverts to the prior display;
+   Delete/Backspace clears the override (commits blank, so that key reverts
+   to its default) — both exit capture mode. While a field is capturing, its
+   own keydown handler isolates every key with `preventDefault`/
+   `stopPropagation` so nothing leaks to the app's global keymap — in
+   particular `⌘,` will not close the pane and Esc will not close it either;
+   `KeyContext.hotkeyCapturing` (`src/keys/types.ts`) is a second, redundant
+   guard the Settings gate in `src/keys/useKeyboard.ts` checks for the same
+   two keys, in case that isolation ever doesn't win the DOM race on its
+   own. A per-key failure (the combo is claimed by another app) marks that
+   field's border red, shows an inline error, and toasts the reason; the
+   PREVIOUS shortcut for that key stays live either way — a bad capture here
+   can never leave a hotkey dead, only fail to update it.
+2. **Voice** — a device `<select>` for `audio.device`, populated from the
+   `list_audio_devices` command (registered since the recording-device-
+   picker was scaffolded, previously uncalled), plus a "System default"
+   entry (removes the key). Writes the exact device name Rust-side matches
+   as a case-insensitive substring (see docs/data-model.md); a hint notes it
+   only takes effect on the NEXT recording, not the one in progress.
+3. **Claude** — an on/off toggle for `claude` (default on; off is
+   no-Claude mode, see the Triage section below), plus text inputs for
+   `models.triage`/`models.batch` and textareas for `prompts.triage`/
+   `prompts.batch`. Each field shows its raw override value (blank if
+   unset) with the CURRENT EFFECTIVE value as its placeholder; a blank
+   field on blur removes that key from the override entirely so the
+   built-in default applies again — the one write path in the app that can
+   put a key back to "unset" rather than just changing its value.
+4. **Tags** — three chip lists, each with a trailing add-input: pinned tags
+   (max 6, same `togglePin` used everywhere a pinned-tag chip is clicked),
+   hidden tags (excluded from autocomplete — adding here is `hideTag`,
+   removing is the new `unhideTag`), and project routing tags (`projects`
+   — add/remove preserve whichever shape, array or legacy `{tag: path}`
+   map, is already on disk; a brand-new key is always written as an array,
+   since the map shape only exists for old hand-edited files).
+5. **Zoom** — the current `zoom` value as a percentage, with −/+ steppers
+   and a Reset button (all three just call the existing `adjustZoom`, so
+   they toast and clamp exactly like ⌘+/⌘−/⌘0 do) plus a hint pointing at
+   those same shortcuts, since they already own this and the pane doesn't
+   need to duplicate the behavior, just expose it.
 
 ## Tags
 
