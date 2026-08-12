@@ -34,6 +34,13 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        // First plugin on purpose (its docs require it): a second launch —
+        // e.g. a stale AppleScript-era login item firing alongside the
+        // current LaunchAgent, or a manual open while already running —
+        // exits immediately instead of putting a second tray icon up. The
+        // first instance just keeps running; there's nothing to focus for a
+        // tray-only app, so the callback is a no-op.
+        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
         .manage(audio::AudioState::default())
         .manage(managed_shortcuts)
         .plugin(tauri_plugin_autostart::init(

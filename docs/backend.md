@@ -15,6 +15,11 @@ from then on) — plus `audio.rs`, `whisper.rs`, and `dictate.rs` for in-app
 voice recording (note capture and dictation-to-clipboard), documented
 separately below.
 
+`tauri-plugin-single-instance` is registered first (its docs require it): a
+second launch of the app — a stale AppleScript-era login item firing
+alongside the current LaunchAgent registration, or a manual open while
+already running — exits immediately instead of showing a second tray icon.
+
 Tray icon + popover window toggle (tray click anchors under the icon for that
 click only; the ⌥⌘Space hotkey opens top-center of the monitor holding the
 cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⇧⌘V dictation), fs
