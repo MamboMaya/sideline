@@ -145,7 +145,8 @@ the audio thread. Device selection: the system default input, unless
 docs/data-model.md), matched case-insensitively against `list_audio_devices`.
 
 State machine (`audio::RecState`: Idle → Recording → Transcribing, plus a
-DownloadingModel sub-state of Transcribing) is managed via
+DownloadingModel sub-state of Transcribing and a terminal Copied notice
+state — dictation-only, see below) is managed via
 `app.manage(AudioState::default())`. Every transition emits
 `recording-state` (string payload) and updates the tray title via
 `app.tray_by_id("main")` — `🔴 m:ss` while recording (1 Hz ticker, same
@@ -163,20 +164,23 @@ note" / popover `r`) and `toggle_dictation` (⌥⌘V / tray "Dictate to
 clipboard") both funnel into one `toggle_recording_mode(app, mode)`: Idle
 starts a session and records `mode`; a same-mode press while Recording stops
 it exactly as before; a press in the OTHER mode while a session is already
-active (any non-Idle state) is ignored outright and emits `capture-error`
-"Already recording" — the recorder never silently switches modes
-mid-recording. `emit_state` additionally emits `recording-mode` (`"note"`/
+active is ignored outright and emits `capture-error` "Already recording" —
+the recorder never silently switches modes mid-recording. The transient
+Copied notice counts as idle for all of this (`RecState::can_start`):
+either hotkey during it starts a fresh session, and the notice's hide
+timer stands down when it sees the state has moved on. `emit_state` additionally emits `recording-mode` (`"note"`/
 `"dictate"` string payload) once, at the moment a session enters Recording,
 so the overlay pill can tell the two apart; it does not change the
 `recording-state` payload shape.
 
 Every transition also drives the recording-pill overlay: `sync_overlay`
 (window.rs), called from the same `emit_state` choke point, shows the
-`overlay` window (declared hidden in tauri.conf.json — 220×48, transparent,
+`overlay` window (declared hidden in tauri.conf.json — 340×48, transparent,
 no decorations, always-on-top, `focusable: false`) bottom-center of the
 monitor holding the cursor (its bottom edge 20% up the screen, mirroring
 the popover's 20%-down top edge) while recording, keeps it up through
-transcribing/downloading, and hides it at idle. `focusable: false` is what
+transcribing/downloading and dictation's Copied notice, and hides it at
+idle. `focusable: false` is what
 makes showing it safe: tao's macOS `show()` is `makeKeyAndOrderFront`, so a
 focusable window steals keyboard focus every time it appears (which also
 closed the popover via hide-on-focus-loss); non-focusable means
@@ -219,25 +223,43 @@ purely on destination: `RecMode::Note` appends via `append_inbox_text` as
 before; `RecMode::Dictate` hands the corrected text to
 `dictate::finish_dictation` and never touches inbox.md.
 
-Dictation mode (`dictate.rs`): clipboard write happens first and
+Dictation mode (`dictate.rs`): the clipboard write happens first and
 unconditionally (`app.clipboard().write_text(...)` via the
-`tauri-plugin-clipboard-manager` `ClipboardExt` trait, Rust-side — the
-transcript is never lost even if everything below fails), then an
-Accessibility (AX) trust check gates a synthetic paste. Trusted
-(`AXIsProcessTrusted()`): a ~50ms settle delay, then a synthetic ⌘V — a
-`core-graphics` `CGEventSource` (HID system state) posts a keycode-9
-(kVK_ANSI_V) key-down + key-up, Command flag set, to the HID event tap, so
-it lands on whatever app is currently frontmost (Sideline's own windows
-never take focus, so this is never Sideline itself — see the popover/overlay
-focus notes above). Not trusted: `AXIsProcessTrustedWithOptions` is called
-with `kAXTrustedCheckOptionPrompt` set, which triggers the one-time system
-Accessibility dialog, the paste is skipped, and `capture-error` explains the
-text is already on the clipboard for a manual ⌘V. Both `AXIsProcessTrusted`
-and `AXIsProcessTrustedWithOptions`/`kAXTrustedCheckOptionPrompt` are
-declared by hand as `extern "C"` from the `ApplicationServices` framework
-(no crate wraps them); no Info.plist key is needed for Accessibility — macOS
-gates it entirely through System Settings > Privacy & Security >
-Accessibility plus this API.
+`tauri-plugin-clipboard-manager` `ClipboardExt` trait, Rust-side), so the
+transcript is never lost even if everything below fails. A plain write,
+deliberately: hiding dictations from clipboard-history managers (Raycast,
+Maccy, …) via the org.nspasteboard transient/concealed marker types was
+built and then dropped, because that history is the recovery path when a
+paste doesn't land where the user wanted. Then an Accessibility (AX) trust
+check gates the synthetic paste.
+Trusted (`AXIsProcessTrusted()`): a ~50ms settle delay, then a synthetic
+⌘V — a `core-graphics` `CGEventSource` (HID system state) posts a
+keycode-9 (kVK_ANSI_V) key-down + key-up, Command flag set, to the HID
+event tap, so it lands on whatever app is currently frontmost (Sideline's
+own windows never take focus, so this is never Sideline itself — see the
+popover/overlay focus notes above). Not trusted:
+`AXIsProcessTrustedWithOptions` is called with `kAXTrustedCheckOptionPrompt`
+set, which triggers the one-time system Accessibility dialog, the paste is
+skipped, and `capture-error` explains the text is on the clipboard for a
+manual ⌘V. Both trust calls are declared by hand as `extern "C"` from the
+`ApplicationServices` framework (no crate wraps them); no Info.plist key is
+needed for Accessibility — macOS gates it entirely through System
+Settings > Privacy & Security > Accessibility plus this API.
+
+Either way `finish_dictation` returns `DictationOutcome::Copied`, which
+routes to `audio::show_copied_notice`: the pill shows "Copied — ⌘V
+to paste" for ~1.5s (`COPIED_NOTICE`) before a timer drops the state
+machine back to Idle. EVERY dictation gets that notice — Sideline never
+inspects the frontmost app or what it has focused. An AX focused-element
+design was tried and dropped (2026-08-12) as both too invasive and
+unworkable: `AXUIElementCreateSystemWide`'s focused-element query returns
+`kAXErrorCannotComplete` unconditionally on current macOS, and Finder's
+desktop answers `AXSelectedTextRange` exactly like a text field, so a
+paste that landed nowhere is indistinguishable from one that landed. The
+notice states the one thing that's always true: the text is on the
+clipboard. `DictationOutcome::Failed` (clipboard write failed — nothing
+to recover, error already emitted) skips the notice and goes straight to
+Idle.
 
 ⌥⌘R (global hotkey, alongside ⌥⌘Space) and the tray menu's "Record voice
 note" both call `audio::toggle_recording` directly, appending to inbox.md.
@@ -265,6 +287,7 @@ and `notes_dir()` and requires `starts_with` — this defeats a symlink
 planted at an intermediate directory (and handles `~/notes` itself being a
 symlink) at the cost of also rejecting a confined file that is itself a
 symlink pointing outside `~/notes`. No exceptions beyond that; the
-`tauri-plugin-clipboard-manager` plugin (write-text only) and dictation's
-synthetic-paste path (`dictate.rs`, above) are the only other capabilities
-beyond notes I/O.
+`tauri-plugin-clipboard-manager` plugin (write-text only — frontend copy
+actions plus dictation's transcript write) and dictation's synthetic-paste
+path (`dictate.rs`, above) are the only other capabilities beyond notes
+I/O.

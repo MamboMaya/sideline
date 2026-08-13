@@ -10,10 +10,11 @@ triage calls.
 > **New — dictation pass-through.** Sideline started as capture-only: talk,
 > and a note lands in your inbox. It now also does straight dictation: press
 > ⌥⌘V, talk, and the transcript is pasted into whatever app you're in — the
-> inbox is never involved. This is the one feature that asks for a second
-> macOS permission (Accessibility, used only to send the auto-paste ⌘V);
-> decline it and the transcript still lands on the clipboard for a manual
-> paste. Like every Sideline hotkey, ⌥⌘V is just the default — remap it in
+> inbox is never involved. It always lands on the clipboard too, so a paste
+> that goes nowhere is one ⌘V from being recovered. This is the one feature
+> that asks for a second macOS permission (Accessibility, used only to send
+> the auto-paste ⌘V); decline it and the clipboard is simply the whole
+> delivery. Like every Sideline hotkey, ⌥⌘V is just the default — remap it in
 > Settings (⌘,). Details under [What it does](#what-it-does) and
 > [Permissions](#permissions).
 
@@ -26,9 +27,12 @@ triage calls.
 - **Dictate anywhere** (⌥⌘V by default): same on-device recording and
   transcription, but the result is copied to the clipboard and auto-pasted
   into whatever app is frontmost instead of going to the inbox — handy for
-  dictating straight into another app. Auto-paste needs the Accessibility
-  permission (asked once, on first use); without it, the transcript still
-  lands on the clipboard for a manual ⌘V.
+  dictating straight into another app. The pill always ends with "Copied —
+  ⌘V to paste", so if the paste went nowhere (a stray click defocused your
+  target, say) the transcript is still one ⌘V away rather than lost.
+  Auto-paste needs the Accessibility permission (asked once, on first
+  use); without it, the transcript still lands on the clipboard for a
+  manual ⌘V.
 - **Live inbox**: the popover (⌥⌘Space) shows every note the second it lands.
   Quick tags (`#bug` `#todo` `#idea`), pinned custom tags, and `@project` tags
   with keyboard-first triage.
@@ -132,6 +136,7 @@ restart; Settings applies them live). Schema in
 
 ## Docs
 
+- [CHANGELOG.md](CHANGELOG.md) — what changed in each version
 - [docs/data-model.md](docs/data-model.md) — every on-disk format
 - [docs/ui.md](docs/ui.md) — views, all keyboard shortcuts (or press `?` in-app)
 - [docs/backend.md](docs/backend.md) — tray, hotkeys, watcher, Tauri commands

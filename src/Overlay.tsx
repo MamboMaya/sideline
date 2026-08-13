@@ -26,7 +26,12 @@ export default function Overlay() {
         dictating ? "overlay-pill overlay-pill-dictate" : "overlay-pill"
       }
     >
-      {dictating && <span className="rec-mode-badge">Dictate</span>}
+      {/* The badge answers "where are these words going?", which only
+          matters while they're still in flight — the terminal clipboard
+          notice below answers it outright, so the badge steps aside. */}
+      {dictating && recState !== "copied" && (
+        <span className="rec-mode-badge">Dictate</span>
+      )}
       {recState === "recording" && (
         <>
           <span className="rec-dot" />
@@ -42,6 +47,9 @@ export default function Overlay() {
       )}
       {recState === "downloading-model" && (
         <span className="rec-status">Downloading model…</span>
+      )}
+      {recState === "copied" && (
+        <span className="rec-status">Copied — ⌘V to paste</span>
       )}
     </div>
   );

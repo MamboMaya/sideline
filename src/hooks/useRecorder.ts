@@ -10,7 +10,11 @@ export type RecState =
   | "idle"
   | "recording"
   | "transcribing"
-  | "downloading-model";
+  | "downloading-model"
+  // Dictation finished with the transcript on the clipboard — the pill
+  // shows "Copied — ⌘V to paste" until Rust's hide timer drops back
+  // to idle (~1.5s).
+  | "copied";
 
 // Mirrors audio.rs's `RecMode` — which pipeline a recording session feeds:
 // `note` appends the transcript to inbox.md, `dictate` copies it to the
@@ -41,7 +45,8 @@ export function useRecorderStatus() {
         s === "idle" ||
         s === "recording" ||
         s === "transcribing" ||
-        s === "downloading-model"
+        s === "downloading-model" ||
+        s === "copied"
       ) {
         setRecState(s);
         if (s !== "recording") setAudioLevel(0);

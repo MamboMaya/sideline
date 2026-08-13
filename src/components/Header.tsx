@@ -79,7 +79,9 @@ export function Header({
         </button>
       </div>
       <div className="header-spacer" />
-      {recState !== "idle" && (
+      {/* "copied" is dictation's terminal pill notice — idle as far as the
+          popover is concerned (the pill overlay owns that message). */}
+      {recState !== "idle" && recState !== "copied" && (
         <div className="rec-indicator" title="Voice note recording (r)">
           {recState === "recording" && (
             <>

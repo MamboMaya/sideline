@@ -36,10 +36,20 @@ body {
    the window stays see-through to the desktop behind it. */
 body.overlay {
   background: transparent;
-}
-.overlay-pill {
-  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 100vh;
+}
+/* Hugs its content rather than filling the window, so every state gets the
+   same 16px of breathing room instead of the longest message (dictation's
+   clipboard notice) running into the rounded edge. The window is sized for
+   that longest message and is invisible either side of the pill — see the
+   `overlay` entry in tauri.conf.json (kept in sync with window.rs's
+   OVERLAY_WIDTH fallback). */
+.overlay-pill {
+  height: 34px;
+  padding: 0 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -47,6 +57,7 @@ body.overlay {
   border-radius: 24px;
   background: rgba(20, 20, 24, 0.85);
   font-size: 12px;
+  white-space: nowrap;
   -webkit-user-select: none;
   user-select: none;
 }

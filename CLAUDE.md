@@ -80,3 +80,7 @@ Exact rules: docs/data-model.md.
   TCC prompt) — plain `fs::remove_file` / rename into `~/.Trash` instead.
 - Keep this file lean; put detail in `docs/` and update the matching doc
   when behavior changes.
+- User-visible changes get a `CHANGELOG.md` entry under `[Unreleased]` in the
+  same commit. Releases: rename `[Unreleased]` to the version + date, bump the
+  version in `package.json`, `tauri.conf.json`, and `Cargo.toml` (0.x semver:
+  feature = minor, fix = patch), tag `v<version>`. Refactors/CI/docs: no entry.

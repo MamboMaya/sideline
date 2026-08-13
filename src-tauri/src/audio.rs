@@ -19,6 +19,11 @@ pub enum RecState {
     Recording,
     Transcribing,
     DownloadingModel,
+    /// Dictation finished and the transcript is on the clipboard — the
+    /// pill shows "Copied — ⌘V to paste" for `COPIED_NOTICE` and
+    /// then drops to Idle. Idle-equivalent for the hotkeys: a press during
+    /// the notice starts a fresh recording (see `toggle_recording_mode`).
+    Copied,
 }
 
 impl RecState {
@@ -28,9 +33,19 @@ impl RecState {
             RecState::Recording => "recording",
             RecState::Transcribing => "transcribing",
             RecState::DownloadingModel => "downloading-model",
+            RecState::Copied => "copied",
         }
     }
+
+    /// True for the states where no recording session is live and a hotkey
+    /// press should start one — Idle, plus the transient Copied notice.
+    fn can_start(self) -> bool {
+        matches!(self, RecState::Idle | RecState::Copied)
+    }
 }
+
+/// How long the pill's "Copied — ⌘V to paste" notice stays up.
+const COPIED_NOTICE: Duration = Duration::from_millis(1500);
 
 /// What a recording session is for: `Note` appends the transcript to
 /// inbox.md (⌥⌘R, "Record voice note"), `Dictate` copies it to the
@@ -88,6 +103,10 @@ struct Inner {
     stop_tx: Option<mpsc::Sender<()>>,
     result_rx: Option<mpsc::Receiver<Result<CaptureResult, String>>>,
     recording_flag: Option<Arc<AtomicBool>>,
+    // Bumped each time a Copied notice goes up, so its hide timer only
+    // fires for ITS notice — a back-to-back dictation that lands on Copied
+    // again isn't hidden early by the first notice's timer.
+    copied_gen: u64,
 }
 
 impl Inner {
@@ -130,7 +149,7 @@ fn set_tray_title(app: &AppHandle, state: RecState, elapsed: Option<Duration>) {
             Some(format!("🔴 {}:{:02}", secs / 60, secs % 60))
         }
         RecState::Transcribing | RecState::DownloadingModel => Some("…".to_string()),
-        RecState::Idle => None,
+        RecState::Idle | RecState::Copied => None,
     };
     let _ = tray.set_title(title.as_deref());
 }
@@ -401,20 +420,22 @@ pub(crate) fn toggle_dictation(app: AppHandle) -> Result<String, String> {
 /// (`capture-error` "Already recording") — the recorder never silently
 /// switches modes mid-recording; a same-mode press follows the existing
 /// state machine unchanged (Idle → Recording → stop triggers Transcribing,
-/// Transcribing/DownloadingModel just no-ops).
+/// Transcribing/DownloadingModel just no-ops). The transient Copied notice
+/// counts as idle here — either hotkey during it starts a fresh session
+/// (its hide timer sees the state moved on and stands down).
 fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String> {
     let audio_state = app.state::<AudioState>();
     let mut inner = audio_state.lock();
     let state = inner.state();
 
-    if state != RecState::Idle && inner.mode != mode {
+    if !state.can_start() && inner.mode != mode {
         drop(inner);
         let _ = app.emit("capture-error", "Already recording");
         return Ok(state.as_str().to_string());
     }
 
     match state {
-        RecState::Idle => {
+        RecState::Idle | RecState::Copied => {
             let (stop_tx, stop_rx) = mpsc::channel::<()>();
             let (result_tx, result_rx) = mpsc::channel::<Result<CaptureResult, String>>();
             let level = Arc::new(AtomicU32::new(0));
@@ -507,6 +528,32 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
     }
 }
 
+/// Puts up the pill's "Copied — ⌘V to paste" notice: flips state to
+/// Copied, emits it, and spawns the hide timer that drops back to Idle
+/// after `COPIED_NOTICE` — unless the state has moved on (a new recording
+/// started, or a newer notice replaced this one; see `Inner::copied_gen`).
+fn show_copied_notice(app: &AppHandle) {
+    let state = app.state::<AudioState>();
+    let mut inner = state.lock();
+    inner.state_val = Some(RecState::Copied);
+    inner.copied_gen = inner.copied_gen.wrapping_add(1);
+    let gen = inner.copied_gen;
+    drop(inner);
+    emit_state(app, RecState::Copied);
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(COPIED_NOTICE);
+        let state = app.state::<AudioState>();
+        let mut inner = state.lock();
+        if inner.state() == RecState::Copied && inner.copied_gen == gen {
+            inner.state_val = Some(RecState::Idle);
+            drop(inner);
+            emit_state(&app, RecState::Idle);
+        }
+    });
+}
+
 /// Resets the managed state to Idle and emits the transition — the shared
 /// tail of every `finish_recording` exit path (success, empty transcript,
 /// or any error).
@@ -565,7 +612,16 @@ fn finish_recording(
                     let _ = app.emit("capture-error", e);
                 }
             }
-            RecMode::Dictate => crate::dictate::finish_dictation(&app, &text),
+            RecMode::Dictate => {
+                if crate::dictate::finish_dictation(&app, &text)
+                    == crate::dictate::DictationOutcome::Copied
+                {
+                    // Transcript is on the clipboard — say so, whether or
+                    // not the auto-paste landed anywhere useful.
+                    show_copied_notice(&app);
+                    return;
+                }
+            }
         },
         Ok(_) => {
             let _ = app.emit("capture-error", "Transcription came back empty".to_string());

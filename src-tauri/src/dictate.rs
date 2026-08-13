@@ -4,6 +4,17 @@
 //! mic-only TCC rule — discussed and approved 2026-08-11 (see CLAUDE.md,
 //! docs/backend.md). Never touches inbox.md or any `~/notes` file: the
 //! clipboard is the whole destination for dictated text.
+//!
+//! Sideline never inspects what the frontmost app is or what it has
+//! focused — deliberately: an auto-paste that lands nowhere (a stray click
+//! defocused the target, no editable field was ever focused) is
+//! indistinguishable from one that landed, so instead of guessing, EVERY
+//! dictation ends with the pill's "Copied — ⌘V to paste" notice (see
+//! `audio::show_copied_notice`) and the transcript waits on the clipboard.
+//! Which also means the clipboard write stays plain — an attempt to hide
+//! dictations from clipboard-history managers (the org.nspasteboard
+//! transient/concealed marker types) was dropped for that reason: history
+//! IS the recovery path when a paste didn't land where you wanted.
 
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
@@ -26,6 +37,15 @@ extern "C" {
     static kAXTrustedCheckOptionPrompt: CFStringRef;
     fn AXIsProcessTrusted() -> core_foundation::base::Boolean;
     fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> core_foundation::base::Boolean;
+}
+
+/// How `finish_dictation` ended, so audio.rs can pick the terminal state:
+/// `Copied` shows the pill notice, `Failed` (clipboard write failed —
+/// nothing to recover, error already emitted) goes straight to Idle.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum DictationOutcome {
+    Copied,
+    Failed,
 }
 
 /// True if Sideline currently holds the Accessibility permission. Never
@@ -68,14 +88,16 @@ fn post_cmd_v() -> Result<(), String> {
 /// Dictation-mode finish: clipboard write ALWAYS happens first — even if
 /// everything after it fails, the transcript is never lost — then, only if
 /// Sideline is AX-trusted, a ~50ms settle delay and a synthetic ⌘V. If not
-/// trusted, triggers the one-time system prompt instead of pasting and
-/// tells the user the text is on the clipboard for a manual ⌘V. Called from
+/// trusted, triggers the one-time system prompt instead of pasting. Either
+/// way the caller shows the pill's clipboard notice (see
+/// `DictationOutcome`), since whether the paste actually landed anywhere
+/// is unknowable without inspecting other apps. Called from
 /// `audio::finish_recording`, off the async runtime (inside
 /// `spawn_blocking`), so the blocking sleep here is fine.
-pub(crate) fn finish_dictation(app: &AppHandle, text: &str) {
+pub(crate) fn finish_dictation(app: &AppHandle, text: &str) -> DictationOutcome {
     if let Err(e) = app.clipboard().write_text(text.to_string()) {
         let _ = app.emit("capture-error", format!("Clipboard write failed: {e}"));
-        return;
+        return DictationOutcome::Failed;
     }
 
     if is_trusted() {
@@ -93,4 +115,5 @@ pub(crate) fn finish_dictation(app: &AppHandle, text: &str) {
             "Copied to clipboard — grant Accessibility (System Settings) to auto-paste",
         );
     }
+    DictationOutcome::Copied
 }

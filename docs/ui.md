@@ -31,7 +31,17 @@ the monitor holding the cursor, 20% up the screen — mirroring the popover's
 20%-down spot — always on top, never focused, visible whether
 or not the popover is open — and disappears at idle; the popover header
 keeps its own identical indicator (both render `RecBars` off the same
-`audio-level` stream).
+`audio-level` stream). The pill hugs its content (the window behind it is
+wider and fully transparent), so each state gets even padding rather than
+the longest message running into the rounded edge. In dictation mode it
+carries a "Dictate" badge while the words are still in flight, and every
+dictation ends with the badge dropping away and the pill showing "Copied
+— ⌘V to paste" for ~1.5s before hiding — whether or not the auto-paste landed
+(Sideline can't tell, and doesn't look; see docs/backend.md), so a
+dictation that went nowhere is visibly recoverable instead of silently
+gone. The popover header deliberately does NOT mirror that notice (the
+pill owns it), and pressing either record hotkey during the notice starts
+a fresh session immediately.
 
 ## Settings
 

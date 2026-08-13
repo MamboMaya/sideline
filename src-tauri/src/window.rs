@@ -123,7 +123,7 @@ pub(crate) fn hide_on_focus_loss(app: &tauri::AppHandle) {
 //
 // A small always-on-top HUD (see tauri.conf.json's `overlay` window entry:
 // transparent, decorations off, skip-taskbar, visible on all workspaces,
-// fixed 220x48 size) that surfaces the mic-hot indicator even while the
+// fixed 340x48 size) that surfaces the mic-hot indicator even while the
 // popover is closed. Created hidden at app startup — same pattern as
 // `main` — so its frontend is already listening for
 // `recording-state`/`audio-level` by the time a recording actually starts;
@@ -136,8 +136,10 @@ pub(crate) fn hide_on_focus_loss(app: &tauri::AppHandle) {
 // grant fails listen() silently and the pill would render nothing.
 
 /// Fallback size if `outer_size()` can't be read yet — kept in sync with
-/// the `overlay` window's `width`/`height` in tauri.conf.json.
-const OVERLAY_WIDTH: f64 = 220.0;
+/// the `overlay` window's `width`/`height` in tauri.conf.json. The window
+/// is wider than the pill it holds (the pill hugs its content — see
+/// styles.css); the slack either side is transparent.
+const OVERLAY_WIDTH: f64 = 340.0;
 const OVERLAY_HEIGHT: f64 = 48.0;
 
 /// Bottom-center spot for the recording pill, on the monitor holding the
@@ -172,9 +174,10 @@ fn overlay_position(
 /// emitted from whisper.rs) reaches the pill with no separate wiring.
 ///
 /// Only repositions on entering Recording: a fresh ⌥⌘R press might be on a
-/// different monitor than last time, but Transcribing/DownloadingModel
-/// always follow a Recording on the same monitor, so they just keep the
-/// pill visible where it already is (no jitter).
+/// different monitor than last time, but Transcribing/DownloadingModel —
+/// and dictation's terminal Copied notice — always follow a Recording on
+/// the same monitor, so they just keep the pill visible where it already
+/// is (no jitter).
 ///
 /// Never steals focus: `show()` alone (never `set_focus()`) on a window
 /// created with `focus: false` — see tauri.conf.json — leaves keyboard
@@ -193,7 +196,7 @@ pub(crate) fn sync_overlay(app: &tauri::AppHandle, state: RecState) {
             }
             let _ = win.show();
         }
-        RecState::Transcribing | RecState::DownloadingModel => {
+        RecState::Transcribing | RecState::DownloadingModel | RecState::Copied => {
             let _ = win.show();
         }
     }
