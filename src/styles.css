@@ -27,7 +27,11 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* WebKit multiplies viewport units by the body's CSS zoom, so a plain
+     100vh overflows the window by the zoom factor and the bottom is lost
+     to body's overflow: clip. useZoom.ts sets --zoom on <html>; dividing
+     here lands the box exactly on the window edge at every zoom level. */
+  height: calc(100vh / var(--zoom, 1));
 }
 /* Recording-pill overlay window only (main.tsx adds this class when
    `?window=overlay` — see src-tauri/tauri.conf.json's `overlay` window,
@@ -787,6 +791,29 @@ header .ghost.gear {
 }
 .settings-chip-row .tag-input {
   width: 120px;
+}
+/* Dictionary editor (SettingsPane.tsx's DictionaryEditor): term | mis-
+   hearings | ✕ per row, mis-hearings twice as wide as the term. */
+.settings-dict {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings-dict-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.settings-dict-row .settings-input.mishears {
+  flex: 2;
+}
+.settings-dict-row .ghost[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+.settings-dict + .settings-hint {
+  white-space: normal;
+  margin-top: 4px;
 }
 .settings-zoom {
   gap: 8px;

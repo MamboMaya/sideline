@@ -23,10 +23,16 @@ export function useZoom(
   };
 
   // CSS zoom on <body> scales the whole UI (WebKit supports it); 1 clears
-  // the inline style entirely.
+  // the inline style entirely. `--zoom` on <html> goes with it: WebKit
+  // scales viewport units by the zoom too, so `.app { height: 100vh }`
+  // would render zoom× the window height and the bottom of the popover
+  // (last inbox card, Settings' Zoom section) fell off the clipped body
+  // at any zoom ≠ 1 — styles.css divides the height back down by it.
   useEffect(() => {
     (document.body.style as CSSStyleDeclaration & { zoom: string }).zoom =
       zoom === 1 ? "" : String(zoom);
+    if (zoom === 1) document.documentElement.style.removeProperty("--zoom");
+    else document.documentElement.style.setProperty("--zoom", String(zoom));
   }, [zoom]);
 
   return { zoom, setZoom, adjustZoom };

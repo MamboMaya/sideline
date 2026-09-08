@@ -23,7 +23,10 @@ within one open session keep their place. `/` opens a compact header search
 input filtering the active view's list (body + tags +, in a todo row, project
 name); `Esc` on the input itself clears and closes it first. `⌘+`/`⌘-` step
 UI zoom 0.7–1.5 (`⌘0` resets; persisted as `zoom` in .sideline.json, applied
-as CSS zoom on body). `r` toggles in-app voice recording from either view —
+as CSS zoom on body, with `--zoom` mirrored on `<html>` so `.app` can divide
+its `100vh` back down — WebKit scales viewport units by the zoom, which
+otherwise pushes the bottom of the popover off the clipped body at any zoom
+≠ 1; see `src/hooks/useZoom.ts`). `r` toggles in-app voice recording from either view —
 the same action as the ⌥⌘R global hotkey, but only while the popover has
 focus. While recording, a small pill HUD (🔴 elapsed m:ss + live level
 bars, then "Transcribing…"/"Downloading model…") floats bottom-center of
@@ -58,7 +61,10 @@ Settings is open, none of the app's list/card keymap
 actions fire — `src/keys/useKeyboard.ts`'s `dispatchKey` gates on
 `ctx.settingsOpen` before anything else runs, so a stray `t`/`d`/arrow key
 landing on a focused dropdown or button inside the pane can never triage,
-delete, or navigate the list underneath. One consolidated surface over every
+delete, or navigate the list underneath. The one ⌘ binding that still
+fires through the gate is zoom (`⌘+`/`⌘−`/`⌘0`): the pane's own Zoom
+section sits at the very bottom, and a too-large zoom is exactly when the
+shortcut is needed to reach it. One consolidated surface over every
 key `.sideline.json` knows about (see docs/data-model.md); no new keys, no
 format change.
 
@@ -111,7 +117,18 @@ untouched. Five sections, one scrollable pane:
    picker was scaffolded, previously uncalled), plus a "System default"
    entry (removes the key). Writes the exact device name Rust-side matches
    as a case-insensitive substring (see docs/data-model.md); a hint notes it
-   only takes effect on the NEXT recording, not the one in progress.
+   only takes effect on the NEXT recording, not the one in progress. Below
+   it, a **Dictionary** editor for `dictionary` (`DictionaryEditor` in
+   `src/components/SettingsPane.tsx`): one row per term — a term input, a
+   comma-separated mis-hearings input (may be empty; a bare term only
+   biases whisper's prompt), and a remove ✕ — plus a blank draft row at the
+   bottom that becomes a real row on Enter or its Add button. Edits to an
+   existing row commit on blur; add/remove commit immediately. Rows map to
+   the on-disk object via `dictionaryRows`/`dictionaryFromRows` in
+   `src/lib/config.ts` (blank terms skipped, duplicate terms merged);
+   removing the last row removes the key. Whisper re-reads the file per
+   transcription, so it applies to the next recording, no restart (see
+   docs/data-model.md).
 3. **Claude** — an on/off toggle for `claude` (default on; off is
    no-Claude mode, see the Triage section below), plus text inputs for
    `models.triage`/`models.batch` and textareas for `prompts.triage`/

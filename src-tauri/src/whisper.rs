@@ -19,6 +19,111 @@ const MODEL_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
 const VOCAB_PROMPT: &str = "Claude, Claude Code, Sideline, Raycast, Tauri, triage, inbox";
 
+/// One user dictionary entry from `.sideline.json`'s `dictionary` key: the
+/// correctly-spelled term plus the mis-hearings whisper produces for it
+/// (may be empty — a bare term still biases the initial prompt).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DictEntry {
+    pub term: String,
+    pub mishears: Vec<String>,
+}
+
+/// Reads `dictionary` from `~/notes/.sideline.json` — `{ "Tauri":
+/// ["towery", "tory"], "Raycast": ["ray cast"] }`, term → mis-hearings.
+/// Same failure tolerance as audio.rs's `configured_device_name`: a
+/// missing file, malformed JSON, or wrong-shaped key just means an empty
+/// dictionary. Non-string entries are dropped; blank terms are skipped.
+/// Re-read on every transcription so a Settings-pane edit applies to the
+/// very next recording with no restart. Entries come back sorted by term
+/// (serde_json's default map is a BTreeMap) — order is irrelevant to the
+/// prompt and each correction is independent.
+fn load_dictionary() -> Vec<DictEntry> {
+    let p = crate::paths::notes_dir().join(".sideline.json");
+    let Ok(raw) = std::fs::read_to_string(p) else {
+        return Vec::new();
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    parse_dictionary(&parsed)
+}
+
+fn parse_dictionary(parsed: &serde_json::Value) -> Vec<DictEntry> {
+    let Some(map) = parsed.get("dictionary").and_then(|d| d.as_object()) else {
+        return Vec::new();
+    };
+    map.iter()
+        .filter_map(|(term, v)| {
+            let term = term.trim();
+            if term.is_empty() {
+                return None;
+            }
+            let mishears = v
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| m.as_str())
+                        .map(str::trim)
+                        .filter(|m| !m.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(DictEntry {
+                term: term.to_string(),
+                mishears,
+            })
+        })
+        .collect()
+}
+
+/// The built-in vocabulary prompt with every user dictionary term appended,
+/// so whisper is biased toward the right spelling before any regex
+/// correction runs. Whisper's prompt window is ~224 tokens; a few dozen
+/// terms fits comfortably.
+fn build_prompt(dict: &[DictEntry]) -> String {
+    let mut prompt = String::from(VOCAB_PROMPT);
+    for e in dict {
+        prompt.push_str(", ");
+        prompt.push_str(&e.term);
+    }
+    prompt
+}
+
+/// One case-insensitive, word-bounded regex per dictionary term that has
+/// mis-hearings, matching any of them. Mis-hearings are regex-escaped
+/// (they're literal words, not patterns); interior whitespace becomes
+/// `\s+` so a two-word mis-hearing like "cal she" still matches across
+/// whatever spacing whisper emitted. A term whose regex somehow fails to
+/// compile is skipped rather than failing the whole transcription.
+fn build_corrections(dict: &[DictEntry]) -> Vec<(Regex, String)> {
+    dict.iter()
+        .filter(|e| !e.mishears.is_empty())
+        .filter_map(|e| {
+            let alts: Vec<String> = e
+                .mishears
+                .iter()
+                .map(|m| {
+                    regex::escape(m)
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(r"\s+")
+                })
+                .collect();
+            let pattern = format!(r"(?i)\b(?:{})\b", alts.join("|"));
+            Regex::new(&pattern).ok().map(|re| (re, e.term.clone()))
+        })
+        .collect()
+}
+
+fn apply_corrections(text: &str, corrections: &[(Regex, String)]) -> String {
+    let mut out = text.to_string();
+    for (re, term) in corrections {
+        out = re.replace_all(&out, term.as_str()).into_owned();
+    }
+    out
+}
+
 fn model_dir() -> PathBuf {
     dirs::home_dir()
         .expect("no home dir")
@@ -99,12 +204,16 @@ fn get_ctx(path: &Path) -> Result<&'static WhisperContext, String> {
 }
 
 /// Transcribes 16 kHz mono f32 PCM, English, greedy, no timestamps, with the
-/// vocabulary-bias initial prompt, then applies the Claude mis-hear
-/// correction pass. Downloads the model first if it's missing (emitting
-/// `downloading-model` via the shared recorder-state path).
+/// vocabulary-bias initial prompt (built-in list + the user's `dictionary`
+/// terms), then applies the Claude mis-hear correction pass followed by the
+/// user dictionary's corrections. Downloads the model first if it's missing
+/// (emitting `downloading-model` via the shared recorder-state path).
 pub fn transcribe(app: &AppHandle, pcm: &[f32]) -> Result<String, String> {
     let path = ensure_model(app)?;
     emit_state(app, RecState::Transcribing);
+    let dict = load_dictionary();
+    let prompt = build_prompt(&dict);
+    let corrections = build_corrections(&dict);
 
     let ctx = get_ctx(&path)?;
     let mut state = ctx
@@ -117,7 +226,7 @@ pub fn transcribe(app: &AppHandle, pcm: &[f32]) -> Result<String, String> {
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
-    params.set_initial_prompt(VOCAB_PROMPT);
+    params.set_initial_prompt(&prompt);
 
     state
         .full(params, pcm)
@@ -133,7 +242,8 @@ pub fn transcribe(app: &AppHandle, pcm: &[f32]) -> Result<String, String> {
         }
     }
 
-    Ok(correct_claude_mishears(text.trim()))
+    let corrected = correct_claude_mishears(text.trim());
+    Ok(apply_corrections(&corrected, &corrections))
 }
 
 #[cfg(test)]
@@ -192,5 +302,90 @@ mod tests {
     #[test]
     fn empty_string_is_unchanged() {
         assert_eq!(correct_claude_mishears(""), "");
+    }
+
+    // ---- user dictionary ----
+
+    fn dict(json: &str) -> Vec<DictEntry> {
+        parse_dictionary(&serde_json::from_str(json).unwrap())
+    }
+
+    fn correct(json: &str, text: &str) -> String {
+        apply_corrections(text, &build_corrections(&dict(json)))
+    }
+
+    #[test]
+    fn parses_terms_and_mishears_dropping_junk() {
+        // Terms come back alphabetical (serde_json's map is a BTreeMap).
+        let d = dict(
+            r#"{"dictionary": {"Tauri": ["towery", " tory ", 3, ""], "Whisper": [], "  ": ["x"], "Raycast": "not-an-array"}}"#,
+        );
+        assert_eq!(
+            d,
+            vec![
+                DictEntry {
+                    term: "Raycast".into(),
+                    mishears: vec![],
+                },
+                DictEntry {
+                    term: "Tauri".into(),
+                    mishears: vec!["towery".into(), "tory".into()],
+                },
+                DictEntry {
+                    term: "Whisper".into(),
+                    mishears: vec![],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn missing_or_malformed_dictionary_is_empty() {
+        assert!(dict(r#"{}"#).is_empty());
+        assert!(dict(r#"{"dictionary": ["Tauri"]}"#).is_empty());
+        assert!(dict(r#"{"dictionary": "Tauri"}"#).is_empty());
+    }
+
+    #[test]
+    fn prompt_appends_every_term_after_the_builtins() {
+        let d = dict(r#"{"dictionary": {"Tauri": ["towery"], "Whisper": []}}"#);
+        assert_eq!(
+            build_prompt(&d),
+            format!("{VOCAB_PROMPT}, Tauri, Whisper")
+        );
+        assert_eq!(build_prompt(&[]), VOCAB_PROMPT);
+    }
+
+    #[test]
+    fn corrects_mishears_case_insensitively_on_word_boundaries() {
+        let j = r#"{"dictionary": {"Tauri": ["towery", "tory"], "Whisper": ["wisper"]}}"#;
+        assert_eq!(
+            correct(j, "Check Towery and wisper builds, then TORY again."),
+            "Check Tauri and Whisper builds, then Tauri again."
+        );
+        // No partial-word hits: "history" is not "tory".
+        assert_eq!(correct(j, "history"), "history");
+    }
+
+    #[test]
+    fn multi_word_mishears_match_across_spacing() {
+        let j = r#"{"dictionary": {"Raycast": ["ray cast"]}}"#;
+        assert_eq!(correct(j, "open ray  cast now"), "open Raycast now");
+    }
+
+    #[test]
+    fn mishears_are_literal_not_regex() {
+        let j = r#"{"dictionary": {"C++": ["c plus plus", "see.plus"]}}"#;
+        assert_eq!(correct(j, "learn c plus plus"), "learn C++");
+        // The "." is escaped: "seeXplus" must NOT match.
+        assert_eq!(correct(j, "seeXplus"), "seeXplus");
+        assert_eq!(correct(j, "see.plus"), "C++");
+    }
+
+    #[test]
+    fn term_without_mishears_produces_no_correction() {
+        let j = r#"{"dictionary": {"Whisper": []}}"#;
+        assert!(build_corrections(&dict(j)).is_empty());
+        assert_eq!(correct(j, "wisper"), "wisper");
     }
 }

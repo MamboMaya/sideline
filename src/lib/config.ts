@@ -155,11 +155,67 @@ export interface HotkeysConfig {
   dictate?: string;
 }
 
+// `.sideline.json`'s `dictionary` field — the transcription vocabulary:
+// correctly-spelled term → the mis-hearings whisper produces for it (may be
+// empty; a bare term still biases whisper's initial prompt). Read Rust-side
+// by whisper.rs on every transcription and by capture/voice-note.sh; the
+// frontend only edits it (Settings' Voice section) via the two text helpers
+// below.
+export type DictionaryConfig = Record<string, string[]>;
+
+// One Settings-pane dictionary row: the term plus its mis-hearings as the
+// comma-separated text the row's second input holds.
+export interface DictionaryRow {
+  term: string;
+  mishears: string;
+}
+
+// Splits a row's comma-separated mis-hearings input: trimmed, blanks
+// dropped, duplicates collapsed (first occurrence wins).
+export function splitMishears(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(",")) {
+    const m = raw.trim();
+    if (m && !out.includes(m)) out.push(m);
+  }
+  return out;
+}
+
+// On-disk dictionary → editor rows, in file order.
+export function dictionaryRows(
+  dict: DictionaryConfig | undefined,
+): DictionaryRow[] {
+  if (!dict) return [];
+  return Object.entries(dict).map(([term, mishears]) => ({
+    term,
+    mishears: mishears.join(", "),
+  }));
+}
+
+// Editor rows → on-disk dictionary. Blank terms are skipped, duplicate
+// terms merge their mis-hearings; undefined when nothing is left so the
+// key is omitted entirely (serializeConfig's convention).
+export function dictionaryFromRows(
+  rows: DictionaryRow[],
+): DictionaryConfig | undefined {
+  const out: DictionaryConfig = {};
+  for (const row of rows) {
+    const term = row.term.trim();
+    if (!term) continue;
+    const prev = out[term] ?? [];
+    out[term] = [
+      ...prev,
+      ...splitMishears(row.mishears).filter((m) => !prev.includes(m)),
+    ];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 // Everything loadConfig produces from `.sideline.json` — one field per
-// App.tsx config state slice, including the 6 opaque per-key overrides
+// App.tsx config state slice, including the 7 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
-// audioOverride, hotkeysOverride) kept around purely so a pin/zoom/hide
-// write doesn't clobber hand-edited config it didn't touch.
+// audioOverride, hotkeysOverride, dictionaryOverride) kept around purely so
+// a pin/zoom/hide write doesn't clobber hand-edited config it didn't touch.
 export interface SidelineConfig {
   pinnedTags: string[];
   hiddenTags: string[];
@@ -182,6 +238,7 @@ export interface SidelineConfig {
   zoom: number;
   audioOverride: unknown;
   hotkeysOverride: HotkeysConfig | undefined;
+  dictionaryOverride: DictionaryConfig | undefined;
 }
 
 const EMPTY_CONFIG: SidelineConfig = {
@@ -198,7 +255,24 @@ const EMPTY_CONFIG: SidelineConfig = {
   zoom: 1,
   audioOverride: undefined,
   hotkeysOverride: undefined,
+  dictionaryOverride: undefined,
 };
+
+// Validates a raw `dictionary` value into DictionaryConfig: an object whose
+// values are string arrays. Non-string mis-hearings are dropped; a value
+// that isn't an array becomes an empty list (the term still counts); blank
+// terms are skipped; a non-object `dictionary` is treated as absent.
+function dictionaryFrom(raw: unknown): DictionaryConfig | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: DictionaryConfig = {};
+  for (const [term, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!term.trim()) continue;
+    out[term] = Array.isArray(v)
+      ? v.filter((m): m is string => typeof m === "string" && !!m.trim())
+      : [];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 // Parses `.sideline.json`'s raw text into a SidelineConfig. Pure — no IO.
 // Failure-tolerant: a missing/unparseable config (empty string or malformed
@@ -257,6 +331,7 @@ export function parseConfig(raw: string): SidelineConfig {
       parsed?.hotkeys && typeof parsed.hotkeys === "object"
         ? (parsed.hotkeys as HotkeysConfig)
         : undefined;
+    const dictionaryOverride = dictionaryFrom(parsed?.dictionary);
     return {
       pinnedTags: sanitized.slice(0, 6),
       hiddenTags: hidden,
@@ -270,6 +345,7 @@ export function parseConfig(raw: string): SidelineConfig {
       claudeOverride,
       audioOverride,
       hotkeysOverride,
+      dictionaryOverride,
       zoom,
     };
   } catch {
@@ -291,7 +367,7 @@ export async function loadConfig(): Promise<SidelineConfig> {
   }
 }
 
-// The 6 opaque per-key overrides from `.sideline.json` — round-tripped
+// The 7 opaque per-key overrides from `.sideline.json` — round-tripped
 // verbatim (whatever the user hand-edited, including unknown keys within
 // each) so a pin/zoom/hide write never clobbers a value it didn't touch.
 export interface ConfigOverrides {
@@ -303,6 +379,7 @@ export interface ConfigOverrides {
   claude: boolean | undefined;
   audio: unknown;
   hotkeys: HotkeysConfig | undefined;
+  dictionary: DictionaryConfig | undefined;
 }
 
 export interface ConfigWrite {
@@ -314,8 +391,8 @@ export interface ConfigWrite {
 
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
-// projects?, claude?, zoom?, audio?, hotkeys? (omitted when falsy/empty/
-// default) — .sideline.json is read by capture/ tooling too, so this order
+// projects?, claude?, zoom?, audio?, hotkeys?, dictionary? (omitted when
+// falsy/empty/default) — .sideline.json is read by capture/ tooling too, so this order
 // is contract (see docs/data-model.md). Object spread preserves insertion
 // order for these string keys, so the order below is exactly the emitted
 // order.
@@ -336,6 +413,9 @@ export function serializeConfig(cfg: ConfigWrite): string {
       ...(cfg.zoom !== 1 ? { zoom: cfg.zoom } : {}),
       ...(cfg.overrides.audio ? { audio: cfg.overrides.audio } : {}),
       ...(cfg.overrides.hotkeys ? { hotkeys: cfg.overrides.hotkeys } : {}),
+      ...(cfg.overrides.dictionary
+        ? { dictionary: cfg.overrides.dictionary }
+        : {}),
     },
     null,
     2,

@@ -71,12 +71,24 @@
   (the gear button in the header), which additionally calls the
   `apply_hotkeys` command to swap the OS-level registration live, no
   restart needed (see docs/backend.md); a hand-edit to this file directly
-  still only takes effect on next launch. Frontend-owned schema (the
-  `audio` key is read/written Rust-side by audio.rs, `hotkeys` is read-only
-  Rust-side at startup by lib.rs — the Settings pane's live-apply path is
-  the one exception, reading it only via the frontend's already-loaded
-  config state, never re-reading the file itself — everything else by
-  src/App.tsx); not touched by capture/ scripts.
+  still only takes effect on next launch. Also optional `"dictionary":
+{ "Tauri": ["towery", "tory"], "Raycast": ["ray cast"], "Whisper": [] }`
+  — the transcription vocabulary, correctly-spelled term → the ways whisper
+  mis-hears it (may be empty). Every term is appended to whisper's
+  initial prompt (biasing it toward that spelling); every mis-hearing is
+  replaced by its term after transcription — whole words, case-insensitive,
+  literal (not regex), interior spaces matching any whitespace — after the
+  built-in Claude corrections (see docs/backend.md). Read from the file on
+  EVERY transcription, so a Settings-pane edit (Voice → Dictionary, one row per term) applies to the next recording
+  with no restart; `capture/voice-note.sh` reads the same key via jq so
+  Raycast captures get the identical prompt and corrections. Frontend-owned
+  schema (the `audio` key is read/written Rust-side by audio.rs, `hotkeys`
+  is read-only Rust-side at startup by lib.rs — the Settings pane's
+  live-apply path is the one exception, reading it only via the frontend's
+  already-loaded config state, never re-reading the file itself;
+  `dictionary` is read-only Rust-side by whisper.rs — everything else by
+  src/App.tsx); the ONLY key a capture/ script reads is `dictionary`
+  (voice-note.sh, read-only) — none writes the file.
 
 - **`~/notes/todos/<project>.md`** — todo entries routed from triage, one
   file per project tag (`project` IS the tag — no repo path involved).

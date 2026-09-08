@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { HotkeysConfig, Models, Prompts } from "../lib/config";
+import {
+  type DictionaryConfig,
+  type DictionaryRow,
+  type HotkeysConfig,
+  type Models,
+  type Prompts,
+  dictionaryFromRows,
+  dictionaryRows,
+} from "../lib/config";
 import { applyHotkeys, listAudioDevices } from "../lib/commands";
 import {
   comboFromKeyEvent,
@@ -16,6 +24,8 @@ export interface SettingsPaneProps {
   // Voice
   audioOverride: unknown;
   setAudioDevice: (device: string) => void;
+  dictionaryOverride: DictionaryConfig | undefined;
+  setDictionary: (dict: DictionaryConfig | undefined) => void;
   // Claude
   claude: boolean;
   setClaudeEnabled: (enabled: boolean) => void;
@@ -148,6 +158,113 @@ function ChipList({
           }
         }}
       />
+    </div>
+  );
+}
+
+// The Voice section's transcription dictionary: one row per term — a term
+// input, a comma-separated mis-hearings input, and a remove ✕ — plus a
+// blank draft row at the bottom that turns into a real row on Enter/Add.
+// Existing rows commit on blur (edits to either field); remove and add
+// commit immediately. Rows mirror the override at mount only, same as the
+// prompt/model drafts: the pane remounts fresh each time it opens.
+const EMPTY_ROW: DictionaryRow = { term: "", mishears: "" };
+
+function DictionaryEditor({
+  dictionary,
+  onChange,
+}: {
+  dictionary: DictionaryConfig | undefined;
+  onChange: (dict: DictionaryConfig | undefined) => void;
+}) {
+  const [rows, setRows] = useState<DictionaryRow[]>(() =>
+    dictionaryRows(dictionary),
+  );
+  const [draft, setDraft] = useState<DictionaryRow>(EMPTY_ROW);
+
+  const commit = (next: DictionaryRow[]) => {
+    setRows(next);
+    onChange(dictionaryFromRows(next));
+  };
+  const edit = (i: number, patch: Partial<DictionaryRow>) =>
+    setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const remove = (i: number) => commit(rows.filter((_, j) => j !== i));
+  const addDraft = () => {
+    if (!draft.term.trim()) return;
+    commit([...rows, draft]);
+    setDraft(EMPTY_ROW);
+  };
+  const onEnter = (e: KeyboardEvent<HTMLElement>, action: () => void) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      action();
+    } else {
+      blurOnEscape(e);
+    }
+  };
+
+  return (
+    <div className="settings-dict">
+      {rows.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional edits with no stable id; the term itself is editable
+        <div className="settings-dict-row" key={i}>
+          <input
+            className="settings-input term"
+            value={row.term}
+            placeholder="Term"
+            aria-label="Dictionary term"
+            onChange={(e) => edit(i, { term: e.target.value })}
+            onBlur={() => commit(rows)}
+            onKeyDown={(e) => onEnter(e, () => e.currentTarget.blur())}
+          />
+          <input
+            className="settings-input mishears"
+            value={row.mishears}
+            placeholder="mis-heard as… (comma-separated)"
+            aria-label="Mis-hearings"
+            onChange={(e) => edit(i, { mishears: e.target.value })}
+            onBlur={() => commit(rows)}
+            onKeyDown={(e) => onEnter(e, () => e.currentTarget.blur())}
+          />
+          <button
+            type="button"
+            className="ghost danger"
+            title="Remove"
+            onClick={() => remove(i)}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <div className="settings-dict-row">
+        <input
+          className="settings-input term"
+          value={draft.term}
+          placeholder="Tauri"
+          aria-label="New dictionary term"
+          onChange={(e) => setDraft((d) => ({ ...d, term: e.target.value }))}
+          onKeyDown={(e) => onEnter(e, addDraft)}
+        />
+        <input
+          className="settings-input mishears"
+          value={draft.mishears}
+          placeholder="towery, tory"
+          aria-label="New term's mis-hearings"
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, mishears: e.target.value }))
+          }
+          onKeyDown={(e) => onEnter(e, addDraft)}
+        />
+        <button
+          type="button"
+          className="ghost"
+          title="Add term"
+          onClick={addDraft}
+          disabled={!draft.term.trim()}
+        >
+          Add
+        </button>
+      </div>
     </div>
   );
 }
@@ -323,6 +440,8 @@ export function SettingsPane({
   hotkeysOverride,
   audioOverride,
   setAudioDevice,
+  dictionaryOverride,
+  setDictionary,
   claude,
   setClaudeEnabled,
   models,
@@ -507,6 +626,18 @@ export function SettingsPane({
               Takes effect on the next recording.
             </span>
           </div>
+        </div>
+        <div className="settings-subrow">
+          <div className="settings-sublabel">Dictionary</div>
+          <DictionaryEditor
+            dictionary={dictionaryOverride}
+            onChange={setDictionary}
+          />
+          <span className="settings-hint">
+            Terms nudge the transcriber toward the right spelling; mis-hearings
+            are replaced after transcription (whole words, any case). Applies to
+            the next recording.
+          </span>
         </div>
       </section>
 

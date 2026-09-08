@@ -17,6 +17,10 @@ set -euo pipefail
 
 # ---------- CONFIG ----------
 INBOX="$HOME/notes/inbox.md"
+# Sideline's app config; the ONLY key this script reads is `dictionary`
+# (transcription vocabulary, shared with the in-app recorder — see
+# docs/data-model.md). Missing file / no jq = built-in vocabulary only.
+SIDELINE_CONFIG="$HOME/notes/.sideline.json"
 MODEL="$HOME/.whisper-models/ggml-base.en.bin"   # see README for download
 WHISPER_BIN="$(command -v whisper-cli || echo /opt/homebrew/bin/whisper-cli)"
 FFMPEG_BIN="$(command -v ffmpeg || echo /opt/homebrew/bin/ffmpeg)"
@@ -51,11 +55,28 @@ if [ -f "$PIDFILE" ]; then
     exit 1
   fi
 
+  # User dictionary from .sideline.json: one TSV line per term —
+  # `term<TAB>mishear<TAB>mishear…` (a term may have no mis-hearings). Terms
+  # are appended to whisper's --prompt to bias spelling; mis-hearings become
+  # the correction pass below. Same tolerance as the in-app reader: a
+  # missing/malformed file or key just means an empty dictionary.
+  DICT_TSV=""
+  if [ -f "$SIDELINE_CONFIG" ] && command -v jq >/dev/null 2>&1; then
+    DICT_TSV=$(jq -r '(.dictionary // {}) | to_entries[]
+      | select(.key | test("\\S"))
+      | [.key] + [.value[]? | strings | select(test("\\S"))]
+      | @tsv' "$SIDELINE_CONFIG" 2>/dev/null || true)
+  fi
+  PROMPT="Claude, Claude Code, Sideline, Raycast, Tauri, triage, inbox"
+  if [ -n "$DICT_TSV" ]; then
+    PROMPT="$PROMPT, $(printf '%s\n' "$DICT_TSV" | cut -f1 | paste -sd, - | sed 's/,/, /g')"
+  fi
+
   # grep -v exits 1 when it filters out every line (i.e. transcription came
   # back blank) — that's an expected outcome here, not a failure; the empty
   # check right below is what reports it.
   TEXT=$("$WHISPER_BIN" -m "$MODEL" -f "$AUDIO" -nt -np \
-    --prompt "Claude, Claude Code, Sideline, Raycast, Tauri, triage, inbox" 2>/dev/null \
+    --prompt "$PROMPT" 2>/dev/null \
     | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' || true)
 
   if [ -z "$TEXT" ]; then
@@ -65,10 +86,23 @@ if [ -f "$PIDFILE" ]; then
 
   # Whisper often mis-hears "Claude" as "clod"/"claw(ed)"/"clawd"/"clode".
   # Fix only safe, unambiguous patterns; leave real words ("claw", "clawed"
-  # on their own) untouched.
-  TEXT=$(echo "$TEXT" | perl -pe '
+  # on their own) untouched. Then the user dictionary: each term's
+  # mis-hearings → the term, whole words, case-insensitive, literal
+  # (quotemeta), interior whitespace matching any spacing. The TSV goes in
+  # via the environment so no user text is ever interpolated into the perl
+  # source.
+  TEXT=$(echo "$TEXT" | SIDELINE_DICT="$DICT_TSV" perl -pe '
+    BEGIN {
+      for (split /\n/, $ENV{SIDELINE_DICT} // "") {
+        my ($term, @mis) = split /\t/;
+        next unless defined $term && @mis;
+        my $alt = join "|", map { join "\\s+", map { quotemeta } split " " } @mis;
+        push @rules, [qr/\b(?:$alt)\b/i, $term];
+      }
+    }
     s/\b(?:clod|claw|clawed|clawd|clode)\s+code\b/Claude Code/gi;
     s/\b(?:clod|clawd|clode)\b/Claude/gi;
+    for my $r (@rules) { s/$r->[0]/$r->[1]/g; }
   ')
 
   {

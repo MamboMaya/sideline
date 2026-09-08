@@ -37,6 +37,10 @@ import type { DispatchableKeyEvent, KeyContext } from "./types";
 //      and nothing else is a shortcut with a modifier held. Shift is NOT a
 //      modifier here: `?` and `T` are shifted keys.
 //   3. Global keys first, then the active view's map.
+// ⌘= / ⌘+ / ⌘− / ⌘0 — the commandKeymap entries dispatchKey lets through
+// its Settings gate (see the settingsOpen branch below).
+const ZOOM_KEYS = new Set(["=", "+", "-", "0"]);
+
 export function dispatchKey(e: DispatchableKeyEvent, ctx: KeyContext): void {
   const target = e.target as HTMLElement | null;
   const inField = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
@@ -54,6 +58,15 @@ export function dispatchKey(e: DispatchableKeyEvent, ctx: KeyContext): void {
     if (e.key === "Escape" && !inField) {
       e.preventDefault();
       ctx.closeSettings();
+      return;
+    }
+    // Zoom is the one ⌘ binding that still fires inside Settings — the
+    // pane's own Zoom section is at the very bottom, and a too-large zoom
+    // is exactly when you most need the shortcut to reach it. Everything
+    // else in commandKeymap (view switch, undo) stays gated.
+    if (e.metaKey && !e.ctrlKey && !e.altKey && ZOOM_KEYS.has(e.key)) {
+      e.preventDefault();
+      commandKeymap[e.key]?.run(ctx, e);
     }
     return;
   }

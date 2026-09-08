@@ -87,11 +87,13 @@ export default function App() {
     promptsOverride,
     modelsOverride,
     audioOverride,
+    dictionaryOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
     setClaudeEnabled,
     setAudioDevice,
+    setDictionary,
     addProject,
     removeProject,
     updateConfig,
@@ -438,6 +440,8 @@ export default function App() {
           hotkeysOverride={hotkeysOverride}
           audioOverride={audioOverride}
           setAudioDevice={setAudioDevice}
+          dictionaryOverride={dictionaryOverride}
+          setDictionary={setDictionary}
           claude={claude}
           setClaudeEnabled={setClaudeEnabled}
           models={models}

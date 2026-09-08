@@ -6,6 +6,23 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Transcription dictionary** (Settings → Voice → Dictionary, or
+  `dictionary` in `.sideline.json`): teach the transcriber your project
+  vocabulary. One row per term with the ways it gets mis-heard — terms bias
+  whisper toward the right spelling, mis-hearings are corrected after
+  transcription (whole words, any case). Applies to the next recording, no
+  restart; the Raycast capture script reads the same list.
+
+### Fixed
+
+- At any zoom other than 100%, the bottom of the popover was cut off (the
+  last inbox card, Settings' Zoom section) — WebKit scales `100vh` by the
+  zoom. The app now sizes itself against the real window height.
+- ⌘+ / ⌘− / ⌘0 now work while Settings is open, so a too-large zoom can be
+  undone without scrolling to the Zoom section.
+
 ## [0.2.0] - 2026-08-13
 
 ### Added

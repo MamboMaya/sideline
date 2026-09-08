@@ -14,6 +14,9 @@ import {
   projectTagsFrom,
   projectsAdd,
   projectsRemove,
+  dictionaryFromRows,
+  dictionaryRows,
+  splitMishears,
   type SidelineConfig,
 } from "./config";
 
@@ -31,6 +34,7 @@ const DEFAULTS: SidelineConfig = {
   zoom: 1,
   audioOverride: undefined,
   hotkeysOverride: undefined,
+  dictionaryOverride: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -71,6 +75,7 @@ describe("parseConfig — full valid config", () => {
       zoom: 1.2,
       audio: { device: "AirPods" },
       hotkeys: { toggle: "alt+cmd+space", record: "alt+cmd+r" },
+      dictionary: { Tauri: ["towery"], Whisper: [] },
     });
     const cfg = parseConfig(raw);
     expect(cfg.pinnedTags).toEqual(["bug", "idea"]);
@@ -92,6 +97,124 @@ describe("parseConfig — full valid config", () => {
       toggle: "alt+cmd+space",
       record: "alt+cmd+r",
     });
+    expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — dictionary
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — dictionary", () => {
+  test("drops non-string mis-hearings, blank terms; non-array value = no mis-hearings", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        dictionary: {
+          Tauri: ["towery", 3, "", null, "tory"],
+          "  ": ["x"],
+          Raycast: "ray cast",
+        },
+      }),
+    );
+    expect(cfg.dictionaryOverride).toEqual({
+      Tauri: ["towery", "tory"],
+      Raycast: [],
+    });
+  });
+
+  test("a non-object or empty dictionary is treated as absent", () => {
+    expect(
+      parseConfig(JSON.stringify({ dictionary: ["Tauri"] })).dictionaryOverride,
+    ).toBeUndefined();
+    expect(
+      parseConfig(JSON.stringify({ dictionary: "Tauri" })).dictionaryOverride,
+    ).toBeUndefined();
+    expect(
+      parseConfig(JSON.stringify({ dictionary: {} })).dictionaryOverride,
+    ).toBeUndefined();
+  });
+
+  test("serializeConfig writes dictionary last and omits it when unset", () => {
+    const base = {
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: {
+        prompts: undefined,
+        models: undefined,
+        projects: undefined,
+        claude: undefined,
+        audio: undefined,
+        hotkeys: { toggle: "alt+cmd+space" },
+        dictionary: undefined,
+      },
+    };
+    expect(JSON.parse(serializeConfig(base))).toEqual({
+      pinnedTags: [],
+      hotkeys: { toggle: "alt+cmd+space" },
+    });
+    const withDict = serializeConfig({
+      ...base,
+      overrides: { ...base.overrides, dictionary: { Tauri: ["towery"] } },
+    });
+    expect(Object.keys(JSON.parse(withDict))).toEqual([
+      "pinnedTags",
+      "hotkeys",
+      "dictionary",
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dictionaryRows / dictionaryFromRows / splitMishears — the Settings editor
+// ---------------------------------------------------------------------------
+
+describe("splitMishears", () => {
+  test("splits on commas, trims, drops blanks and duplicates", () => {
+    expect(splitMishears(" towery, tory ,, towery,")).toEqual([
+      "towery",
+      "tory",
+    ]);
+    expect(splitMishears("")).toEqual([]);
+  });
+});
+
+describe("dictionaryFromRows", () => {
+  test("builds the map, skipping blank terms and merging duplicate terms", () => {
+    expect(
+      dictionaryFromRows([
+        { term: " Tauri ", mishears: "towery, tory" },
+        { term: "", mishears: "orphan" },
+        { term: "Raycast", mishears: "ray cast" },
+        { term: "Tauri", mishears: "tory, taury" },
+        { term: "Whisper", mishears: "" },
+      ]),
+    ).toEqual({
+      Tauri: ["towery", "tory", "taury"],
+      Raycast: ["ray cast"],
+      Whisper: [],
+    });
+  });
+
+  test("no usable rows yields undefined so the key is omitted", () => {
+    expect(dictionaryFromRows([])).toBeUndefined();
+    expect(dictionaryFromRows([{ term: "  ", mishears: "x" }])).toBeUndefined();
+  });
+});
+
+describe("dictionaryRows", () => {
+  test("round-trips through dictionaryFromRows", () => {
+    const dict = { Tauri: ["towery", "tory"], Whisper: [] };
+    const rows = dictionaryRows(dict);
+    expect(rows).toEqual([
+      { term: "Tauri", mishears: "towery, tory" },
+      { term: "Whisper", mishears: "" },
+    ]);
+    expect(dictionaryFromRows(rows)).toEqual(dict);
+  });
+
+  test("undefined yields no rows", () => {
+    expect(dictionaryRows(undefined)).toEqual([]);
   });
 });
 
@@ -278,6 +401,7 @@ const noOverrides = {
   claude: undefined,
   audio: undefined,
   hotkeys: undefined,
+  dictionary: undefined,
 };
 
 describe("serializeConfig", () => {
@@ -340,6 +464,7 @@ describe("serializeConfig", () => {
         claude: false,
         audio: { device: "AirPods" },
         hotkeys: { toggle: "alt+cmd+space" },
+        dictionary: undefined,
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -426,6 +551,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           claude: cfg.claudeOverride,
           audio: cfg.audioOverride,
           hotkeys: cfg.hotkeysOverride,
+          dictionary: undefined,
         },
       }),
     );

@@ -6,6 +6,7 @@ import {
   DEFAULT_MODELS,
   type ProjectsConfig,
   type HotkeysConfig,
+  type DictionaryConfig,
   type SidelineConfig,
   type ConfigOverrides,
   mergeModels,
@@ -80,11 +81,17 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [hotkeysOverride, setHotkeysOverride] = useState<
     HotkeysConfig | undefined
   >(undefined);
+  // Raw `dictionary` object from .sideline.json (transcription vocabulary:
+  // term → mis-hearings; whisper.rs reads the file itself on every
+  // transcription, so this is edit-and-persist only — see setDictionary).
+  const [dictionaryOverride, setDictionaryOverride] = useState<
+    DictionaryConfig | undefined
+  >(undefined);
 
-  // The 6 opaque `.sideline.json` overrides, read from current state —
+  // The 7 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
-  // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys
-  // value.
+  // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
+  // dictionary value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -92,6 +99,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     claude: claudeOverride,
     audio: audioOverride,
     hotkeys: hotkeysOverride,
+    dictionary: dictionaryOverride,
   });
 
   const persistZoom = (next: number) => {
@@ -123,6 +131,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     claude?: boolean | undefined;
     audio?: unknown;
     hotkeys?: HotkeysConfig | undefined;
+    dictionary?: DictionaryConfig | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
     const nextHidden = patch.hiddenTags ?? hiddenTags;
@@ -138,6 +147,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     const nextAudioOverride = "audio" in patch ? patch.audio : audioOverride;
     const nextHotkeysOverride =
       "hotkeys" in patch ? patch.hotkeys : hotkeysOverride;
+    const nextDictionaryOverride =
+      "dictionary" in patch ? patch.dictionary : dictionaryOverride;
 
     setPinnedTags(nextPinned);
     setHiddenTags(nextHidden);
@@ -152,6 +163,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setClaude(nextClaudeOverride ?? true);
     setAudioOverride(nextAudioOverride);
     setHotkeysOverride(nextHotkeysOverride);
+    setDictionaryOverride(nextDictionaryOverride);
 
     await writeConfig({
       pinnedTags: nextPinned,
@@ -164,8 +176,17 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         claude: nextClaudeOverride,
         audio: nextAudioOverride,
         hotkeys: nextHotkeysOverride,
+        dictionary: nextDictionaryOverride,
       },
     });
+  };
+
+  // The Voice section's dictionary editor (SettingsPane's DictionaryEditor)
+  // hands over the already-built map — undefined once the last row is
+  // removed, so the key is omitted entirely, same omit-at-default
+  // convention as every other override.
+  const setDictionary = (dict: DictionaryConfig | undefined) => {
+    updateConfig({ dictionary: dict });
   };
 
   // Un-hides a tag (Settings' Tags section ✕ on a hiddenTags chip) — the
@@ -255,6 +276,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setZoom(config.zoom);
     setAudioOverride(config.audioOverride);
     setHotkeysOverride(config.hotkeysOverride);
+    setDictionaryOverride(config.dictionaryOverride);
   };
 
   const persistPinnedTags = async (next: string[]) => {
@@ -333,11 +355,13 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     projectsOverride,
     claudeOverride,
     audioOverride,
+    dictionaryOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
     setClaudeEnabled,
     setAudioDevice,
+    setDictionary,
     addProject,
     removeProject,
     updateConfig,

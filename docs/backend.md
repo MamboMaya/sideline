@@ -215,10 +215,17 @@ state, `.part` file then rename, `capture-error` on network failure), then
 loaded once into a `OnceLock<WhisperContext>` and reused for every
 subsequent recording. `FullParams` greedy, English, no timestamps,
 `set_initial_prompt` biased toward "Claude, Claude Code, Sideline, Raycast,
-Tauri, triage, inbox". Output runs through the same Claude mis-hear
-correction regexes as capture/voice-note.sh's perl pass (`clod`/`claw(ed)`/
-`clawd`/`clode` → `Claude`/`Claude Code`) before `whisper::transcribe`
-returns — this runs for BOTH modes, so `audio::finish_recording` branches
+Tauri, triage, inbox" plus every term of the user's `dictionary` from
+`~/notes/.sideline.json` (`load_dictionary`, re-read on every
+transcription — same failure tolerance as audio.rs's device read: missing/
+malformed = empty; whisper's prompt window is ~224 tokens, plenty for a few
+dozen terms). Output runs through the same Claude mis-hear correction
+regexes as capture/voice-note.sh's perl pass (`clod`/`claw(ed)`/`clawd`/
+`clode` → `Claude`/`Claude Code`), then the dictionary's corrections
+(`build_corrections`: per term, one `(?i)\b(?:…)\b` alternation of its
+regex-escaped mis-hearings, interior whitespace → `\s+`; a term with no
+mis-hearings only biases the prompt) before `whisper::transcribe` returns —
+this runs for BOTH modes, so `audio::finish_recording` branches
 purely on destination: `RecMode::Note` appends via `append_inbox_text` as
 before; `RecMode::Dictate` hands the corrected text to
 `dictate::finish_dictation` and never touches inbox.md.

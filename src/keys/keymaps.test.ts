@@ -298,6 +298,24 @@ describe("dispatchKey — Settings gate", () => {
     expect(ctx.closeSettings).not.toHaveBeenCalled();
   });
 
+  it("lets ⌘= / ⌘+ / ⌘− / ⌘0 zoom through the gate, even from a field, but not ⌘1/⌘2", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    const e = press("=", ctx, { metaKey: true, tagName: "INPUT" });
+    press("+", ctx, { metaKey: true });
+    press("-", ctx, { metaKey: true });
+    press("0", ctx, { metaKey: true });
+    press("1", ctx, { metaKey: true });
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect((ctx.adjustZoom as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+      [0.1],
+      [0.1],
+      [-0.1],
+      [0],
+    ]);
+    expect(ctx.setView).not.toHaveBeenCalled();
+    expect(ctx.closeSettings).not.toHaveBeenCalled();
+  });
+
   it("closes Settings on Escape when focus is outside a field", () => {
     const ctx = makeCtx({ settingsOpen: true });
     const e = press("Escape", ctx, { tagName: "DIV" });

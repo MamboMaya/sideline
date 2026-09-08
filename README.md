@@ -33,6 +33,10 @@ triage calls.
   Auto-paste needs the Accessibility permission (asked once, on first
   use); without it, the transcript still lands on the clipboard for a
   manual ⌘V.
+- **Dictionary**: teach the transcriber your vocabulary (Settings → Voice).
+  One row per term with the ways it gets mis-heard — terms bias Whisper
+  toward the right spelling, and mis-hearings are corrected after
+  transcription.
 - **Live inbox**: the popover (⌥⌘Space) shows every note the second it lands.
   Quick tags (`#bug` `#todo` `#idea`), pinned custom tags, and `@project` tags
   with keyboard-first triage.
