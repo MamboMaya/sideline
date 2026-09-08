@@ -17,6 +17,12 @@ Notable, user-visible changes to Sideline. Format follows
 - **Link capture** (Raycast `capture/link-note.sh`): appends the frontmost
   Chrome tab as a 🔗 entry (title + URL) to the inbox.
 
+### Changed
+
+- The recording pill now shows a **Capture** badge in orange for voice
+  notes, matching the dictate pill's layout, so the two modes read the
+  same way at a glance.
+
 ### Fixed
 
 - At any zoom other than 100%, the bottom of the popover was cut off (the

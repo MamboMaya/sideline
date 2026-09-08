@@ -26,11 +26,17 @@ export default function Overlay() {
         dictating ? "overlay-pill overlay-pill-dictate" : "overlay-pill"
       }
     >
-      {/* The badge answers "where are these words going?", which only
-          matters while they're still in flight — the terminal clipboard
-          notice below answers it outright, so the badge steps aside. */}
-      {dictating && recState !== "copied" && (
-        <span className="rec-mode-badge">Dictate</span>
+      {/* Names the mode at a glance — "Capture" (orange) vs "Dictate"
+          (blue, via .overlay-pill-dictate) — same layout for both so the
+          two pills read the same way. For dictation the badge also answers
+          "where are these words going?", which only matters while they're
+          still in flight — the terminal clipboard notice below answers it
+          outright, so the badge steps aside there; capture has no such
+          terminal state, so its badge just stays up throughout. */}
+      {recState !== "copied" && (
+        <span className="rec-mode-badge">
+          {dictating ? "Dictate" : "Capture"}
+        </span>
       )}
       {recState === "recording" && (
         <>

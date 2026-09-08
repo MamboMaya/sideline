@@ -66,14 +66,20 @@ body.overlay {
   user-select: none;
 }
 /* Dictation mode: transcript goes to the clipboard/frontmost app, never the
-   inbox — an inset ring in the project-tag blue plus a "Dictate" badge
-   tells it apart from the normal (red) REC pill at a glance. */
+   inbox — an inset ring in the project-tag blue plus a blue "Dictate" badge
+   (overridden below) tells it apart from the normal (red) REC pill at a
+   glance. */
 .overlay-pill-dictate {
   box-shadow: inset 0 0 0 1.5px var(--project);
 }
+/* Default (capture pill): "Capture" in the app's orange accent. */
 .rec-mode-badge {
-  color: var(--project);
+  color: var(--accent);
   font-weight: 600;
+}
+/* Dictate pill overrides to the same blue as its ring. */
+.overlay-pill-dictate .rec-mode-badge {
+  color: var(--project);
 }
 header {
   display: flex;
