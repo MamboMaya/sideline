@@ -349,10 +349,7 @@ mod tests {
     #[test]
     fn prompt_appends_every_term_after_the_builtins() {
         let d = dict(r#"{"dictionary": {"Tauri": ["towery"], "Whisper": []}}"#);
-        assert_eq!(
-            build_prompt(&d),
-            format!("{VOCAB_PROMPT}, Tauri, Whisper")
-        );
+        assert_eq!(build_prompt(&d), format!("{VOCAB_PROMPT}, Tauri, Whisper"));
         assert_eq!(build_prompt(&[]), VOCAB_PROMPT);
     }
 
