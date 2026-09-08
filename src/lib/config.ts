@@ -220,6 +220,28 @@ export function dictionaryFromRows(
   return Object.keys(out).length ? out : undefined;
 }
 
+// Add-to-dictionary bar (EditArea.tsx): adds a mis-heard word straight from
+// a note's edit textarea. Adds `term` if it's new; appends `mishear` to its
+// mis-hearings list unless it's already there (case-insensitive) or unless
+// it equals `term` case-insensitively — a mishear that's really just the
+// term retyped adds the term with no new mis-hearing to record. Existing
+// entries keep their position (only `term`'s own value ever changes).
+export function addToDictionary(
+  dict: DictionaryConfig | undefined,
+  term: string,
+  mishear: string,
+): DictionaryConfig {
+  const prev = dict?.[term] ?? [];
+  const isTermItself = mishear.toLowerCase() === term.toLowerCase();
+  const alreadyKnown = prev.some(
+    (m) => m.toLowerCase() === mishear.toLowerCase(),
+  );
+  return {
+    ...(dict ?? {}),
+    [term]: isTermItself || alreadyKnown ? prev : [...prev, mishear],
+  };
+}
+
 // Everything loadConfig produces from `.sideline.json` — one field per
 // App.tsx config state slice, including the 8 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,

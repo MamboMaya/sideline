@@ -19,6 +19,9 @@ Notable, user-visible changes to Sideline. Format follows
 - **Hide the recording pill** (Settings → Voice → Show recording pill): turn
   the on-screen pill off, e.g. while screen sharing; the tray 🔴 REC timer
   still shows.
+- **Add to dictionary from a note**: select a mis-heard word while editing a
+  note and a bar offers to add it to the transcription dictionary with the
+  right spelling, fixing the note at the same time.
 
 ### Changed
 

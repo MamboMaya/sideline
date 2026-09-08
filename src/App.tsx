@@ -9,6 +9,7 @@ import {
   todoRowDisplay,
 } from "./inbox";
 import { QUICK_TAGS, tagLabel } from "./lib/format";
+import { addToDictionary } from "./lib/config";
 import { appendToArchive } from "./lib/archive";
 import {
   readTriaged,
@@ -340,6 +341,23 @@ export default function App() {
     dismissToast,
   });
 
+  // Add-to-dictionary bar (EditArea's inline "Add “x” to dictionary as"
+  // bar, shown on a short single-line selection while editing a note):
+  // builds the new dictionary via the pure addToDictionary helper and
+  // persists it through useConfig's existing setDictionary — EditArea
+  // itself only owns the selection UI and the draft-text fixup.
+  const onAddToDictionary = (term: string, mishear: string) => {
+    const prevMishears = dictionaryOverride?.[term] ?? [];
+    const recorded =
+      mishear.toLowerCase() !== term.toLowerCase() &&
+      !prevMishears.some((m) => m.toLowerCase() === mishear.toLowerCase());
+    setDictionary(addToDictionary(dictionaryOverride, term, mishear));
+    showToast(
+      `Added “${term}” to the dictionary` +
+        (recorded ? ` (mis-heard as “${mishear}”)` : ""),
+    );
+  };
+
   // Shared textarea instance for all three row kinds — whichever card's
   // `isEditing` is currently true renders this same element.
   const editArea = (
@@ -349,6 +367,7 @@ export default function App() {
       editCancelRef={editCancelRef}
       onCancel={cancelEdit}
       onSave={saveEdit}
+      onAddToDictionary={onAddToDictionary}
     />
   );
 

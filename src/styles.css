@@ -466,6 +466,33 @@ header .ghost.gear {
   outline: none;
   margin-bottom: 6px;
 }
+/* Add-to-dictionary bar (EditArea.tsx): shown under the textarea while a
+   short, single-line selection is active inside it. Static flow, not
+   absolutely positioned, so it's a real one-line layout addition — no
+   overlay, no jump beyond its own height. */
+.dict-add-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.dict-add-bar-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dict-add-bar-input {
+  flex: 1;
+  min-width: 60px;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.dict-add-bar-btn {
+  font-size: 11px;
+  white-space: nowrap;
+}
 .todo-glyph {
   font-size: 13px;
   background: none;

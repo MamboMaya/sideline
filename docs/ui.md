@@ -136,7 +136,9 @@ untouched. Five sections, one scrollable pane:
    `src/lib/config.ts` (blank terms skipped, duplicate terms merged);
    removing the last row removes the key. Whisper re-reads the file per
    transcription, so it applies to the next recording, no restart (see
-   docs/data-model.md). Below that, a **Show recording pill** on/off toggle
+   docs/data-model.md). A term can also be added straight from a note —
+   see the add-to-dictionary bar in the Todos view section's `e` (edit)
+   entry below. Below that, a **Show recording pill** on/off toggle
    for `overlay.hidden` (On is default): Off hides the on-screen pill, e.g.
    while screen sharing — the tray's 🔴 REC timer still shows. window.rs
    reads the key fresh on every recording-state transition, so toggling it
@@ -333,7 +335,21 @@ reply are preserved): textarea saves on Enter/⌘Enter/blur (Shift+Enter
 inserts a newline), cancels on Esc, empty text is a no-op, every save gets an
 Edited toast with undo. Undo is `u` or `⌘Z`; the last undoable action is
 retained for 2 minutes past its toast (replaced by the next action, cleared
-once run).
+once run). Selecting text inside the edit textarea (mouse or keyboard) — a
+non-empty, single-line selection ≤40 characters after trimming — shows a
+compact bar right under it: `Add "<selection>" to dictionary as` a term
+input (prefilled with the selection) and an Add button. The field does NOT
+take focus automatically — the textarea stays focused while selecting, so
+selecting text never ends the edit; Tab or click into the field to edit it.
+Save/cancel-on-blur only fires once focus leaves the textarea AND the bar
+entirely — moving focus between the textarea and the bar's input/button
+never saves or cancels. Add (button or Enter) adds the typed term to the
+transcription dictionary — with the selection recorded as a mis-hearing of
+it, unless the two are the same word — and replaces the selected text in
+the draft with the term, so the note gets fixed too; the edit continues
+normally (save/cancel as usual). The bar disappears when the selection
+collapses, on Esc in its own input (focus returns to the textarea without
+cancelling the edit), or once Add runs.
 
 In Todos, `←` collapses the selected row's section — the header becomes the
 nav row (amber inset when selected); `→`/`Enter`/click re-expands; collapse

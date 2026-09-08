@@ -17,6 +17,7 @@ import {
   dictionaryFromRows,
   dictionaryRows,
   splitMishears,
+  addToDictionary,
   type SidelineConfig,
 } from "./config";
 
@@ -219,6 +220,53 @@ describe("dictionaryRows", () => {
 
   test("undefined yields no rows", () => {
     expect(dictionaryRows(undefined)).toEqual([]);
+  });
+});
+
+describe("addToDictionary", () => {
+  test("new term with no prior dictionary", () => {
+    expect(addToDictionary(undefined, "Tauri", "towery")).toEqual({
+      Tauri: ["towery"],
+    });
+  });
+
+  test("existing term gets a new mis-hearing appended", () => {
+    const dict = { Tauri: ["towery"], Whisper: [] };
+    expect(addToDictionary(dict, "Tauri", "tory")).toEqual({
+      Tauri: ["towery", "tory"],
+      Whisper: [],
+    });
+  });
+
+  test("duplicate mis-hearing (any case) is not added again", () => {
+    const dict = { Tauri: ["towery"] };
+    expect(addToDictionary(dict, "Tauri", "TOWERY")).toEqual({
+      Tauri: ["towery"],
+    });
+  });
+
+  test("mishear equal to term (any case) adds the term with no new mis-hearing", () => {
+    expect(addToDictionary(undefined, "Raycast", "raycast")).toEqual({
+      Raycast: [],
+    });
+    const dict = { Raycast: ["ray cast"] };
+    expect(addToDictionary(dict, "Raycast", "RAYCAST")).toEqual({
+      Raycast: ["ray cast"],
+    });
+  });
+
+  test("existing entries preserved in order", () => {
+    const dict = { Raycast: ["ray cast"], Tauri: ["towery"] };
+    expect(addToDictionary(dict, "Whisper", "wisper")).toEqual({
+      Raycast: ["ray cast"],
+      Tauri: ["towery"],
+      Whisper: ["wisper"],
+    });
+    expect(Object.keys(addToDictionary(dict, "Whisper", "wisper"))).toEqual([
+      "Raycast",
+      "Tauri",
+      "Whisper",
+    ]);
   });
 });
 
