@@ -34,6 +34,7 @@ const DEFAULTS: SidelineConfig = {
   zoom: 1,
   audioOverride: undefined,
   hotkeysOverride: undefined,
+  overlayOverride: undefined,
   dictionaryOverride: undefined,
 };
 
@@ -75,6 +76,7 @@ describe("parseConfig — full valid config", () => {
       zoom: 1.2,
       audio: { device: "AirPods" },
       hotkeys: { toggle: "alt+cmd+space", record: "alt+cmd+r" },
+      overlay: { hidden: true },
       dictionary: { Tauri: ["towery"], Whisper: [] },
     });
     const cfg = parseConfig(raw);
@@ -97,6 +99,7 @@ describe("parseConfig — full valid config", () => {
       toggle: "alt+cmd+space",
       record: "alt+cmd+r",
     });
+    expect(cfg.overlayOverride).toEqual({ hidden: true });
     expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
   });
 });
@@ -146,6 +149,7 @@ describe("parseConfig — dictionary", () => {
         claude: undefined,
         audio: undefined,
         hotkeys: { toggle: "alt+cmd+space" },
+        overlay: undefined,
         dictionary: undefined,
       },
     };
@@ -401,6 +405,7 @@ const noOverrides = {
   claude: undefined,
   audio: undefined,
   hotkeys: undefined,
+  overlay: undefined,
   dictionary: undefined,
 };
 
@@ -464,6 +469,7 @@ describe("serializeConfig", () => {
         claude: false,
         audio: { device: "AirPods" },
         hotkeys: { toggle: "alt+cmd+space" },
+        overlay: undefined,
         dictionary: undefined,
       },
     });
@@ -477,6 +483,26 @@ describe("serializeConfig", () => {
       "zoom",
       "audio",
       "hotkeys",
+    ]);
+  });
+
+  test("overlay lands between hotkeys and dictionary when both are present", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: {
+        ...noOverrides,
+        hotkeys: { toggle: "alt+cmd+space" },
+        overlay: { hidden: true },
+        dictionary: { Tauri: ["towery"] },
+      },
+    });
+    expect(Object.keys(JSON.parse(out))).toEqual([
+      "pinnedTags",
+      "hotkeys",
+      "overlay",
+      "dictionary",
     ]);
   });
 
@@ -551,6 +577,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           claude: cfg.claudeOverride,
           audio: cfg.audioOverride,
           hotkeys: cfg.hotkeysOverride,
+          overlay: cfg.overlayOverride,
           dictionary: undefined,
         },
       }),

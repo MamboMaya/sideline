@@ -72,7 +72,14 @@
   (the gear button in the header), which additionally calls the
   `apply_hotkeys` command to swap the OS-level registration live, no
   restart needed (see docs/backend.md); a hand-edit to this file directly
-  still only takes effect on next launch. Also optional `"dictionary":
+  still only takes effect on next launch. Also optional `"overlay": {
+"hidden": true }` (default `false`) — hides the recording-pill overlay
+  entirely (Settings → Voice → "Show recording pill"), e.g. while screen
+  sharing; the tray's 🔴 REC timer still shows either way. Unlike `hotkeys`,
+  this is read Rust-side by window.rs's `sync_overlay` fresh on EVERY
+  recording-state transition (see docs/backend.md), so a Settings toggle —
+  or a hand-edit — applies immediately, including hiding an
+  already-visible pill mid-recording; no restart. Also optional `"dictionary":
 { "Tauri": ["towery", "tory"], "Raycast": ["ray cast"], "Whisper": [] }`
   — the transcription vocabulary, correctly-spelled term → the ways whisper
   mis-hears it (may be empty). Every term is appended to whisper's
@@ -86,10 +93,11 @@
   schema (the `audio` key is read/written Rust-side by audio.rs, `hotkeys`
   is read-only Rust-side at startup by lib.rs — the Settings pane's
   live-apply path is the one exception, reading it only via the frontend's
-  already-loaded config state, never re-reading the file itself;
-  `dictionary` is read-only Rust-side by whisper.rs — everything else by
-  src/App.tsx); the ONLY key a capture/ script reads is `dictionary`
-  (voice-note.sh, read-only) — none writes the file.
+  already-loaded config state, never re-reading the file itself; `overlay`
+  is read-only Rust-side by window.rs, on every sync rather than once at
+  startup; `dictionary` is read-only Rust-side by whisper.rs — everything
+  else by src/App.tsx); the ONLY key a capture/ script reads is
+  `dictionary` (voice-note.sh, read-only) — none writes the file.
 
 - **`~/notes/todos/<project>.md`** — todo entries routed from triage, one
   file per project tag (`project` IS the tag — no repo path involved).

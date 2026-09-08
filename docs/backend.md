@@ -180,7 +180,13 @@ no decorations, always-on-top, `focusable: false`) bottom-center of the
 monitor holding the cursor (its bottom edge 20% up the screen, mirroring
 the popover's 20%-down top edge) while recording, keeps it up through
 transcribing/downloading and dictation's Copied notice, and hides it at
-idle. `focusable: false` is what
+idle — UNLESS `overlay.hidden` is `true` in `~/notes/.sideline.json`
+(Settings → Voice → "Show recording pill"), read fresh on every call
+(`window::overlay_hidden`, same failure-tolerant shape as
+`audio::configured_device_name` — missing/malformed file just means not
+hidden), in which case every non-Idle transition hides the window instead
+of showing it — so switching the toggle off hides an already-visible pill
+on the very next state change, not just future recordings. `focusable: false` is what
 makes showing it safe: tao's macOS `show()` is `makeKeyAndOrderFront`, so a
 focusable window steals keyboard focus every time it appears (which also
 closed the popover via hide-on-focus-loss); non-focusable means

@@ -16,6 +16,9 @@ Notable, user-visible changes to Sideline. Format follows
   restart; the Raycast capture script reads the same list.
 - **Link capture** (Raycast `capture/link-note.sh`): appends the frontmost
   Chrome tab as a 🔗 entry (title + URL) to the inbox.
+- **Hide the recording pill** (Settings → Voice → Show recording pill): turn
+  the on-screen pill off, e.g. while screen sharing; the tray 🔴 REC timer
+  still shows.
 
 ### Changed
 

@@ -81,6 +81,11 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [hotkeysOverride, setHotkeysOverride] = useState<
     HotkeysConfig | undefined
   >(undefined);
+  // Opaque passthrough for the `overlay` config key (e.g. `{ "hidden": true
+  // }`, see docs/data-model.md) — window.rs's sync_overlay reads the file
+  // itself on every recording-state transition, so this is edit-and-persist
+  // only, same shape as audioOverride — see setOverlayHidden.
+  const [overlayOverride, setOverlayOverride] = useState<unknown>(undefined);
   // Raw `dictionary` object from .sideline.json (transcription vocabulary:
   // term → mis-hearings; whisper.rs reads the file itself on every
   // transcription, so this is edit-and-persist only — see setDictionary).
@@ -88,10 +93,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     DictionaryConfig | undefined
   >(undefined);
 
-  // The 7 opaque `.sideline.json` overrides, read from current state —
+  // The 8 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // dictionary value.
+  // overlay/dictionary value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -99,6 +104,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     claude: claudeOverride,
     audio: audioOverride,
     hotkeys: hotkeysOverride,
+    overlay: overlayOverride,
     dictionary: dictionaryOverride,
   });
 
@@ -131,6 +137,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     claude?: boolean | undefined;
     audio?: unknown;
     hotkeys?: HotkeysConfig | undefined;
+    overlay?: unknown;
     dictionary?: DictionaryConfig | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
@@ -147,6 +154,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     const nextAudioOverride = "audio" in patch ? patch.audio : audioOverride;
     const nextHotkeysOverride =
       "hotkeys" in patch ? patch.hotkeys : hotkeysOverride;
+    const nextOverlayOverride =
+      "overlay" in patch ? patch.overlay : overlayOverride;
     const nextDictionaryOverride =
       "dictionary" in patch ? patch.dictionary : dictionaryOverride;
 
@@ -163,6 +172,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setClaude(nextClaudeOverride ?? true);
     setAudioOverride(nextAudioOverride);
     setHotkeysOverride(nextHotkeysOverride);
+    setOverlayOverride(nextOverlayOverride);
     setDictionaryOverride(nextDictionaryOverride);
 
     await writeConfig({
@@ -176,6 +186,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         claude: nextClaudeOverride,
         audio: nextAudioOverride,
         hotkeys: nextHotkeysOverride,
+        overlay: nextOverlayOverride,
         dictionary: nextDictionaryOverride,
       },
     });
@@ -245,6 +256,26 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     updateConfig({ audio: Object.keys(next).length ? next : undefined });
   };
 
+  // The Voice section's "Show recording pill" toggle. `hidden` false (the
+  // default) removes `overlay.hidden`; any OTHER key a hand-edit might have
+  // added under `overlay` is preserved (overlayOverride is opaque on
+  // purpose, same as audioOverride above), and the `overlay` object itself
+  // is dropped entirely once empty.
+  const setOverlayHidden = (hidden: boolean) => {
+    const base =
+      overlayOverride && typeof overlayOverride === "object"
+        ? (overlayOverride as Record<string, unknown>)
+        : {};
+    let next: Record<string, unknown>;
+    if (hidden) {
+      next = { ...base, hidden: true };
+    } else {
+      const { hidden: _omit, ...rest } = base;
+      next = rest;
+    }
+    updateConfig({ overlay: Object.keys(next).length ? next : undefined });
+  };
+
   // Settings' Tags section: add/remove a `projects` entry, preserving
   // whichever shape (array or legacy tag->path map) is already on disk —
   // see projectsAdd/projectsRemove in config.ts.
@@ -276,6 +307,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setZoom(config.zoom);
     setAudioOverride(config.audioOverride);
     setHotkeysOverride(config.hotkeysOverride);
+    setOverlayOverride(config.overlayOverride);
     setDictionaryOverride(config.dictionaryOverride);
   };
 
@@ -355,12 +387,14 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     projectsOverride,
     claudeOverride,
     audioOverride,
+    overlayOverride,
     dictionaryOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
     setClaudeEnabled,
     setAudioDevice,
+    setOverlayHidden,
     setDictionary,
     addProject,
     removeProject,

@@ -167,6 +167,27 @@ fn overlay_position(
     ))
 }
 
+/// Reads `overlay.hidden` from `~/notes/.sideline.json`, if present — same
+/// failure-tolerant shape as `audio::configured_device_name` (missing file,
+/// malformed JSON, or a non-bool/absent `hidden` all just mean "not
+/// hidden"). Read fresh on every `sync_overlay` call rather than cached, so
+/// toggling the Settings pane's "Show recording pill" switch takes effect
+/// immediately — unlike `hotkeys`, which is read once at startup.
+fn overlay_hidden() -> bool {
+    let p = crate::paths::notes_dir().join(".sideline.json");
+    let Ok(raw) = std::fs::read_to_string(p) else {
+        return false;
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    parsed
+        .get("overlay")
+        .and_then(|o| o.get("hidden"))
+        .and_then(|h| h.as_bool())
+        .unwrap_or(false)
+}
+
 /// Show/position/hide the recording-pill overlay to track the recorder
 /// state machine. Called from `audio::emit_state` — the same choke point
 /// that already emits the `recording-state` event and updates the tray
@@ -182,10 +203,19 @@ fn overlay_position(
 /// Never steals focus: `show()` alone (never `set_focus()`) on a window
 /// created with `focus: false` — see tauri.conf.json — leaves keyboard
 /// input wherever the user was typing.
+///
+/// `overlay.hidden` (Settings → Voice → "Show recording pill") suppresses
+/// every show below, falling through to `hide()` instead — so switching it
+/// off mid-recording hides an already-visible pill on the very next state
+/// change, not just future recordings.
 pub(crate) fn sync_overlay(app: &tauri::AppHandle, state: RecState) {
     let Some(win) = app.get_webview_window("overlay") else {
         return;
     };
+    if state != RecState::Idle && overlay_hidden() {
+        let _ = win.hide();
+        return;
+    }
     match state {
         RecState::Idle => {
             let _ = win.hide();

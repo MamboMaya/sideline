@@ -130,7 +130,12 @@ untouched. Five sections, one scrollable pane:
    `src/lib/config.ts` (blank terms skipped, duplicate terms merged);
    removing the last row removes the key. Whisper re-reads the file per
    transcription, so it applies to the next recording, no restart (see
-   docs/data-model.md).
+   docs/data-model.md). Below that, a **Show recording pill** on/off toggle
+   for `overlay.hidden` (On is default): Off hides the on-screen pill, e.g.
+   while screen sharing — the tray's 🔴 REC timer still shows. window.rs
+   reads the key fresh on every recording-state transition, so toggling it
+   mid-recording hides an already-visible pill immediately, no restart (see
+   docs/data-model.md, docs/backend.md).
 3. **Claude** — an on/off toggle for `claude` (default on; off is
    no-Claude mode, see the Triage section below), plus text inputs for
    `models.triage`/`models.batch` and textareas for `prompts.triage`/

@@ -24,6 +24,8 @@ export interface SettingsPaneProps {
   // Voice
   audioOverride: unknown;
   setAudioDevice: (device: string) => void;
+  overlayOverride: unknown;
+  setOverlayHidden: (hidden: boolean) => void;
   dictionaryOverride: DictionaryConfig | undefined;
   setDictionary: (dict: DictionaryConfig | undefined) => void;
   // Claude
@@ -103,6 +105,17 @@ function audioDeviceFrom(audioOverride: unknown): string {
     return typeof d === "string" ? d : "";
   }
   return "";
+}
+
+// Reads `.sideline.json`'s opaque `overlay.hidden` bool back out for the
+// pill toggle's current value — same narrowing shape as audioDeviceFrom
+// above (overlayOverride is intentionally typed `unknown` too).
+function overlayHiddenFrom(overlayOverride: unknown): boolean {
+  return (
+    !!overlayOverride &&
+    typeof overlayOverride === "object" &&
+    (overlayOverride as Record<string, unknown>).hidden === true
+  );
 }
 
 // A row of chips with a trailing text-input "add" affordance — pinned tags,
@@ -440,6 +453,8 @@ export function SettingsPane({
   hotkeysOverride,
   audioOverride,
   setAudioDevice,
+  overlayOverride,
+  setOverlayHidden,
   dictionaryOverride,
   setDictionary,
   claude,
@@ -553,6 +568,7 @@ export function SettingsPane({
       .catch(() => setDevices([]));
   }, []);
   const currentDevice = audioDeviceFrom(audioOverride);
+  const overlayHidden = overlayHiddenFrom(overlayOverride);
 
   return (
     <div className="settings">
@@ -638,6 +654,23 @@ export function SettingsPane({
             are replaced after transcription (whole words, any case). Applies to
             the next recording.
           </span>
+        </div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="overlay-toggle">
+            Show recording pill
+          </label>
+          <button
+            id="overlay-toggle"
+            type="button"
+            className={overlayHidden ? "ghost" : "ghost active"}
+            onClick={() => setOverlayHidden(!overlayHidden)}
+          >
+            {overlayHidden ? "Off" : "On"}
+          </button>
+        </div>
+        <div className="settings-hint">
+          Off hides the on-screen pill (e.g. while screen sharing); the tray
+          still shows 🔴 REC.
         </div>
       </section>
 

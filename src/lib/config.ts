@@ -155,6 +155,15 @@ export interface HotkeysConfig {
   dictate?: string;
 }
 
+// `.sideline.json`'s `overlay` field — `{ hidden: true }` hides the
+// recording-pill overlay entirely (Settings → Voice → "Show recording
+// pill"), e.g. while screen sharing; the tray's 🔴 REC timer still shows.
+// Read Rust-side by window.rs's `sync_overlay` on every recording-state
+// transition (not read once at startup like `hotkeys`), so toggling it
+// takes effect immediately, no restart. Opaque passthrough like `audio` —
+// no dedicated type, just whatever object is on disk — so an unrelated
+// hand-edited key under `overlay` survives a pin/zoom write.
+
 // `.sideline.json`'s `dictionary` field — the transcription vocabulary:
 // correctly-spelled term → the mis-hearings whisper produces for it (may be
 // empty; a bare term still biases whisper's initial prompt). Read Rust-side
@@ -212,10 +221,11 @@ export function dictionaryFromRows(
 }
 
 // Everything loadConfig produces from `.sideline.json` — one field per
-// App.tsx config state slice, including the 7 opaque per-key overrides
+// App.tsx config state slice, including the 8 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
-// audioOverride, hotkeysOverride, dictionaryOverride) kept around purely so
-// a pin/zoom/hide write doesn't clobber hand-edited config it didn't touch.
+// audioOverride, hotkeysOverride, overlayOverride, dictionaryOverride)
+// kept around purely so a pin/zoom/hide write doesn't clobber hand-edited
+// config it didn't touch.
 export interface SidelineConfig {
   pinnedTags: string[];
   hiddenTags: string[];
@@ -238,6 +248,7 @@ export interface SidelineConfig {
   zoom: number;
   audioOverride: unknown;
   hotkeysOverride: HotkeysConfig | undefined;
+  overlayOverride: unknown;
   dictionaryOverride: DictionaryConfig | undefined;
 }
 
@@ -255,6 +266,7 @@ const EMPTY_CONFIG: SidelineConfig = {
   zoom: 1,
   audioOverride: undefined,
   hotkeysOverride: undefined,
+  overlayOverride: undefined,
   dictionaryOverride: undefined,
 };
 
@@ -331,6 +343,10 @@ export function parseConfig(raw: string): SidelineConfig {
       parsed?.hotkeys && typeof parsed.hotkeys === "object"
         ? (parsed.hotkeys as HotkeysConfig)
         : undefined;
+    const overlayOverride =
+      parsed?.overlay && typeof parsed.overlay === "object"
+        ? parsed.overlay
+        : undefined;
     const dictionaryOverride = dictionaryFrom(parsed?.dictionary);
     return {
       pinnedTags: sanitized.slice(0, 6),
@@ -345,6 +361,7 @@ export function parseConfig(raw: string): SidelineConfig {
       claudeOverride,
       audioOverride,
       hotkeysOverride,
+      overlayOverride,
       dictionaryOverride,
       zoom,
     };
@@ -367,7 +384,7 @@ export async function loadConfig(): Promise<SidelineConfig> {
   }
 }
 
-// The 7 opaque per-key overrides from `.sideline.json` — round-tripped
+// The 8 opaque per-key overrides from `.sideline.json` — round-tripped
 // verbatim (whatever the user hand-edited, including unknown keys within
 // each) so a pin/zoom/hide write never clobbers a value it didn't touch.
 export interface ConfigOverrides {
@@ -379,6 +396,7 @@ export interface ConfigOverrides {
   claude: boolean | undefined;
   audio: unknown;
   hotkeys: HotkeysConfig | undefined;
+  overlay: unknown;
   dictionary: DictionaryConfig | undefined;
 }
 
@@ -391,11 +409,11 @@ export interface ConfigWrite {
 
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
-// projects?, claude?, zoom?, audio?, hotkeys?, dictionary? (omitted when
-// falsy/empty/default) — .sideline.json is read by capture/ tooling too, so this order
-// is contract (see docs/data-model.md). Object spread preserves insertion
-// order for these string keys, so the order below is exactly the emitted
-// order.
+// projects?, claude?, zoom?, audio?, hotkeys?, overlay?, dictionary?
+// (omitted when falsy/empty/default) — .sideline.json is read by capture/
+// tooling too, so this order is contract (see docs/data-model.md). Object
+// spread preserves insertion order for these string keys, so the order
+// below is exactly the emitted order.
 export function serializeConfig(cfg: ConfigWrite): string {
   return JSON.stringify(
     {
@@ -413,6 +431,7 @@ export function serializeConfig(cfg: ConfigWrite): string {
       ...(cfg.zoom !== 1 ? { zoom: cfg.zoom } : {}),
       ...(cfg.overrides.audio ? { audio: cfg.overrides.audio } : {}),
       ...(cfg.overrides.hotkeys ? { hotkeys: cfg.overrides.hotkeys } : {}),
+      ...(cfg.overrides.overlay ? { overlay: cfg.overrides.overlay } : {}),
       ...(cfg.overrides.dictionary
         ? { dictionary: cfg.overrides.dictionary }
         : {}),
