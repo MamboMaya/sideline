@@ -177,6 +177,33 @@ function ChipList({
   );
 }
 
+// iOS-style switch used for every boolean setting: an orange track with
+// the knob on the right = on, the dark border-colour track with the knob on
+// the left = off. A <button role="switch"> so it stays keyboard-operable
+// (Space/Enter toggle) and screen readers announce the state.
+function Switch({
+  id,
+  checked,
+  onChange,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className={checked ? "switch on" : "switch"}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch-knob" />
+    </button>
+  );
+}
+
 // The Voice section's transcription dictionary: one row per term — a term
 // input, a comma-separated mis-hearings input, and a remove ✕ — plus a
 // blank draft row at the bottom that turns into a real row on Enter/Add.
@@ -274,10 +301,11 @@ function DictionaryEditor({
           type="button"
           className="ghost"
           title="Add term"
+          aria-label="Add term"
           onClick={addDraft}
           disabled={!draft.term.trim()}
         >
-          Add
+          +
         </button>
       </div>
     </div>
@@ -663,14 +691,11 @@ export function SettingsPane({
           <label className="settings-label" htmlFor="overlay-toggle">
             Show recording pill
           </label>
-          <button
+          <Switch
             id="overlay-toggle"
-            type="button"
-            className={overlayHidden ? "ghost" : "ghost active"}
-            onClick={() => setOverlayHidden(!overlayHidden)}
-          >
-            {overlayHidden ? "Off" : "On"}
-          </button>
+            checked={!overlayHidden}
+            onChange={(on) => setOverlayHidden(!on)}
+          />
         </div>
         <div className="settings-hint">
           Off hides the on-screen pill (e.g. while screen sharing); the tray
@@ -680,14 +705,11 @@ export function SettingsPane({
           <label className="settings-label" htmlFor="push-to-talk-toggle">
             Hold to record
           </label>
-          <button
+          <Switch
             id="push-to-talk-toggle"
-            type="button"
-            className={pushToTalk ? "ghost active" : "ghost"}
-            onClick={() => setPushToTalk(!pushToTalk)}
-          >
-            {pushToTalk ? "On" : "Off"}
-          </button>
+            checked={pushToTalk}
+            onChange={setPushToTalk}
+          />
         </div>
         <div className="settings-hint">
           On: hold the record or dictate hotkey to record, release to
@@ -703,14 +725,11 @@ export function SettingsPane({
           <label className="settings-label" htmlFor="claude-toggle">
             Use Claude for triage
           </label>
-          <button
+          <Switch
             id="claude-toggle"
-            type="button"
-            className={claude ? "ghost active" : "ghost"}
-            onClick={() => setClaudeEnabled(!claude)}
-          >
-            {claude ? "On" : "Off"}
-          </button>
+            checked={claude}
+            onChange={setClaudeEnabled}
+          />
         </div>
         {(["triage", "batch"] as const).map((key) => (
           <div className="settings-row" key={`model-${key}`}>

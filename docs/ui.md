@@ -132,7 +132,8 @@ scrollable pane:
    `src/components/SettingsPane.tsx`): one row per term — a term input, a
    comma-separated mis-hearings input (may be empty; a bare term only
    biases whisper's prompt), and a remove ✕ — plus a blank draft row at the
-   bottom that becomes a real row on Enter or its Add button. Edits to an
+   bottom that becomes a real row on Enter or its + button (same footprint
+   as the rows' ✕, so the inputs line up). Edits to an
    existing row commit on blur; add/remove commit immediately. Rows map to
    the on-disk object via `dictionaryRows`/`dictionaryFromRows` in
    `src/lib/config.ts` (blank terms skipped, duplicate terms merged);
@@ -140,20 +141,20 @@ scrollable pane:
    transcription, so it applies to the next recording, no restart (see
    docs/data-model.md). A term can also be added straight from a note —
    see the add-to-dictionary bar in the Todos view section's `e` (edit)
-   entry below. Below that, a **Show recording pill** on/off toggle
+   entry below. Below that, a **Show recording pill** on/off switch (iOS-style: orange, knob right = on)
    for `overlay.hidden` (On is default): Off hides the on-screen pill, e.g.
    while screen sharing — the tray's 🔴 REC timer still shows. window.rs
    reads the key fresh on every recording-state transition, so toggling it
    mid-recording hides an already-visible pill immediately, no restart (see
    docs/data-model.md, docs/backend.md). Below that, a **Hold to record**
-   on/off toggle for `pushToTalk` (Off is default): On switches the
+   on/off switch for `pushToTalk` (Off is default): On switches the
    record/dictate hotkeys to push-to-talk — hold to record, release to
    transcribe — instead of press-to-start/press-to-stop; the tray menu's
    record/dictate items always toggle either way. lib.rs's global-shortcut
    handler reads the key fresh on every keypress, so toggling it takes
    effect on the very next press, no restart (see
    docs/data-model.md, docs/backend.md).
-3. **Claude** — an on/off toggle for `claude` (default on; off is
+3. **Claude** — an on/off switch for `claude` (default on; off is
    no-Claude mode, see the Triage section below), plus text inputs for
    `models.triage`/`models.batch` and textareas for `prompts.triage`/
    `prompts.batch`. Each field shows its raw override value (blank if

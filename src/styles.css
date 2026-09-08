@@ -795,12 +795,12 @@ header .ghost.gear {
   resize: vertical;
   line-height: 1.4;
 }
+/* Hints always wrap: the popover is narrow and a nowrap hint used to push
+   the whole Settings pane into a horizontal scroll. */
 .settings-hint {
   color: var(--text-muted);
   font-size: 10px;
-  white-space: nowrap;
-}
-.settings-row-column .settings-hint {
+  line-height: 1.35;
   white-space: normal;
 }
 .settings-error {
@@ -840,13 +840,60 @@ header .ghost.gear {
 .settings-dict-row .settings-input.mishears {
   flex: 2;
 }
+/* ✕ (existing rows) and + (draft row) share one fixed footprint so every
+   row's inputs line up regardless of which button trails them. */
+.settings-dict-row .ghost {
+  flex: none;
+  width: 22px;
+  padding: 2px 0;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1;
+}
+.settings-dict-row .settings-input {
+  min-width: 0;
+}
 .settings-dict-row .ghost[disabled] {
   opacity: 0.4;
   cursor: default;
 }
 .settings-dict + .settings-hint {
-  white-space: normal;
   margin-top: 4px;
+}
+/* iOS-style switch (SettingsPane.tsx's Switch): orange track + knob right
+   = on; border-colour track + knob left = off. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  border: none;
+  border-radius: 10px;
+  padding: 0;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.switch.on {
+  background: var(--accent);
+}
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease;
+}
+.switch.on .switch-knob {
+  transform: translateX(14px);
+}
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .settings-zoom {
   gap: 8px;
