@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import {
   type DictionaryConfig,
   type DictionaryRow,
@@ -12,9 +12,10 @@ import {
 } from "../lib/config";
 import { applyHotkeys, listAudioDevices } from "../lib/commands";
 import {
+  HOTKEY_MOD_SYMBOLS,
   comboFromKeyEvent,
-  formatHotkey,
   heldHotkeyModifiers,
+  hotkeyKeyCaps,
   macHotkeyCombo,
   sanitizeTag,
 } from "../lib/format";
@@ -71,25 +72,41 @@ type HotkeyFieldKey = "toggle" | "record" | "dictate";
 const MODEL_OPTIONS = ["haiku", "sonnet", "opus"];
 
 const HOTKEY_FIELDS = [
+  // `defaultCombo` is drawn as dashed key caps while the key is unset, and
+  // as the "default ⌥⌘R" reference once it's been changed.
   {
     key: "toggle" as const,
     label: "Toggle popover",
-    placeholder: "option+cmd+space",
+    defaultCombo: "option+cmd+space",
     fallback: "⌥⌘Space",
   },
   {
     key: "record" as const,
     label: "Record voice note",
-    placeholder: "option+cmd+r",
+    defaultCombo: "option+cmd+r",
     fallback: "⌥⌘R",
   },
   {
     key: "dictate" as const,
     label: "Dictate to clipboard",
-    placeholder: "alt+cmd+v",
+    defaultCombo: "option+cmd+v",
     fallback: "⌥⌘V",
   },
 ];
+
+// One macOS-style key cap. `dim` = dashed outline, used for an untouched
+// default so "this is what you get" reads differently from "you set this".
+function KeyCaps({ caps, dim }: { caps: string[]; dim?: boolean }) {
+  return (
+    <span className="kcaps">
+      {caps.map((c) => (
+        <span key={c} className={dim ? "kcap dim" : "kcap"}>
+          {c}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 // Escape blurs the field rather than typing/doing nothing — dispatchKey's
 // settingsOpen gate then sees a non-field target on the NEXT Escape and
@@ -333,7 +350,7 @@ const HOTKEY_HINT_MS = 1200;
 function HotkeyCaptureField({
   id,
   value,
-  placeholder,
+  defaultCombo,
   error,
   onCommit,
   onCapturingChange,
@@ -342,7 +359,8 @@ function HotkeyCaptureField({
   // Current display value in Mac vocabulary (e.g. "option+cmd+r"), "" if
   // unset — same shape SettingsPane's `draft` state always held.
   value: string;
-  placeholder: string;
+  // The built-in combo, drawn as dashed key caps while `value` is unset.
+  defaultCombo: string;
   error: string | undefined;
   // Called with the finished combo string, or "" to clear back to default
   // (Delete/Backspace) — same two shapes commitHotkeys already handled from
@@ -434,13 +452,30 @@ function HotkeyCaptureField({
     if (capturing) exitCapture();
   };
 
-  const displayText = capturing
-    ? hint
-      ? "add a modifier (⌘⌥⌃⇧)"
-      : heldMods.length
-        ? heldMods.join("+")
-        : "press shortcut…"
-    : value || placeholder;
+  // What the button shows: while capturing, live feedback (held modifiers
+  // as caps, the "add a modifier" nudge, or the idle prompt); at rest, the
+  // set combo as solid caps, or the default as dashed caps when unset.
+  let content: ReactNode;
+  if (capturing) {
+    if (hint) {
+      content = "add a modifier (⌘⌥⌃⇧)";
+    } else if (heldMods.length) {
+      content = (
+        <>
+          <KeyCaps
+            caps={heldMods.map((m) => HOTKEY_MOD_SYMBOLS[m.toLowerCase()] ?? m)}
+          />
+          <span className="settings-hotkey-ellipsis">…</span>
+        </>
+      );
+    } else {
+      content = "press shortcut…";
+    }
+  } else {
+    content = (
+      <KeyCaps caps={hotkeyKeyCaps(value || defaultCombo)} dim={!value} />
+    );
+  }
   const isPlaceholder = !capturing && !value;
 
   return (
@@ -470,7 +505,7 @@ function HotkeyCaptureField({
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
     >
-      {displayText}
+      {content}
     </button>
   );
 }
@@ -620,29 +655,47 @@ export function SettingsPane({
       {/* ── 1. Hotkeys ─────────────────────────────────────────────── */}
       <section className="settings-section">
         <div className="settings-section-title">Hotkeys</div>
-        {HOTKEY_FIELDS.map(({ key, label, placeholder, fallback }) => (
-          <div className="settings-row settings-row-column" key={key}>
-            <label className="settings-label" htmlFor={`hotkey-${key}`}>
-              {label}
-            </label>
-            <div className="settings-field">
+        {HOTKEY_FIELDS.map(({ key, label, defaultCombo, fallback }) => (
+          <div className="settings-hotkey-block" key={key}>
+            <div className="settings-row">
+              <label className="settings-label" htmlFor={`hotkey-${key}`}>
+                {label}
+              </label>
               <HotkeyCaptureField
                 id={`hotkey-${key}`}
                 value={draft[key]}
-                placeholder={placeholder}
+                defaultCombo={defaultCombo}
                 error={hotkeyError[key]}
                 onCommit={(combo) => commitField(key, combo)}
                 onCapturingChange={onHotkeyCapturingChange}
               />
-              <span className="settings-hint">
-                currently {formatHotkey(hotkeysOverride?.[key], fallback)}
-              </span>
-              {hotkeyError[key] && (
-                <span className="settings-error">{hotkeyError[key]}</span>
-              )}
             </div>
+            {/* Only a CHANGED key gets a sub-line: what the default was,
+                and a one-click way back to it (same as Delete in capture). */}
+            {draft[key] && !hotkeyError[key] && (
+              <div className="settings-hotkey-sub">
+                default <b>{fallback}</b>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  className="settings-hotkey-reset"
+                  onClick={() => commitField(key, "")}
+                >
+                  reset
+                </button>
+              </div>
+            )}
+            {hotkeyError[key] && (
+              <div className="settings-hotkey-sub">
+                <span className="settings-error">{hotkeyError[key]}</span>
+              </div>
+            )}
           </div>
         ))}
+        <div className="settings-hint">
+          Click a shortcut, then press the new combination. Delete clears it
+          back to the default; Esc cancels.
+        </div>
       </section>
 
       {/* ── 2. Voice ───────────────────────────────────────────────── */}

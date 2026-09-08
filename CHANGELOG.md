@@ -36,6 +36,9 @@ Notable, user-visible changes to Sideline. Format follows
 - Settings: the triage/batch model fields are dropdowns (haiku, sonnet,
   opus, or the default) instead of free text, and the input-device picker
   sits on its own line — it used to be squeezed out of view by its hint.
+- Settings → Hotkeys: shortcuts render as macOS key caps in fixed-width
+  fields (dashed while at the default), with a "default ⌥⌘R · reset" line
+  only under a changed key and one instruction hint for the section.
 
 ### Fixed
 

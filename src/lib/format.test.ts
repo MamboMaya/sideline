@@ -3,6 +3,7 @@
 import { describe, expect, test } from "vitest";
 import {
   formatHotkey,
+  hotkeyKeyCaps,
   macHotkeyCombo,
   sanitizeTag,
   escapeRegex,
@@ -433,5 +434,19 @@ describe("groupByFirstTag", () => {
       { tag: "x", notes: [a] },
       { tag: "y", notes: [b] },
     ]);
+  });
+});
+
+describe("hotkeyKeyCaps", () => {
+  test("splits into modifier symbols (macOS order) plus a capitalized key", () => {
+    expect(hotkeyKeyCaps("option+cmd+space")).toEqual(["⌥", "⌘", "Space"]);
+    expect(hotkeyKeyCaps("cmd+shift+control+v")).toEqual(["⌃", "⇧", "⌘", "V"]);
+    expect(hotkeyKeyCaps("alt+cmd+F5")).toEqual(["⌥", "⌘", "F5"]);
+  });
+
+  test("blank or modifier-only combos yield no caps", () => {
+    expect(hotkeyKeyCaps("")).toEqual([]);
+    expect(hotkeyKeyCaps(undefined)).toEqual([]);
+    expect(hotkeyKeyCaps("cmd+option")).toEqual([]);
   });
 });

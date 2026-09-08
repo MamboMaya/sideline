@@ -41,6 +41,34 @@ export const formatHotkey = (
   return `${mods}${key[0].toUpperCase()}${key.slice(1)}`;
 };
 
+// macOS's own modifier display order (System Settings renders ⌃⌥⇧⌘).
+const MOD_SYMBOL_ORDER = ["⌃", "⌥", "⇧", "⌘"];
+
+// Splits a combo into the key caps the Settings pane draws — modifiers as
+// symbols in macOS order, then the key with its first letter capitalized
+// ("option+cmd+space" → ["⌥", "⌘", "Space"]). Unknown tokens are treated as
+// the key; a blank/modifier-only combo yields []. Display-only, like
+// formatHotkey.
+export const hotkeyKeyCaps = (combo: string | undefined): string[] => {
+  const mods: string[] = [];
+  let key = "";
+  for (const raw of (combo ?? "").split("+")) {
+    const tok = raw.trim();
+    if (!tok) continue;
+    const symbol = HOTKEY_MOD_SYMBOLS[tok.toLowerCase()];
+    if (symbol) {
+      if (!mods.includes(symbol)) mods.push(symbol);
+    } else {
+      key = tok;
+    }
+  }
+  if (!key) return [];
+  mods.sort(
+    (a, b) => MOD_SYMBOL_ORDER.indexOf(a) - MOD_SYMBOL_ORDER.indexOf(b),
+  );
+  return [...mods, `${key[0].toUpperCase()}${key.slice(1)}`];
+};
+
 // Same alias table as HOTKEY_MOD_SYMBOLS, but spelled out as the words macOS
 // itself uses (System Settings > Keyboard Shortcuts renders combos this
 // way) instead of the ⌥⌘ symbols — used for the Settings pane's hotkey text

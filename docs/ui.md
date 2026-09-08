@@ -89,10 +89,15 @@ scrollable pane:
 
 1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
    `record`/`dictate` (`HotkeyCaptureField` in
-   `src/components/SettingsPane.tsx`), each showing its current effective
-   combo next to the field (override, or the ⌥⌘Space/⌥⌘R/⌥⌘V default) as an
-   ⌥⌘-style symbol hint. There is no typing: the field is a button, not a
-   text input. Click it (or Tab to it — focus alone starts capture) and it
+   `src/components/SettingsPane.tsx`), laid out label-left / field-right like the switches below, each field a
+   fixed-width button drawing the combo as macOS key caps (`KeyCaps` /
+   `hotkeyKeyCaps` in `src/lib/format.ts`): solid caps for a combo the
+   user set, dashed muted caps for the untouched ⌥⌘Space/⌥⌘R/⌥⌘V default.
+   A changed key gets a "default ⌥⌘R · reset" line under it (reset commits
+   blank, exactly like Delete in capture); an untouched one shows nothing
+   extra. One instruction hint sits under the section instead of a
+   per-field "currently …" note. There is no typing: the field is a button,
+   not a text input. Click it (or Tab to it — focus alone starts capture) and it
    shows "press shortcut…"; press the actual shortcut and it captures the
    very next valid keystroke instead of doing anything else with it. The
    combo is built from the keydown's PHYSICAL key (`e.code` — `KeyV`→`v`,
@@ -100,8 +105,8 @@ scrollable pane:
    exactly as `e.code` spells them) plus its modifier flags, joined in
    macOS's own display order — control, option, shift, cmd
    (`comboFromKeyEvent` in `src/lib/format.ts`, round-tripped through
-   `macHotkeyCombo` same as before once committed). Holding a modifier alone
-   just updates a live preview of what's held; a bare key pressed with no
+   `macHotkeyCombo` same as before once committed). Holding a modifier alone just updates a live preview of what's held (as
+   key caps plus an ellipsis); a bare key pressed with no
    modifier shows an inline "add a modifier (⌘⌥⌃⇧)" hint and does NOT commit
    (a modifier-less global hotkey would shadow ordinary typing system-wide);
    a non-modifier key WITH at least one modifier commits immediately —
