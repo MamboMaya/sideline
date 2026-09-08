@@ -79,7 +79,16 @@
   this is read Rust-side by window.rs's `sync_overlay` fresh on EVERY
   recording-state transition (see docs/backend.md), so a Settings toggle —
   or a hand-edit — applies immediately, including hiding an
-  already-visible pill mid-recording; no restart. Also optional `"dictionary":
+  already-visible pill mid-recording; no restart. Also optional
+  `"pushToTalk": true` (default `false`) — push-to-talk mode for the
+  record/dictate hotkeys: hold the hotkey down to record, release to
+  transcribe, instead of press-to-start/press-to-stop (Settings → Voice →
+  "Hold to record"). Unlike `hotkeys`, this is read Rust-side by lib.rs's
+  global-shortcut handler fresh on every keypress rather than once at
+  startup, so a Settings toggle — or a hand-edit — takes effect on the very
+  next press, no restart; the tray menu's "Record voice note"/"Dictate to
+  clipboard" items always toggle, in either mode. Also optional
+  `"dictionary":
 { "Tauri": ["towery", "tory"], "Raycast": ["ray cast"], "Whisper": [] }`
   — the transcription vocabulary, correctly-spelled term → the ways whisper
   mis-hears it (may be empty). Every term is appended to whisper's
@@ -95,7 +104,9 @@
   live-apply path is the one exception, reading it only via the frontend's
   already-loaded config state, never re-reading the file itself; `overlay`
   is read-only Rust-side by window.rs, on every sync rather than once at
-  startup; `dictionary` is read-only Rust-side by whisper.rs — everything
+  startup; `pushToTalk` is read-only Rust-side by lib.rs's global-shortcut
+  handler, fresh on every keypress; `dictionary` is read-only Rust-side by
+  whisper.rs — everything
   else by src/App.tsx); the ONLY key a capture/ script reads is
   `dictionary` (voice-note.sh, read-only) — none writes the file.
 

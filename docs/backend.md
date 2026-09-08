@@ -32,6 +32,28 @@ click only; the ⌥⌘Space hotkey opens top-center of the monitor holding the
 cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⌥⌘V dictation), fs
 watcher on `~/notes` emitting `inbox-changed`, and the commands:
 
+- The global-shortcut handler (`lib.rs`) reads `ShortcutState` on every
+  event, not just `Pressed`, because push-to-talk needs both halves. The
+  toggle-popover hotkey ignores `Released` outright (unchanged: Pressed
+  toggles the popover). For record/dictate, the handler checks
+  `hotkeys::push_to_talk_enabled()` (`.sideline.json`'s top-level
+  `pushToTalk`, read fresh on every event — see docs/data-model.md) before
+  deciding what to do: OFF (the default) is the original behavior, Pressed
+  toggles start/stop and `Released` is a no-op. ON, a `Pressed` starts a
+  session — via the same `toggle_recording`/`toggle_dictation` calls as
+  before — ONLY if the recorder can currently start (`RecState::can_start`:
+  Idle or the Copied notice), and remembers which of the two shortcuts
+  (`HeldShortcut::Record`/`Dictate`) is the one holding it open, in a small
+  `Arc<Mutex<Option<HeldShortcut>>>` local to `run()`; a `Pressed` while a
+  session is already running instead calls the same toggle function so it
+  stops as before (a session started from the tray, or started in toggle
+  mode before the setting flipped, must still be stoppable this way), and
+  leaves the held-shortcut memory untouched — touching it here would wrongly
+  clear the OTHER hotkey's hold if both are pressed at once. `Released` only
+  stops the session if the held-shortcut memory still names THAT shortcut,
+  then clears it; any other `Released` (the other hotkey, or this one after
+  the session already ended some other way) is ignored. Toggle mode never
+  touches this state at all.
 - Hotkeys are configurable via `.sideline.json`'s `hotkeys.toggle`/
   `hotkeys.record`/`hotkeys.dictate` (see docs/data-model.md), read directly
   at startup (`load_hotkeys` in hotkeys.rs, not through `read_config`) and
@@ -278,7 +300,11 @@ Idle.
 note" both call `audio::toggle_recording` directly, appending to inbox.md.
 ⌥⌘V and the tray menu's "Dictate to clipboard" call `audio::toggle_dictation`
 the same way, routing to the clipboard/paste flow above instead — dictation
-output is never appended to inbox.md, `notes/`, or `todos/`. Mic access
+output is never appended to inbox.md, `notes/`, or `todos/`. In push-to-talk
+mode (`.sideline.json`'s `pushToTalk`, see docs/data-model.md and the
+hotkeys bullet above) the global hotkeys call these same two functions on
+hold-down/release instead of on every press; the tray menu items always
+call them as a plain toggle regardless of the setting. Mic access
 requires `src-tauri/Info.plist` (`NSMicrophoneUsageDescription`, auto-merged
 by Tauri) and `src-tauri/Entitlements.plist`
 (`com.apple.security.device.audio-input`, wired via

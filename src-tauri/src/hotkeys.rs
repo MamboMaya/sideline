@@ -118,6 +118,25 @@ pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut, Shortcut) {
     )
 }
 
+/// Reads `.sideline.json`'s top-level `pushToTalk` boolean — push-to-talk
+/// mode for the record/dictate hotkeys (hold to record, release to
+/// transcribe; default `false`, i.e. the pre-existing toggle mode: press
+/// once to start, again to stop). Fully failure-tolerant, same shape as
+/// `load_hotkeys` above (and as `window::overlay_hidden`, which reads
+/// `overlay.hidden` the same way): missing file, malformed JSON, or a
+/// missing/non-bool key all just mean "off". Read fresh on every Pressed
+/// event in lib.rs's global-shortcut handler — UNLIKE `hotkeys` itself,
+/// which is read once at startup — so a Settings-pane toggle (or a
+/// hand-edit) takes effect on the very next keypress, no restart.
+pub(crate) fn push_to_talk_enabled() -> bool {
+    let raw = fs::read_to_string(notes_dir().join(".sideline.json")).unwrap_or_default();
+    let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
+    parsed
+        .get("pushToTalk")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// The three hotkeys' live-registered state, managed via
 /// `app.manage(ActiveShortcuts { .. })` in lib.rs — the same three
 /// `Arc<Mutex<Shortcut>>` the global-shortcut handler compares against,

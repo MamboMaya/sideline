@@ -36,6 +36,8 @@ const DEFAULTS: SidelineConfig = {
   audioOverride: undefined,
   hotkeysOverride: undefined,
   overlayOverride: undefined,
+  pushToTalk: false,
+  pushToTalkOverride: undefined,
   dictionaryOverride: undefined,
 };
 
@@ -78,6 +80,7 @@ describe("parseConfig — full valid config", () => {
       audio: { device: "AirPods" },
       hotkeys: { toggle: "alt+cmd+space", record: "alt+cmd+r" },
       overlay: { hidden: true },
+      pushToTalk: true,
       dictionary: { Tauri: ["towery"], Whisper: [] },
     });
     const cfg = parseConfig(raw);
@@ -101,7 +104,39 @@ describe("parseConfig — full valid config", () => {
       record: "alt+cmd+r",
     });
     expect(cfg.overlayOverride).toEqual({ hidden: true });
+    expect(cfg.pushToTalk).toBe(true);
+    expect(cfg.pushToTalkOverride).toBe(true);
     expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — pushToTalk
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — pushToTalk", () => {
+  test("absent key defaults to false, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.pushToTalk).toBe(false);
+    expect(cfg.pushToTalkOverride).toBeUndefined();
+  });
+
+  test("pushToTalk: true is honored and recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ pushToTalk: true }));
+    expect(cfg.pushToTalk).toBe(true);
+    expect(cfg.pushToTalkOverride).toBe(true);
+  });
+
+  test("pushToTalk: false is honored explicitly and still recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ pushToTalk: false }));
+    expect(cfg.pushToTalk).toBe(false);
+    expect(cfg.pushToTalkOverride).toBe(false);
+  });
+
+  test("a non-boolean pushToTalk value is ignored (treated as absent, defaults to false)", () => {
+    const cfg = parseConfig(JSON.stringify({ pushToTalk: "true" }));
+    expect(cfg.pushToTalk).toBe(false);
+    expect(cfg.pushToTalkOverride).toBeUndefined();
   });
 });
 
@@ -151,6 +186,7 @@ describe("parseConfig — dictionary", () => {
         audio: undefined,
         hotkeys: { toggle: "alt+cmd+space" },
         overlay: undefined,
+        pushToTalk: undefined,
         dictionary: undefined,
       },
     };
@@ -454,6 +490,7 @@ const noOverrides = {
   audio: undefined,
   hotkeys: undefined,
   overlay: undefined,
+  pushToTalk: undefined,
   dictionary: undefined,
 };
 
@@ -505,7 +542,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, dictionary when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -517,8 +554,9 @@ describe("serializeConfig", () => {
         claude: false,
         audio: { device: "AirPods" },
         hotkeys: { toggle: "alt+cmd+space" },
-        overlay: undefined,
-        dictionary: undefined,
+        overlay: { hidden: true },
+        pushToTalk: true,
+        dictionary: { Tauri: ["towery"] },
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -531,10 +569,13 @@ describe("serializeConfig", () => {
       "zoom",
       "audio",
       "hotkeys",
+      "overlay",
+      "pushToTalk",
+      "dictionary",
     ]);
   });
 
-  test("overlay lands between hotkeys and dictionary when both are present", () => {
+  test("overlay and pushToTalk land between hotkeys and dictionary when all three are present", () => {
     const out = serializeConfig({
       pinnedTags: [],
       hiddenTags: [],
@@ -543,6 +584,7 @@ describe("serializeConfig", () => {
         ...noOverrides,
         hotkeys: { toggle: "alt+cmd+space" },
         overlay: { hidden: true },
+        pushToTalk: true,
         dictionary: { Tauri: ["towery"] },
       },
     });
@@ -550,8 +592,35 @@ describe("serializeConfig", () => {
       "pinnedTags",
       "hotkeys",
       "overlay",
+      "pushToTalk",
       "dictionary",
     ]);
+  });
+
+  test("pushToTalk is omitted when false or absent, included only when true", () => {
+    const atDefault = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, pushToTalk: false },
+    });
+    expect(JSON.parse(atDefault)).not.toHaveProperty("pushToTalk");
+
+    const absent = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: noOverrides,
+    });
+    expect(JSON.parse(absent)).not.toHaveProperty("pushToTalk");
+
+    const on = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, pushToTalk: true },
+    });
+    expect(JSON.parse(on)).toHaveProperty("pushToTalk", true);
   });
 
   test("claude override is omitted when undefined (key absent, not forced to true)", () => {
@@ -611,6 +680,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       zoom: 0.8,
       audio: { device: "AirPods", futureField: 42 },
       hotkeys: { toggle: "alt+cmd+space" },
+      pushToTalk: true,
     };
     const cfg = parseConfig(JSON.stringify(original));
     const rewritten = JSON.parse(
@@ -626,6 +696,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           audio: cfg.audioOverride,
           hotkeys: cfg.hotkeysOverride,
           overlay: cfg.overlayOverride,
+          pushToTalk: cfg.pushToTalkOverride,
           dictionary: undefined,
         },
       }),
@@ -639,6 +710,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.zoom).toBe(original.zoom);
     expect(rewritten.audio).toEqual(original.audio);
     expect(rewritten.hotkeys).toEqual(original.hotkeys);
+    expect(rewritten.pushToTalk).toBe(original.pushToTalk);
   });
 });
 

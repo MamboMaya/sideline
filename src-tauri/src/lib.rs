@@ -15,6 +15,17 @@ mod watcher;
 mod whisper;
 mod window;
 
+/// Push-to-talk bookkeeping: which of the two toggleable hotkeys (record or
+/// dictate) is currently being held down and is the one that started the
+/// live session — so its Released event, and only its Released event, is
+/// allowed to stop that session. See the global-shortcut handler in `run()`
+/// below.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HeldShortcut {
+    Record,
+    Dictate,
+}
+
 pub fn run() {
     let (toggle, record, dictate) = hotkeys::load_hotkeys();
     let active_toggle = Arc::new(Mutex::new(toggle));
@@ -32,6 +43,12 @@ pub fn run() {
         record: active_record.clone(),
         dictate: active_dictate.clone(),
     };
+    // Push-to-talk-only state: the hotkey (if any) whose hold is currently
+    // "open" — set on a Pressed that starts a session, cleared on the
+    // matching Released that stops it. Irrelevant in toggle mode (the
+    // default), where every press is handled without touching this at all.
+    let held_shortcut: Arc<Mutex<Option<HeldShortcut>>> = Arc::new(Mutex::new(None));
+    let handler_held = held_shortcut.clone();
 
     tauri::Builder::default()
         // First plugin on purpose (its docs require it): a second launch —
@@ -52,15 +69,75 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if event.state() != ShortcutState::Pressed {
+                    // Toggle popover is Pressed-only either way — it has no
+                    // hold behavior to speak of.
+                    if *shortcut == *handler_toggle.lock().unwrap() {
+                        if event.state() == ShortcutState::Pressed {
+                            window::toggle_window(app, None);
+                        }
                         return;
                     }
-                    if *shortcut == *handler_toggle.lock().unwrap() {
-                        window::toggle_window(app, None);
-                    } else if *shortcut == *handler_record.lock().unwrap() {
-                        let _ = audio::toggle_recording(app.clone());
+
+                    let held_variant = if *shortcut == *handler_record.lock().unwrap() {
+                        HeldShortcut::Record
                     } else if *shortcut == *handler_dictate.lock().unwrap() {
-                        let _ = audio::toggle_dictation(app.clone());
+                        HeldShortcut::Dictate
+                    } else {
+                        return;
+                    };
+                    let fire = || {
+                        let _ = match held_variant {
+                            HeldShortcut::Record => audio::toggle_recording(app.clone()),
+                            HeldShortcut::Dictate => audio::toggle_dictation(app.clone()),
+                        };
+                    };
+
+                    if !hotkeys::push_to_talk_enabled() {
+                        // Toggle mode (default, and the only mode before
+                        // this feature existed): Pressed flips recording on
+                        // or off, Released is a no-op.
+                        if event.state() == ShortcutState::Pressed {
+                            fire();
+                        }
+                        return;
+                    }
+
+                    // Push-to-talk: a Pressed on an idle (or Copied-notice)
+                    // recorder starts a session and remembers THIS shortcut
+                    // as the one holding it open. A Pressed while a session
+                    // is already running — started from the tray, or
+                    // started in toggle mode before the setting flipped —
+                    // instead behaves like a toggle-mode press and stops it
+                    // (same `fire()` call either way; `toggle_recording`/
+                    // `toggle_dictation` themselves decide start vs. stop),
+                    // and leaves `held` exactly as it was: not touching it
+                    // here matters when the OTHER hotkey is the one
+                    // currently held (see below), so this branch must never
+                    // clobber someone else's hold. Released only stops the
+                    // session if `held` still names THIS shortcut — a stray
+                    // release of the other hotkey (e.g. it was pressed and
+                    // released while the first was still held, and got
+                    // "Already recording") or of this one after the session
+                    // already ended some other way, is ignored.
+                    match event.state() {
+                        ShortcutState::Pressed => {
+                            let can_start = matches!(
+                                audio::get_recording_state(app.clone()).as_str(),
+                                "idle" | "copied"
+                            );
+                            if can_start {
+                                *handler_held.lock().unwrap() = Some(held_variant);
+                            }
+                            fire();
+                        }
+                        ShortcutState::Released => {
+                            let mut held = handler_held.lock().unwrap();
+                            if *held == Some(held_variant) {
+                                *held = None;
+                                drop(held);
+                                fire();
+                            }
+                        }
                     }
                 })
                 .build(),

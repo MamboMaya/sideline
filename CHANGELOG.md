@@ -22,6 +22,9 @@ Notable, user-visible changes to Sideline. Format follows
 - **Add to dictionary from a note**: select a mis-heard word while editing a
   note and a bar offers to add it to the transcription dictionary with the
   right spelling, fixing the note at the same time.
+- **Hold to record** (Settings → Voice): push-to-talk mode — hold the
+  record or dictate hotkey to record, release to transcribe. Off by
+  default; the tray menu still toggles.
 
 ### Changed
 

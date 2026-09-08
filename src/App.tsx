@@ -89,6 +89,7 @@ export default function App() {
     modelsOverride,
     audioOverride,
     overlayOverride,
+    pushToTalk,
     dictionaryOverride,
     unhideTag,
     setModelOverride,
@@ -96,6 +97,7 @@ export default function App() {
     setClaudeEnabled,
     setAudioDevice,
     setOverlayHidden,
+    setPushToTalk,
     setDictionary,
     addProject,
     removeProject,
@@ -466,6 +468,8 @@ export default function App() {
           setAudioDevice={setAudioDevice}
           overlayOverride={overlayOverride}
           setOverlayHidden={setOverlayHidden}
+          pushToTalk={pushToTalk}
+          setPushToTalk={setPushToTalk}
           dictionaryOverride={dictionaryOverride}
           setDictionary={setDictionary}
           claude={claude}

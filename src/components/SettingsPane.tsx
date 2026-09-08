@@ -26,6 +26,8 @@ export interface SettingsPaneProps {
   setAudioDevice: (device: string) => void;
   overlayOverride: unknown;
   setOverlayHidden: (hidden: boolean) => void;
+  pushToTalk: boolean;
+  setPushToTalk: (enabled: boolean) => void;
   dictionaryOverride: DictionaryConfig | undefined;
   setDictionary: (dict: DictionaryConfig | undefined) => void;
   // Claude
@@ -455,6 +457,8 @@ export function SettingsPane({
   setAudioDevice,
   overlayOverride,
   setOverlayHidden,
+  pushToTalk,
+  setPushToTalk,
   dictionaryOverride,
   setDictionary,
   claude,
@@ -671,6 +675,24 @@ export function SettingsPane({
         <div className="settings-hint">
           Off hides the on-screen pill (e.g. while screen sharing); the tray
           still shows 🔴 REC.
+        </div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="push-to-talk-toggle">
+            Hold to record
+          </label>
+          <button
+            id="push-to-talk-toggle"
+            type="button"
+            className={pushToTalk ? "ghost active" : "ghost"}
+            onClick={() => setPushToTalk(!pushToTalk)}
+          >
+            {pushToTalk ? "On" : "Off"}
+          </button>
+        </div>
+        <div className="settings-hint">
+          On: hold the record or dictate hotkey to record, release to
+          transcribe. Off: press once to start, again to stop. The tray menu
+          always toggles.
         </div>
       </section>
 

@@ -86,6 +86,18 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   // itself on every recording-state transition, so this is edit-and-persist
   // only, same shape as audioOverride — see setOverlayHidden.
   const [overlayOverride, setOverlayOverride] = useState<unknown>(undefined);
+  // Push-to-talk switch: `.sideline.json`'s `pushToTalk` key, merged against
+  // the default of `false` (toggle mode — press once to start, again to
+  // stop). `true` makes the record/dictate hotkeys hold-to-record instead;
+  // read Rust-side per keypress (lib.rs), not once at startup like
+  // `hotkeys`, so this takes effect immediately, same as `setClaudeEnabled`
+  // below but with the opposite default.
+  const [pushToTalk, setPushToTalkState] = useState(false);
+  // Raw `pushToTalk` value as read from the file (undefined = key absent) —
+  // kept only so a pin/zoom/hide write doesn't clobber a hand-edited value.
+  const [pushToTalkOverride, setPushToTalkOverride] = useState<
+    boolean | undefined
+  >(undefined);
   // Raw `dictionary` object from .sideline.json (transcription vocabulary:
   // term → mis-hearings; whisper.rs reads the file itself on every
   // transcription, so this is edit-and-persist only — see setDictionary).
@@ -93,10 +105,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     DictionaryConfig | undefined
   >(undefined);
 
-  // The 8 opaque `.sideline.json` overrides, read from current state —
+  // The 9 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // overlay/dictionary value.
+  // overlay/pushToTalk/dictionary value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -105,6 +117,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     audio: audioOverride,
     hotkeys: hotkeysOverride,
     overlay: overlayOverride,
+    pushToTalk: pushToTalkOverride,
     dictionary: dictionaryOverride,
   });
 
@@ -138,6 +151,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     audio?: unknown;
     hotkeys?: HotkeysConfig | undefined;
     overlay?: unknown;
+    pushToTalk?: boolean | undefined;
     dictionary?: DictionaryConfig | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
@@ -156,6 +170,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "hotkeys" in patch ? patch.hotkeys : hotkeysOverride;
     const nextOverlayOverride =
       "overlay" in patch ? patch.overlay : overlayOverride;
+    const nextPushToTalkOverride =
+      "pushToTalk" in patch ? patch.pushToTalk : pushToTalkOverride;
     const nextDictionaryOverride =
       "dictionary" in patch ? patch.dictionary : dictionaryOverride;
 
@@ -173,6 +189,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setAudioOverride(nextAudioOverride);
     setHotkeysOverride(nextHotkeysOverride);
     setOverlayOverride(nextOverlayOverride);
+    setPushToTalkOverride(nextPushToTalkOverride);
+    setPushToTalkState(nextPushToTalkOverride ?? false);
     setDictionaryOverride(nextDictionaryOverride);
 
     await writeConfig({
@@ -187,6 +205,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         audio: nextAudioOverride,
         hotkeys: nextHotkeysOverride,
         overlay: nextOverlayOverride,
+        pushToTalk: nextPushToTalkOverride,
         dictionary: nextDictionaryOverride,
       },
     });
@@ -234,6 +253,16 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   // omit-at-default convention zoom/hiddenTags already follow.
   const setClaudeEnabled = (enabled: boolean) => {
     updateConfig({ claude: enabled ? undefined : false });
+  };
+
+  // The Voice section's "Hold to record" toggle. `enabled` writes an
+  // explicit `pushToTalk: true`; `false` (the default) clears the override
+  // entirely rather than writing `"pushToTalk": false` — same
+  // omit-at-default convention as zoom/hiddenTags, opposite direction from
+  // `setClaudeEnabled` above since this key's default is `false`, not
+  // `true`.
+  const setPushToTalk = (enabled: boolean) => {
+    updateConfig({ pushToTalk: enabled ? true : undefined });
   };
 
   // The Voice section's device picker. `device` undefined/empty = "System
@@ -308,6 +337,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setAudioOverride(config.audioOverride);
     setHotkeysOverride(config.hotkeysOverride);
     setOverlayOverride(config.overlayOverride);
+    setPushToTalkState(config.pushToTalk);
+    setPushToTalkOverride(config.pushToTalkOverride);
     setDictionaryOverride(config.dictionaryOverride);
   };
 
@@ -373,6 +404,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     projectTags,
     claude,
     hotkeysOverride,
+    pushToTalk,
     applyConfig,
     togglePin,
     hideTag,
@@ -395,6 +427,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setClaudeEnabled,
     setAudioDevice,
     setOverlayHidden,
+    setPushToTalk,
     setDictionary,
     addProject,
     removeProject,

@@ -164,6 +164,15 @@ export interface HotkeysConfig {
 // no dedicated type, just whatever object is on disk — so an unrelated
 // hand-edited key under `overlay` survives a pin/zoom write.
 
+// `.sideline.json`'s top-level `pushToTalk` boolean — push-to-talk mode for
+// the record/dictate hotkeys: hold the hotkey to record, release to
+// transcribe. Default `false` (the pre-existing toggle mode: press once to
+// start, again to stop — unchanged for anyone who never sets this).
+// Rust-side (lib.rs's global-shortcut handler) reads it fresh on every
+// Pressed event, not once at startup like `hotkeys` itself, so a
+// Settings-pane toggle applies on the very next keypress, no restart. The
+// tray menu always toggles, in either mode.
+
 // `.sideline.json`'s `dictionary` field — the transcription vocabulary:
 // correctly-spelled term → the mis-hearings whisper produces for it (may be
 // empty; a bare term still biases whisper's initial prompt). Read Rust-side
@@ -243,11 +252,11 @@ export function addToDictionary(
 }
 
 // Everything loadConfig produces from `.sideline.json` — one field per
-// App.tsx config state slice, including the 8 opaque per-key overrides
+// App.tsx config state slice, including the 9 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
-// audioOverride, hotkeysOverride, overlayOverride, dictionaryOverride)
-// kept around purely so a pin/zoom/hide write doesn't clobber hand-edited
-// config it didn't touch.
+// audioOverride, hotkeysOverride, overlayOverride, pushToTalkOverride,
+// dictionaryOverride) kept around purely so a pin/zoom/hide write doesn't
+// clobber hand-edited config it didn't touch.
 export interface SidelineConfig {
   pinnedTags: string[];
   hiddenTags: string[];
@@ -271,6 +280,13 @@ export interface SidelineConfig {
   audioOverride: unknown;
   hotkeysOverride: HotkeysConfig | undefined;
   overlayOverride: unknown;
+  // Resolved push-to-talk switch: `.sideline.json`'s `pushToTalk` key,
+  // merged against the default of `false` (absent/invalid = toggle mode).
+  pushToTalk: boolean;
+  // Raw `pushToTalk` value as it appeared in the file (undefined when the
+  // key is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited value, same as `claudeOverride`.
+  pushToTalkOverride: boolean | undefined;
   dictionaryOverride: DictionaryConfig | undefined;
 }
 
@@ -289,6 +305,8 @@ const EMPTY_CONFIG: SidelineConfig = {
   audioOverride: undefined,
   hotkeysOverride: undefined,
   overlayOverride: undefined,
+  pushToTalk: false,
+  pushToTalkOverride: undefined,
   dictionaryOverride: undefined,
 };
 
@@ -369,6 +387,8 @@ export function parseConfig(raw: string): SidelineConfig {
       parsed?.overlay && typeof parsed.overlay === "object"
         ? parsed.overlay
         : undefined;
+    const pushToTalkOverride =
+      typeof parsed?.pushToTalk === "boolean" ? parsed.pushToTalk : undefined;
     const dictionaryOverride = dictionaryFrom(parsed?.dictionary);
     return {
       pinnedTags: sanitized.slice(0, 6),
@@ -384,6 +404,8 @@ export function parseConfig(raw: string): SidelineConfig {
       audioOverride,
       hotkeysOverride,
       overlayOverride,
+      pushToTalk: pushToTalkOverride ?? false,
+      pushToTalkOverride,
       dictionaryOverride,
       zoom,
     };
@@ -406,7 +428,7 @@ export async function loadConfig(): Promise<SidelineConfig> {
   }
 }
 
-// The 8 opaque per-key overrides from `.sideline.json` — round-tripped
+// The 9 opaque per-key overrides from `.sideline.json` — round-tripped
 // verbatim (whatever the user hand-edited, including unknown keys within
 // each) so a pin/zoom/hide write never clobbers a value it didn't touch.
 export interface ConfigOverrides {
@@ -419,6 +441,10 @@ export interface ConfigOverrides {
   audio: unknown;
   hotkeys: HotkeysConfig | undefined;
   overlay: unknown;
+  // Raw `pushToTalk` boolean as read from the file — unlike `claude`,
+  // `false` isn't a meaningful value to preserve (it's already the
+  // default), so serializeConfig only writes this key when it's `true`.
+  pushToTalk: boolean | undefined;
   dictionary: DictionaryConfig | undefined;
 }
 
@@ -431,11 +457,11 @@ export interface ConfigWrite {
 
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
-// projects?, claude?, zoom?, audio?, hotkeys?, overlay?, dictionary?
-// (omitted when falsy/empty/default) — .sideline.json is read by capture/
-// tooling too, so this order is contract (see docs/data-model.md). Object
-// spread preserves insertion order for these string keys, so the order
-// below is exactly the emitted order.
+// projects?, claude?, zoom?, audio?, hotkeys?, overlay?, pushToTalk?,
+// dictionary? (omitted when falsy/empty/default) — .sideline.json is read
+// by capture/ tooling too, so this order is contract (see
+// docs/data-model.md). Object spread preserves insertion order for these
+// string keys, so the order below is exactly the emitted order.
 export function serializeConfig(cfg: ConfigWrite): string {
   return JSON.stringify(
     {
@@ -454,6 +480,10 @@ export function serializeConfig(cfg: ConfigWrite): string {
       ...(cfg.overrides.audio ? { audio: cfg.overrides.audio } : {}),
       ...(cfg.overrides.hotkeys ? { hotkeys: cfg.overrides.hotkeys } : {}),
       ...(cfg.overrides.overlay ? { overlay: cfg.overrides.overlay } : {}),
+      // Boolean override, but UNLIKE `claude` above: `pushToTalk`'s default
+      // is `false`, not `true`, so a truthy check is correct here — `false`
+      // and absent both just omit the key.
+      ...(cfg.overrides.pushToTalk ? { pushToTalk: true } : {}),
       ...(cfg.overrides.dictionary
         ? { dictionary: cfg.overrides.dictionary }
         : {}),

@@ -34,7 +34,8 @@ its `100vh` back down — WebKit scales viewport units by the zoom, which
 otherwise pushes the bottom of the popover off the clipped body at any zoom
 ≠ 1; see `src/hooks/useZoom.ts`). `r` toggles in-app voice recording from either view —
 the same action as the ⌥⌘R global hotkey, but only while the popover has
-focus. While recording, a small pill HUD (🔴 elapsed m:ss + live level
+focus (and always a toggle, even in push-to-talk mode — see Settings below;
+only the ⌥⌘R/⌥⌘V global hotkeys themselves hold-to-record). While recording, a small pill HUD (🔴 elapsed m:ss + live level
 bars, then "Transcribing…"/"Downloading model…") floats bottom-center of
 the monitor holding the cursor, 20% up the screen — mirroring the popover's
 20%-down spot — always on top, never focused, visible whether
@@ -80,10 +81,11 @@ SAVE MODEL: there is no Save button. Every control writes the full config
 file on change/commit — same read-modify-write path pinned-tag toggles and
 every other existing config write already use (`useConfig`'s `updateConfig`
 in `src/hooks/useConfig.ts`, feeding `writeConfig`). A pane write always
-round-trips the 6 opaque overrides (`prompts`, `models`, `projects`,
-`claude`, `audio`, `hotkeys`) it isn't touching, so a key the pane doesn't
-render — or an unknown key hand-edited into one it does — survives
-untouched. Five sections, one scrollable pane:
+round-trips the 9 opaque overrides (`prompts`, `models`, `projects`,
+`claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`) it
+isn't touching, so a key the pane doesn't render — or an unknown key
+hand-edited into one it does — survives untouched. Five sections, one
+scrollable pane:
 
 1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
    `record`/`dictate` (`HotkeyCaptureField` in
@@ -143,6 +145,13 @@ untouched. Five sections, one scrollable pane:
    while screen sharing — the tray's 🔴 REC timer still shows. window.rs
    reads the key fresh on every recording-state transition, so toggling it
    mid-recording hides an already-visible pill immediately, no restart (see
+   docs/data-model.md, docs/backend.md). Below that, a **Hold to record**
+   on/off toggle for `pushToTalk` (Off is default): On switches the
+   record/dictate hotkeys to push-to-talk — hold to record, release to
+   transcribe — instead of press-to-start/press-to-stop; the tray menu's
+   record/dictate items always toggle either way. lib.rs's global-shortcut
+   handler reads the key fresh on every keypress, so toggling it takes
+   effect on the very next press, no restart (see
    docs/data-model.md, docs/backend.md).
 3. **Claude** — an on/off toggle for `claude` (default on; off is
    no-Claude mode, see the Triage section below), plus text inputs for
