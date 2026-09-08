@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import {
   type Note,
@@ -27,6 +27,10 @@ import {
   writeTodos,
 } from "../lib/commands";
 import type { Models, Prompts } from "../lib/config";
+
+// Shift+T is a two-press gesture — see triageBatch's arm/confirm comment —
+// and this is the window the second press has to land in.
+const BATCH_ARM_WINDOW_MS = 6000;
 
 export interface UseTriageParams {
   // Live mirror of the inbox notes (from useInbox). Both flows read it
@@ -93,10 +97,11 @@ function fileNote(
   );
 }
 
-// The two triage flows — `t`/✓ on one card, and Shift+T/"✨ All (N)" on the
-// whole inbox — plus the in-flight state the UI reads (`sending` per card,
-// `batchRunning` for the batch button) and the header-generating Haiku call
-// both share. Everything here is async and long-running by nature: a run
+// The two triage flows — `t`/✓ on one card, and Shift+T (keyboard-only,
+// two-press confirm) on the whole inbox — plus the in-flight state the UI
+// reads (`sending` per card, `batchRunning`/`batchArmed` for the cards and
+// keyboard layer) and the header-generating Haiku call both share.
+// Everything here is async and long-running by nature: a run
 // starts in one render and finishes many renders later, so nothing may be
 // read from a captured snapshot that could have moved on — hence notesRef
 // and the stable `persist` above.
@@ -113,6 +118,30 @@ export function useTriage({
 }: UseTriageParams) {
   const [sending, setSending] = useState<Set<string>>(new Set());
   const [batchRunning, setBatchRunning] = useState(false);
+  // Whether a first Shift+T is waiting on a confirming second one — read by
+  // the Escape layer (globalKeymap) so it can cancel the arm as its own
+  // layer, and mirrored into KeyContext so it stays testable off the
+  // keymap's pure functions. `armExpiryRef` holds the actual deadline (a
+  // ref, not state, since `triageBatch` reads it synchronously mid-call and
+  // a state read there could be one render stale); `armTimerRef` is the
+  // timeout that auto-cancels once the window elapses.
+  const [batchArmed, setBatchArmed] = useState(false);
+  const armExpiryRef = useRef(0);
+  const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cancels a pending arm (Esc, or the window elapsing) — clears the timer,
+  // the deadline, and the confirm toast. Stable identity: only closes over
+  // refs, setState, and `dismissToast` (itself stable), so it can sit in
+  // KeyContext without churning the keyboard listener's dependencies.
+  const cancelBatchArm = useCallback(() => {
+    if (armTimerRef.current) {
+      clearTimeout(armTimerRef.current);
+      armTimerRef.current = null;
+    }
+    armExpiryRef.current = 0;
+    setBatchArmed(false);
+    dismissToast();
+  }, [dismissToast]);
 
   // One extra Haiku call per triage action (single or batch), only when at
   // least one note being triaged is longer than ~2 rows: numbered bodies in,
@@ -375,8 +404,9 @@ export function useTriage({
     ],
   );
 
-  // Batch triage (`Shift+T` / "✨ All (N)"): one shared `claude` CLI call for
-  // every non-project note instead of one call each — the CLI harness
+  // Batch triage (`Shift+T`, keyboard-only, two-press confirm — see the arm
+  // block below): one shared `claude` CLI call for every non-project note
+  // instead of one call each — the CLI harness
   // overhead (~15-20k tokens) is paid once instead of per note. Project-
   // tagged notes still skip Claude entirely (same as the single-note path)
   // and are filed instantly, grouped so each project's todo file is read
@@ -395,6 +425,34 @@ export function useTriage({
       if (untaggedCount > 0) showToast("All notes untagged — tag them first");
       return;
     }
+
+    // Two-press confirm: a whole-inbox Claude call is expensive and not
+    // cleanly undoable per-note, so the first Shift+T only arms a 6s window
+    // and toasts instead of firing — a second Shift+T inside that window is
+    // the actual go-ahead. Esc (globalKeymap's Escape entry) or the window
+    // elapsing (the timeout below) cancels via `cancelBatchArm`.
+    if (Date.now() >= armExpiryRef.current) {
+      armExpiryRef.current = Date.now() + BATCH_ARM_WINDOW_MS;
+      setBatchArmed(true);
+      if (armTimerRef.current) clearTimeout(armTimerRef.current);
+      armTimerRef.current = setTimeout(() => {
+        armTimerRef.current = null;
+        armExpiryRef.current = 0;
+        setBatchArmed(false);
+      }, BATCH_ARM_WINDOW_MS);
+      showToast(
+        `Triage ${startNotes.length} notes with one Claude call? Press Shift+T again to confirm · Esc cancels`,
+      );
+      return;
+    }
+    // Confirmed — clear the arm and run for real.
+    if (armTimerRef.current) {
+      clearTimeout(armTimerRef.current);
+      armTimerRef.current = null;
+    }
+    armExpiryRef.current = 0;
+    setBatchArmed(false);
+    dismissToast();
 
     setBatchRunning(true);
     setSending((s) => {
@@ -626,6 +684,8 @@ export function useTriage({
   return {
     sending,
     batchRunning,
+    batchArmed,
+    cancelBatchArm,
     generateTitles,
     triageWithClaude,
     triageBatch,

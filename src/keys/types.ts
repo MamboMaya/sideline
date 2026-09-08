@@ -123,6 +123,11 @@ export interface KeyContext {
   // `t`/`e`/`x`.
   sending: Set<string>;
   batchRunning: boolean;
+  // Whether a first Shift+T is waiting on a confirming second press — see
+  // useTriage's `triageBatch`/`cancelBatchArm` comments. Read by Escape's
+  // handler below so cancelling the arm is that layer's FIRST check.
+  batchArmed: boolean;
+  cancelBatchArm: () => void;
   triageWithClaude: (idx: number) => void;
   triageBatch: () => void;
   remove: (idx: number) => void;

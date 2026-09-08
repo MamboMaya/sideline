@@ -256,15 +256,18 @@ export default function App() {
   // row's tags" itself the way the old tagEditTags memo did.
   const tagEditor = useTagEditor({ knownTags, pinnedTags });
 
-  // The two triage flows (`t`/✓ on one card, Shift+T/"✨ All (N)" on the
-  // whole inbox) plus the `sending`/`batchRunning` state the cards and the
-  // header read while a run is in flight. Called from here — after
-  // useTodosData, before useTodosActions — because it takes `loadTodos`
-  // from the former and hands `generateTitles` to the latter (re-routing a
-  // triaged note generates a header on its way out).
+  // The two triage flows (`t`/✓ on one card, Shift+T on the whole inbox,
+  // keyboard-only — see useTriage's arm/confirm comment) plus the
+  // `sending`/`batchRunning`/`batchArmed` state the cards and the keyboard
+  // layer read while a run is in flight or waiting on a confirm. Called
+  // from here — after useTodosData, before useTodosActions — because it
+  // takes `loadTodos` from the former and hands `generateTitles` to the
+  // latter (re-routing a triaged note generates a header on its way out).
   const {
     sending,
     batchRunning,
+    batchArmed,
+    cancelBatchArm,
     generateTitles,
     triageWithClaude,
     triageBatch,
@@ -386,6 +389,8 @@ export default function App() {
     toggleTag,
     sending,
     batchRunning,
+    batchArmed,
+    cancelBatchArm,
     triageWithClaude,
     triageBatch,
     remove,
@@ -416,8 +421,6 @@ export default function App() {
         recState={recState}
         audioLevel={audioLevel}
         recElapsed={recElapsed}
-        batchRunning={batchRunning}
-        onTriageBatch={() => triageBatch()}
         showDone={showDone}
         onToggleShowDone={() => setShowDone((s) => !s)}
         searchOpen={searchOpen}

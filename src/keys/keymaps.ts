@@ -64,7 +64,8 @@ export const globalKeymap: Keymap = {
   // INPUT target, so dispatchKey's in-field guard never lets Escape reach
   // this handler while the input has focus).
   Escape: (ctx) => {
-    if (ctx.showShortcuts) ctx.setShowShortcuts(false);
+    if (ctx.batchArmed) ctx.cancelBatchArm();
+    else if (ctx.showShortcuts) ctx.setShowShortcuts(false);
     else if (ctx.tagInputOpen) ctx.dismissTagInput();
     else ctx.hideWindow();
   },

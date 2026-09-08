@@ -83,6 +83,8 @@ function makeCtx(overrides: Partial<KeyContext> = {}): KeyContext {
     toggleTag: vi.fn(),
     sending: new Set<string>(),
     batchRunning: false,
+    batchArmed: false,
+    cancelBatchArm: vi.fn(),
     triageWithClaude: vi.fn(),
     triageBatch: vi.fn(),
     remove: vi.fn(),
@@ -364,7 +366,18 @@ describe("dispatchKey — Settings gate", () => {
 });
 
 describe("dispatchKey — Escape layering", () => {
-  it("peels the shortcuts modal, then the tag input, then hides the window", () => {
+  it("peels a pending batch-triage arm first, then the shortcuts modal, then the tag input, then hides the window", () => {
+    const armed = makeCtx({
+      batchArmed: true,
+      showShortcuts: true,
+      tagInputOpen: true,
+    });
+    press("Escape", armed);
+    expect(armed.cancelBatchArm).toHaveBeenCalledTimes(1);
+    expect(armed.setShowShortcuts).not.toHaveBeenCalled();
+    expect(armed.dismissTagInput).not.toHaveBeenCalled();
+    expect(armed.hideWindow).not.toHaveBeenCalled();
+
     const both = makeCtx({ showShortcuts: true, tagInputOpen: true });
     press("Escape", both);
     expect(both.setShowShortcuts).toHaveBeenCalledWith(false);

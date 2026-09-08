@@ -25,6 +25,8 @@ Notable, user-visible changes to Sideline. Format follows
 - The recording pill now shows a **Capture** badge in orange for voice
   notes, matching the dictate pill's layout, so the two modes read the
   same way at a glance.
+- **Triage all** is keyboard-only now (Shift+T) and asks for a second
+  Shift+T to confirm; the header button is gone.
 
 ### Fixed
 

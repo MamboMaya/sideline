@@ -18,8 +18,9 @@ its own click, like a button or the tag input) selects it too, exactly as
 arrowing to it would, so `t`/`d`/`e` and the rest of the keyboard layer act
 on the card you just clicked rather than whatever was selected before.
 `Esc` hides the popover from
-any view — open layers like the shortcuts panel, the Settings pane, or the
-tag input absorb one Esc first; `?` toggles a shortcuts panel (its Everywhere
+any view — open layers like a pending batch-triage confirm (see Triage
+below), the shortcuts panel, the Settings pane, or the tag input absorb one
+Esc first, in that order; `?` toggles a shortcuts panel (its Everywhere
 column now also lists the dictate-to-clipboard hotkey, default ⌥⌘V, and
 `⌘,` — see docs/backend.md and Settings below). Reopening the popover resets
 scroll/selection/search to the top but keeps the last-used tab (and closes
@@ -216,13 +217,19 @@ project-tagged notes, which append a pending entry to that project's
 `~/notes/todos/<tag>.md`; a long note's Haiku header (see HEADERS) is never
 waited on here, even in single-note triage — it backfills into the entry in
 the background moments later. Claude (`prompts.triage` / `models.triage`,
-default Haiku) still runs for everything else. Batch triage (`Shift+T` /
-"✨ All (N)" button) triages the
-whole inbox in one pass: project-tagged notes route instantly as above, and
-every other note is triaged in a single `send_to_claude` call
-(`prompts.batch` / `models.batch`, default Haiku) instead of one call per
-note. A card mid-triage is unmistakable: pulsing amber border + a "Triaging…"
-badge while it's in the `sending` set.
+default Haiku) still runs for everything else. Batch triage (`Shift+T`,
+keyboard-only — there is no header button) triages the whole inbox in one
+pass: project-tagged notes route instantly as above, and every other note is
+triaged in a single `send_to_claude` call (`prompts.batch` / `models.batch`,
+default Haiku) instead of one call per note. Because it's one CLI call over
+the whole inbox, `Shift+T` needs a second confirming press: the first press
+toasts "Triage N notes with one Claude call? Press Shift+T again to confirm
+· Esc cancels" (N = however many notes it would actually act on — 0
+untagged-only notes falls through to the plain "tag them first" toast
+instead, no confirm step) without triaging anything; a second `Shift+T`
+within 6 seconds runs it, `Esc` or the 6 seconds elapsing cancels. A card
+mid-triage is unmistakable: pulsing amber border + a "Triaging…" badge while
+it's in the `sending` set.
 
 A note tagged with a routing project (`projectTags`, from `.sideline.json`'s
 `projects`) is filed ONLY to `~/notes/todos/<project>.md` — triage never also

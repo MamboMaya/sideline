@@ -88,7 +88,7 @@ export function ShortcutsModal({
             <kbd>t</kbd> triage
           </div>
           <div className="shortcut">
-            <kbd>T</kbd> triage all
+            <kbd>T</kbd> triage all (press twice to confirm)
           </div>
         </div>
         <div className="shortcuts-col">

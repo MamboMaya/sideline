@@ -14,8 +14,6 @@ interface HeaderProps {
   recState: ReturnType<typeof useRecorder>["recState"];
   audioLevel: number;
   recElapsed: number;
-  batchRunning: boolean;
-  onTriageBatch: () => void;
   showDone: boolean;
   onToggleShowDone: () => void;
   searchOpen: boolean;
@@ -33,8 +31,10 @@ interface HeaderProps {
   onToggleSettings: () => void;
 }
 
-// Tabs, rec indicator, batch/show-done actions, search box, shortcuts
-// toggle. Every handler is owned by App.tsx and threaded down as a prop.
+// Tabs, rec indicator, show-done, search box, shortcuts toggle. Every
+// handler is owned by App.tsx and threaded down as a prop. Batch triage
+// (Shift+T) has no header button — it's keyboard-only, see docs/ui.md's
+// Triage section.
 export function Header({
   view,
   onChangeView,
@@ -43,8 +43,6 @@ export function Header({
   recState,
   audioLevel,
   recElapsed,
-  batchRunning,
-  onTriageBatch,
   showDone,
   onToggleShowDone,
   searchOpen,
@@ -100,17 +98,6 @@ export function Header({
             <span className="rec-status">downloading model…</span>
           )}
         </div>
-      )}
-      {view === "inbox" && (
-        <button
-          type="button"
-          className="ghost"
-          title="Triage all notes — one Claude call (T)"
-          disabled={notesCount === 0 || batchRunning}
-          onClick={onTriageBatch}
-        >
-          ✨ All ({notesCount})
-        </button>
       )}
       {view === "todos" && (
         <button
