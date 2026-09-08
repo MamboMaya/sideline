@@ -127,6 +127,10 @@ you want recording off the app's permission identity or you live in Raycast:
 
 - `voice-note.sh` — Raycast toggle: record (ffmpeg) → transcribe (whisper-cli)
   → append. Needs `brew install ffmpeg whisper-cpp` and the model file.
+- `link-note.sh` — Raycast: append the frontmost Google Chrome tab's title
+  and URL as a 🔗 entry. Reads the tab via AppleScript; macOS will ask once
+  whether to let Raycast control Chrome (an Automation permission for
+  Raycast, not for Sideline).
 - `delete-last-note.sh` — remove the most recent inbox entry.
 
 ## Configuration

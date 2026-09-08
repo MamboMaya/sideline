@@ -10,8 +10,9 @@
   Entry = a line starting with `### `, then body lines until the next `### `.
   Header: icon, `YYYY-MM-DD HH:MM` timestamp, optional inline `#tags`.
   Icons: 🎙️ voice, 🔗 link, 📸 screenshot. The parser is icon-agnostic —
-  🔗/📸 are reserved for hand-written entries or a future capture path;
-  no current capture flow (in-app or `capture/`) emits them, only 🎙️.
+  🎙️ comes from in-app recording, 🔗 from `capture/link-note.sh` (body:
+  page title line, then URL line — title omitted if empty), and 📸 remains
+  reserved for hand-written entries or a future capture path.
   Arbitrary text above the first `### ` entry (e.g. a hand-written comment)
   is a preamble, preserved verbatim by every rewrite
   (`parseInbox`/`serializeInbox` in `src/inbox.ts`).

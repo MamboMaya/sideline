@@ -14,6 +14,8 @@ Notable, user-visible changes to Sideline. Format follows
   whisper toward the right spelling, mis-hearings are corrected after
   transcription (whole words, any case). Applies to the next recording, no
   restart; the Raycast capture script reads the same list.
+- **Link capture** (Raycast `capture/link-note.sh`): appends the frontmost
+  Chrome tab as a 🔗 entry (title + URL) to the inbox.
 
 ### Fixed
 
