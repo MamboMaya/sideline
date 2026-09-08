@@ -11,6 +11,10 @@ interface InboxCardProps {
   isEditing: boolean;
   editArea: ReactNode;
   cardRef: (el: HTMLDivElement | null) => void;
+  // Card-level click: selects this card so the keyboard layer (`t`/`d`/`e`,
+  // arrows) acts on whatever was just clicked, not whatever was selected
+  // before. See the root `onClick` below for why click over mousedown.
+  onSelect: () => void;
   onEdit: () => void;
   onTriage: () => void;
   onDelete: () => void;
@@ -31,9 +35,7 @@ interface InboxCardProps {
 // this renders three tag rows in a fixed order — quick tags (always shown,
 // toggled on/off), then pinned tags not already covered, then any other
 // tags already on the note — reproduced exactly from the original JSX, not
-// generalized. The card itself has no click-to-select handler in the
-// original (selection here is keyboard-nav only), so there's no onSelect
-// prop.
+// generalized.
 export function InboxCard({
   note,
   isSelected,
@@ -41,6 +43,7 @@ export function InboxCard({
   isEditing,
   editArea,
   cardRef,
+  onSelect,
   onEdit,
   onTriage,
   onDelete,
@@ -59,6 +62,18 @@ export function InboxCard({
         (isSelected ? "card selected" : "card") + (isSending ? " sending" : "")
       }
       ref={cardRef}
+      // onClick, not onMouseDown — matches TodoCard/TriagedCard's existing
+      // root handler and fires AFTER any interactive child's own click
+      // handler (buttons, tag chips), so a click on ✓/✕/✎/a tag chip still
+      // does its own thing and selects the card as a harmless side effect.
+      // It also fires after the edit textarea's own onClick, which stops
+      // propagation (EditArea.tsx) — so a click while editing never reaches
+      // here and can't reset/cancel the in-progress edit. onMouseDown would
+      // fire BEFORE those child handlers (and before native focus/blur),
+      // risking a selection change mid-interaction — e.g. the tag
+      // suggestion dropdown uses onMouseDown+preventDefault to dodge a blur
+      // race — ahead of a click the child may end up swallowing.
+      onClick={onSelect}
     >
       <div className="card-head">
         <span>{note.icon}</span>

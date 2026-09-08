@@ -33,6 +33,8 @@ Notable, user-visible changes to Sideline. Format follows
   zoom. The app now sizes itself against the real window height.
 - ⌘+ / ⌘− / ⌘0 now work while Settings is open, so a too-large zoom can be
   undone without scrolling to the Zoom section.
+- Clicking a card now selects it, so `t`/`d`/`e` and the arrows act on the
+  card you clicked.
 
 ## [0.2.0] - 2026-08-13
 

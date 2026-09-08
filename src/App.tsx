@@ -511,6 +511,7 @@ export default function App() {
                     cardRef={(el) => {
                       cardRefs.current[revIdx] = el;
                     }}
+                    onSelect={() => setSelected(revIdx)}
                     onEdit={() => {
                       setSelected(revIdx);
                       openEdit({ kind: "inbox", key: note.raw }, note.body);

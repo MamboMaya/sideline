@@ -12,7 +12,12 @@ below is a behavior spec over that surface, not a file-by-file walkthrough.
 ## Views & navigation
 
 Card list (newest first). Two views, jumped to by `⌘1`/`⌘2` or the header
-tabs (`Inbox (N)` / `Todos (P)`). `Esc` hides the popover from
+tabs (`Inbox (N)` / `Todos (P)`). Selection moves with `↑`/`↓` — and with a
+click: clicking a card (anywhere except an interactive child that handles
+its own click, like a button or the tag input) selects it too, exactly as
+arrowing to it would, so `t`/`d`/`e` and the rest of the keyboard layer act
+on the card you just clicked rather than whatever was selected before.
+`Esc` hides the popover from
 any view — open layers like the shortcuts panel, the Settings pane, or the
 tag input absorb one Esc first; `?` toggles a shortcuts panel (its Everywhere
 column now also lists the dictate-to-clipboard hotkey, default ⌥⌘V, and
