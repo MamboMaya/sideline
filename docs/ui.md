@@ -155,13 +155,15 @@ scrollable pane:
    effect on the very next press, no restart (see
    docs/data-model.md, docs/backend.md).
 3. **Claude** — an on/off switch for `claude` (default on; off is
-   no-Claude mode, see the Triage section below), plus text inputs for
-   `models.triage`/`models.batch` and textareas for `prompts.triage`/
-   `prompts.batch`. Each field shows its raw override value (blank if
-   unset) with the CURRENT EFFECTIVE value as its placeholder; a blank
-   field on blur removes that key from the override entirely so the
-   built-in default applies again — the one write path in the app that can
-   put a key back to "unset" rather than just changing its value.
+   no-Claude mode, see the Triage section below), plus dropdowns for `models.triage`/`models.batch` (the `claude` CLI's
+   `haiku`/`sonnet`/`opus` aliases or "Default"; a hand-edited custom model
+   id shows as its own "(custom)" option, never clobbered; written on
+   change) and textareas for `prompts.triage`/`prompts.batch`. Each prompt
+   field shows its raw override value (blank if unset) with the CURRENT
+   EFFECTIVE value as its placeholder; a blank field on blur — or "Default"
+   in a model dropdown — removes that key from the override entirely so
+   the built-in default applies again — the one write path in the app that
+   can put a key back to "unset" rather than just changing its value.
 4. **Tags** — three chip lists, each with a trailing add-input: pinned tags
    (max 6, same `togglePin` used everywhere a pinned-tag chip is clicked),
    hidden tags (excluded from autocomplete — adding here is `hideTag`,

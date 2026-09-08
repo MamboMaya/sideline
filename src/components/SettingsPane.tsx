@@ -6,6 +6,7 @@ import {
   type HotkeysConfig,
   type Models,
   type Prompts,
+  DEFAULT_MODELS,
   dictionaryFromRows,
   dictionaryRows,
 } from "../lib/config";
@@ -33,7 +34,6 @@ export interface SettingsPaneProps {
   // Claude
   claude: boolean;
   setClaudeEnabled: (enabled: boolean) => void;
-  models: Models;
   modelsOverride: Partial<Models> | undefined;
   setModelOverride: (key: keyof Models, value: string) => void;
   prompts: Prompts;
@@ -64,6 +64,11 @@ export interface SettingsPaneProps {
 }
 
 type HotkeyFieldKey = "toggle" | "record" | "dictate";
+
+// The `claude` CLI's model aliases, offered in the triage/batch model
+// dropdowns. A hand-edited full model id in .sideline.json still works: it
+// shows up as its own "(custom)" option rather than being clobbered.
+const MODEL_OPTIONS = ["haiku", "sonnet", "opus"];
 
 const HOTKEY_FIELDS = [
   {
@@ -491,7 +496,6 @@ export function SettingsPane({
   setDictionary,
   claude,
   setClaudeEnabled,
-  models,
   modelsOverride,
   setModelOverride,
   prompts,
@@ -526,13 +530,10 @@ export function SettingsPane({
     Partial<Record<HotkeyFieldKey, string>>
   >({});
 
-  // Claude: local drafts so typing doesn't write the file on every
+  // Claude prompts: local drafts so typing doesn't write the file on every
   // keystroke — same commit-on-blur/Enter shape as the hotkey fields above,
-  // just without the live-apply half.
-  const [modelDraft, setModelDraft] = useState<Models>({
-    triage: modelsOverride?.triage ?? "",
-    batch: modelsOverride?.batch ?? "",
-  });
+  // just without the live-apply half. (Models are a <select>, written on
+  // change — no draft needed.)
   const [promptDraft, setPromptDraft] = useState<Prompts>({
     triage: promptsOverride?.triage ?? "",
     batch: promptsOverride?.batch ?? "",
@@ -647,33 +648,33 @@ export function SettingsPane({
       {/* ── 2. Voice ───────────────────────────────────────────────── */}
       <section className="settings-section">
         <div className="settings-section-title">Voice</div>
-        <div className="settings-row">
+        {/* Column layout on purpose: as a side-by-side row the select
+            (min-width 0) got squeezed to nothing by its own hint. */}
+        <div className="settings-row settings-row-column">
           <label className="settings-label" htmlFor="audio-device">
             Input device
           </label>
-          <div className="settings-field">
-            <select
-              id="audio-device"
-              className="settings-input"
-              value={currentDevice}
-              onChange={(e) => setAudioDevice(e.target.value)}
-            >
-              <option value="">System default</option>
-              {devices.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-              {currentDevice && !devices.includes(currentDevice) && (
-                <option value={currentDevice}>
-                  {currentDevice} (not connected)
-                </option>
-              )}
-            </select>
-            <span className="settings-hint">
-              Takes effect on the next recording.
-            </span>
-          </div>
+          <select
+            id="audio-device"
+            className="settings-input"
+            value={currentDevice}
+            onChange={(e) => setAudioDevice(e.target.value)}
+          >
+            <option value="">System default</option>
+            {devices.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+            {currentDevice && !devices.includes(currentDevice) && (
+              <option value={currentDevice}>
+                {currentDevice} (not connected)
+              </option>
+            )}
+          </select>
+          <span className="settings-hint">
+            Takes effect on the next recording.
+          </span>
         </div>
         <div className="settings-subrow">
           <div className="settings-sublabel">Dictionary</div>
@@ -731,27 +732,32 @@ export function SettingsPane({
             onChange={setClaudeEnabled}
           />
         </div>
-        {(["triage", "batch"] as const).map((key) => (
-          <div className="settings-row" key={`model-${key}`}>
-            <label className="settings-label" htmlFor={`model-${key}`}>
-              {key === "triage" ? "Triage model" : "Batch model"}
-            </label>
-            <input
-              id={`model-${key}`}
-              className="settings-input"
-              value={modelDraft[key]}
-              placeholder={models[key]}
-              onChange={(e) =>
-                setModelDraft((d) => ({ ...d, [key]: e.target.value }))
-              }
-              onBlur={() => setModelOverride(key, modelDraft[key])}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-                else blurOnEscape(e);
-              }}
-            />
-          </div>
-        ))}
+        {(["triage", "batch"] as const).map((key) => {
+          const current = modelsOverride?.[key] ?? "";
+          return (
+            <div className="settings-row" key={`model-${key}`}>
+              <label className="settings-label" htmlFor={`model-${key}`}>
+                {key === "triage" ? "Triage model" : "Batch model"}
+              </label>
+              <select
+                id={`model-${key}`}
+                className="settings-input"
+                value={current}
+                onChange={(e) => setModelOverride(key, e.target.value)}
+              >
+                <option value="">Default ({DEFAULT_MODELS[key]})</option>
+                {MODEL_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+                {current && !MODEL_OPTIONS.includes(current) && (
+                  <option value={current}>{current} (custom)</option>
+                )}
+              </select>
+            </div>
+          );
+        })}
         {(["triage", "batch"] as const).map((key) => (
           <div
             className="settings-row settings-row-column"
@@ -774,8 +780,8 @@ export function SettingsPane({
           </div>
         ))}
         <div className="settings-hint">
-          Blank restores the built-in default. Prompt/model changes only save
-          when you click away from the field.
+          Model changes apply immediately. Prompts save when you click away from
+          the field; blank restores the built-in default.
         </div>
       </section>
 

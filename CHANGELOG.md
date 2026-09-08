@@ -33,6 +33,9 @@ Notable, user-visible changes to Sideline. Format follows
   same way at a glance.
 - **Triage all** is keyboard-only now (Shift+T) and asks for a second
   Shift+T to confirm; the header button is gone.
+- Settings: the triage/batch model fields are dropdowns (haiku, sonnet,
+  opus, or the default) instead of free text, and the input-device picker
+  sits on its own line — it used to be squeezed out of view by its hint.
 
 ### Fixed
 

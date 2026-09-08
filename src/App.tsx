@@ -474,7 +474,6 @@ export default function App() {
           setDictionary={setDictionary}
           claude={claude}
           setClaudeEnabled={setClaudeEnabled}
-          models={models}
           modelsOverride={modelsOverride}
           setModelOverride={setModelOverride}
           prompts={prompts}
