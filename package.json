@@ -1,7 +1,7 @@
 {
   "name": "sideline",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "macOS menu-bar app for capturing and triaging quick notes \u2014 voice, links, screenshots \u2014 with local Whisper transcription and Claude-assisted triage",
   "license": "MIT",
   "author": "MamboMaya",

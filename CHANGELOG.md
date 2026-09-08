@@ -6,6 +6,8 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-08
+
 ### Added
 
 - **Transcription dictionary** (Settings → Voice → Dictionary, or
