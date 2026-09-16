@@ -18,8 +18,7 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let add_project =
-        MenuItem::with_id(app, "add-project", "Add project…", true, None::<&str>)?;
+    let add_project = MenuItem::with_id(app, "add-project", "Add project…", true, None::<&str>)?;
     let purge = MenuItem::with_id(app, "purge", "Purge Archive…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Sideline", true, None::<&str>)?;
     let menu = Menu::with_items(

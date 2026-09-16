@@ -34,7 +34,9 @@ pub(crate) fn pick_folder(app: &tauri::AppHandle) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel();
     SUPPRESS_HIDE.store(true, Ordering::SeqCst);
     let queued = app.run_on_main_thread(move || {
-        let picked = rfd::FileDialog::new().set_title("Add project").pick_folder();
+        let picked = rfd::FileDialog::new()
+            .set_title("Add project")
+            .pick_folder();
         let _ = tx.send(picked);
     });
     let picked = if queued.is_ok() {
