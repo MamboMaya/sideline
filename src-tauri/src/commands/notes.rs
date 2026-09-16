@@ -84,12 +84,12 @@ pub(crate) fn write_inbox(content: String, base_version: String) -> Result<Strin
     write_if_version(&inbox_path(), content, &base_version)
 }
 
-/// Appends a voice-note block in O_APPEND mode (not read-modify-write) so it
-/// can never race the frontend's full-file `write_inbox` or the Raycast
-/// capture script's own append. Called directly by the native recording
-/// pipeline in audio.rs — no `#[tauri::command]` wrapper, since nothing else
-/// calls it.
-pub(crate) fn append_inbox_text(text: &str) -> Result<(), String> {
+/// Appends one inbox entry block (`### <icon> <timestamp>` + body) in
+/// O_APPEND mode (not read-modify-write) so it can never race the
+/// frontend's full-file `write_inbox` or the Raycast capture script's own
+/// append. Shared by `append_inbox_text` (voice notes, 🎙️) and
+/// `append_inbox_entry` (the Ask pane's ⌘S save, ❓).
+fn append_inbox_block(icon: &str, text: &str) -> Result<(), String> {
     let p = inbox_path();
     fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M");
@@ -98,7 +98,30 @@ pub(crate) fn append_inbox_text(text: &str) -> Result<(), String> {
         .append(true)
         .open(&p)
         .map_err(|e| e.to_string())?;
-    write!(f, "\n### 🎙️ {now}\n{text}\n").map_err(|e| e.to_string())
+    write!(f, "\n### {icon} {now}\n{text}\n").map_err(|e| e.to_string())
+}
+
+/// Thin wrapper over `append_inbox_block` for the native recording pipeline
+/// in audio.rs — no `#[tauri::command]` wrapper, since nothing else calls
+/// it.
+pub(crate) fn append_inbox_text(text: &str) -> Result<(), String> {
+    append_inbox_block("🎙️", text)
+}
+
+/// Appends a ❓ entry to the inbox — used by the Ask pane's ⌘S save, which
+/// keeps a quick question + its answer around as a normal inbox entry.
+/// Appended, not read-modify-write, so it can never race `write_inbox` or
+/// external capture scripts (same reasoning as `append_inbox_text`).
+#[tauri::command]
+pub(crate) fn append_inbox_entry(icon: String, body: String) -> Result<(), String> {
+    if icon.is_empty() || icon.chars().any(|c| c.is_whitespace()) {
+        return Err("Invalid icon".to_string());
+    }
+    let body = body.trim();
+    if body.is_empty() {
+        return Err("Empty body".to_string());
+    }
+    append_inbox_block(&icon, body)
 }
 
 #[tauri::command]

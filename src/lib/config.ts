@@ -40,12 +40,22 @@ export const DEFAULT_PROMPTS: Prompts = {
 export interface Models {
   triage: string;
   batch: string;
+  // Quick question (⌥⌘A / `q`) model — see AskPane.tsx. Sonnet, not Haiku:
+  // a live side-by-side on "WISP in real estate" had Sonnet answer right in
+  // ~9s while Haiku picked the wrong expansion in ~17s — a web-search
+  // answer needs the judgment Haiku doesn't reliably have.
+  ask: string;
 }
 
-// Haiku everywhere: triage just files/routes notes — the real thinking
-// happens later in a repo Claude session with full context. Overridable
-// per-action via .sideline.json's `models`.
-export const DEFAULT_MODELS: Models = { triage: "haiku", batch: "haiku" };
+// Haiku everywhere except `ask` (see its comment above): triage just
+// files/routes notes — the real thinking happens later in a repo Claude
+// session with full context. Overridable per-action via .sideline.json's
+// `models`.
+export const DEFAULT_MODELS: Models = {
+  triage: "haiku",
+  batch: "haiku",
+  ask: "sonnet",
+};
 
 // `.sideline.json`'s `projects` field: either the original `{tag: path}` map
 // (paths are no longer used for anything — a repo just names itself in the
@@ -81,6 +91,10 @@ export function mergeModels(raw: Partial<Models> | undefined): Models {
       typeof raw?.batch === "string" && raw.batch.trim()
         ? raw.batch
         : DEFAULT_MODELS.batch,
+    ask:
+      typeof raw?.ask === "string" && raw.ask.trim()
+        ? raw.ask
+        : DEFAULT_MODELS.ask,
   };
 }
 
@@ -153,6 +167,10 @@ export interface HotkeysConfig {
   // docs/backend.md. Default ⌥⌘V (src-tauri/src/hotkeys.rs's
   // `default_dictate_shortcut`).
   dictate?: string;
+  // Quick question (see AskPane.tsx / useAsk.ts): shows the popover and
+  // emits `ask-open`, same show-then-emit shape as the toggle hotkey.
+  // Default ⌥⌘A.
+  ask?: string;
 }
 
 // `.sideline.json`'s `overlay` field — `{ hidden: true }` hides the

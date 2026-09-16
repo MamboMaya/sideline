@@ -70,6 +70,13 @@ export function ShortcutsModal({
             <kbd>{formatHotkey(hotkeysOverride?.dictate, "⌥⌘V")}</kbd> dictate
             to clipboard
           </div>
+          <div className="shortcut">
+            <kbd>q / {formatHotkey(hotkeysOverride?.ask, "⌥⌘A")}</kbd> quick
+            question
+          </div>
+          <div className="shortcut">
+            <kbd>⌘S</kbd> save quick-question answer
+          </div>
         </div>
       </div>
       <div className="shortcuts-row">

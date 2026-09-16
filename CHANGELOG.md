@@ -6,6 +6,15 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Quick question** (⌥⌘A, or `q` from inside the popover): ask Claude a
+  one-off question with web search enabled, without leaving Sideline. A
+  single input swaps in over the card list; Enter asks, the answer renders
+  below as plain text. Ephemeral by default — Esc discards it — but ⌘S
+  appends the question and answer to the inbox as a ❓ entry. Model
+  configurable in Settings → Claude → Question model (default Sonnet).
+
 ## [0.3.0] - 2026-09-08
 
 ### Added

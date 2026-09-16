@@ -64,12 +64,22 @@ export interface SettingsPaneProps {
   onHotkeyCapturingChange: (capturing: boolean) => void;
 }
 
-type HotkeyFieldKey = "toggle" | "record" | "dictate";
+type HotkeyFieldKey = "toggle" | "record" | "dictate" | "ask";
 
 // The `claude` CLI's model aliases, offered in the triage/batch model
 // dropdowns. A hand-edited full model id in .sideline.json still works: it
 // shows up as its own "(custom)" option rather than being clobbered.
 const MODEL_OPTIONS = ["haiku", "sonnet", "opus"];
+
+// Labels for the Claude section's per-action model dropdowns. `ask` (Quick
+// question) is deliberately absent from the prompts map below it — there's
+// no override-able prompt template for a one-shot question, unlike
+// triage/batch.
+const MODEL_LABELS: Record<"triage" | "batch" | "ask", string> = {
+  triage: "Triage model",
+  batch: "Batch model",
+  ask: "Question model",
+};
 
 const HOTKEY_FIELDS = [
   // `defaultCombo` is drawn as dashed key caps while the key is unset, and
@@ -91,6 +101,12 @@ const HOTKEY_FIELDS = [
     label: "Dictate to clipboard",
     defaultCombo: "option+cmd+v",
     fallback: "⌥⌘V",
+  },
+  {
+    key: "ask" as const,
+    label: "Quick question",
+    defaultCombo: "option+cmd+a",
+    fallback: "⌥⌘A",
   },
 ];
 
@@ -560,6 +576,7 @@ export function SettingsPane({
     toggle: macHotkeyCombo(hotkeysOverride?.toggle),
     record: macHotkeyCombo(hotkeysOverride?.record),
     dictate: macHotkeyCombo(hotkeysOverride?.dictate),
+    ask: macHotkeyCombo(hotkeysOverride?.ask),
   });
   const [hotkeyError, setHotkeyError] = useState<
     Partial<Record<HotkeyFieldKey, string>>
@@ -590,6 +607,7 @@ export function SettingsPane({
     if (next.toggle.trim()) override.toggle = next.toggle.trim();
     if (next.record.trim()) override.record = next.record.trim();
     if (next.dictate.trim()) override.dictate = next.dictate.trim();
+    if (next.ask.trim()) override.ask = next.ask.trim();
     await updateConfig({
       hotkeys: Object.keys(override).length ? override : undefined,
     });
@@ -597,6 +615,7 @@ export function SettingsPane({
       toggle: override.toggle,
       record: override.record,
       dictate: override.dictate,
+      ask: override.ask,
     });
     const errs: typeof hotkeyError = {};
     for (const { key, label } of HOTKEY_FIELDS) {
@@ -613,6 +632,7 @@ export function SettingsPane({
       toggle: macHotkeyCombo(override.toggle),
       record: macHotkeyCombo(override.record),
       dictate: macHotkeyCombo(override.dictate),
+      ask: macHotkeyCombo(override.ask),
     });
   };
 
@@ -785,12 +805,12 @@ export function SettingsPane({
             onChange={setClaudeEnabled}
           />
         </div>
-        {(["triage", "batch"] as const).map((key) => {
+        {(["triage", "batch", "ask"] as const).map((key) => {
           const current = modelsOverride?.[key] ?? "";
           return (
             <div className="settings-row" key={`model-${key}`}>
               <label className="settings-label" htmlFor={`model-${key}`}>
-                {key === "triage" ? "Triage model" : "Batch model"}
+                {MODEL_LABELS[key]}
               </label>
               <select
                 id={`model-${key}`}

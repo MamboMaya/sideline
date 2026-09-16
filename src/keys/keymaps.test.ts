@@ -64,6 +64,10 @@ function makeCtx(overrides: Partial<KeyContext> = {}): KeyContext {
     closeSettings: vi.fn(),
     toggleSettings: vi.fn(),
     hotkeyCapturing: false,
+    askOpen: false,
+    openAsk: vi.fn(),
+    closeAsk: vi.fn(),
+    saveAsk: vi.fn(),
     setSearchOpen: vi.fn(),
     setSearchQuery: vi.fn(),
     hideWindow: vi.fn(),
@@ -144,7 +148,7 @@ describe("keymap tables", () => {
 
   it("binds exactly the documented global keys", () => {
     expect(Object.keys(globalKeymap).sort()).toEqual(
-      ["/", "?", "Escape", "r", "u"].sort(),
+      ["/", "?", "Escape", "q", "r", "u"].sort(),
     );
   });
 
@@ -362,6 +366,59 @@ describe("dispatchKey — Settings gate", () => {
     ctx = capturingCtx();
     press(",", ctx, { metaKey: true, tagName: "BUTTON" });
     expect(ctx.toggleSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatchKey — Ask gate", () => {
+  it("⌘S saves while Ask is open", () => {
+    const ctx = makeCtx({ askOpen: true });
+    const e = press("s", ctx, { metaKey: true });
+    expect(ctx.saveAsk).toHaveBeenCalledTimes(1);
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  it("closes Ask on a non-field Escape, but not while a field has focus", () => {
+    const ctx = makeCtx({ askOpen: true });
+    press("Escape", ctx, { tagName: "DIV" });
+    expect(ctx.closeAsk).toHaveBeenCalledTimes(1);
+
+    const fieldCtx = makeCtx({ askOpen: true });
+    press("Escape", fieldCtx, { tagName: "INPUT" });
+    expect(fieldCtx.closeAsk).not.toHaveBeenCalled();
+  });
+
+  it("lets zoom pass through while Ask is open", () => {
+    const ctx = makeCtx({ askOpen: true });
+    press("=", ctx, { metaKey: true });
+    press("-", ctx, { metaKey: true });
+    press("0", ctx, { metaKey: true });
+    expect((ctx.adjustZoom as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+      [0.1],
+      [-0.1],
+      [0],
+    ]);
+  });
+
+  it("closes Ask then opens Settings on ⌘,", () => {
+    const ctx = makeCtx({ askOpen: true });
+    const e = press(",", ctx, { metaKey: true });
+    expect(ctx.closeAsk).toHaveBeenCalledTimes(1);
+    expect(ctx.toggleSettings).toHaveBeenCalledTimes(1);
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  it("leaves every other key alone — the pane's own input owns typing", () => {
+    const ctx = makeCtx({ askOpen: true });
+    press("t", ctx);
+    press("a", ctx, { tagName: "INPUT" });
+    expect(ctx.triageWithClaude).not.toHaveBeenCalled();
+    expect(ctx.openTagEditor).not.toHaveBeenCalled();
+  });
+
+  it("q opens Ask when it's closed", () => {
+    const ctx = makeCtx();
+    press("q", ctx);
+    expect(ctx.openAsk).toHaveBeenCalledTimes(1);
   });
 });
 

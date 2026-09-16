@@ -89,6 +89,13 @@ export interface KeyContext {
   // that layer — closes it when open. One toggle function serves both
   // directions; see useKeyboard.ts's step-0 comment.
   toggleSettings: () => void;
+  // Quick question pane (⌥⌘A / `q` — see AskPane.tsx, useAsk.ts). Its own
+  // gate sits right after the Settings gate in dispatchKey: ⌘S saves, Esc
+  // closes, zoom passes through, and ⌘, closes Ask before opening Settings.
+  askOpen: boolean;
+  openAsk: () => void;
+  closeAsk: () => void;
+  saveAsk: () => void;
   setSearchOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
   // Hides the popover (Escape's last resort). Injected rather than called

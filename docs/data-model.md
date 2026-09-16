@@ -9,10 +9,14 @@
 
   Entry = a line starting with `### `, then body lines until the next `### `.
   Header: icon, `YYYY-MM-DD HH:MM` timestamp, optional inline `#tags`.
-  Icons: 🎙️ voice, 🔗 link, 📸 screenshot. The parser is icon-agnostic —
+  Icons: 🎙️ voice, 🔗 link, 📸 screenshot, ❓ saved quick question (body is
+  `**question**` then a blank line then the answer — see docs/ui.md's Quick
+  question section). The parser is icon-agnostic —
   🎙️ comes from in-app recording, 🔗 from `capture/link-note.sh` (body:
-  page title line, then URL line — title omitted if empty), and 📸 remains
-  reserved for hand-written entries or a future capture path.
+  page title line, then URL line — title omitted if empty), 📸 remains
+  reserved for hand-written entries or a future capture path, and ❓ is
+  appended by `append_inbox_entry` (⌘S in the Ask pane) rather than going
+  through the normal read-modify-write `write_inbox` path.
   Arbitrary text above the first `### ` entry (e.g. a hand-written comment)
   is a preamble, preserved verbatim by every rewrite
   (`parseInbox`/`serializeInbox` in `src/inbox.ts`).
@@ -44,8 +48,11 @@
   (0.7–1.5 UI scale, ⌘+/⌘-/⌘0, omitted at
   1), optional `"prompts": { "triage": "...", "batch": "..." }`
   overriding the built-in triage/batch-triage prompt templates, optional
-  `"models": { "triage": "haiku", "batch": "haiku" }` (Haiku is the default
-  for both — triage just files and routes), and optional
+  `"models": { "triage": "haiku", "batch": "haiku", "ask": "sonnet" }`
+  (Haiku is the default for triage/batch — triage just files and routes;
+  `ask` — the Quick question pane, docs/ui.md — defaults to Sonnet instead,
+  since a web-search answer needs more judgment than Haiku reliably gives),
+  and optional
   `"projects": { "<tag>": "<repo path>" }` (legacy shape, path unused) or a
   plain array of tags — opts a tag into todo routing. Only the
   tag itself matters; no repo path is ever read or written to. Also
@@ -59,15 +66,18 @@
   substring match against the system's input device names, picking the
   in-app recorder's mic (see docs/backend.md); omitted = system default
   input device. Also optional `"hotkeys": { "toggle": "alt+cmd+space",
-"record": "alt+cmd+r", "dictate": "alt+cmd+v" }` — human-friendly combo
-  strings for the three global shortcuts (`dictate` triggers the same
-  record→transcribe pipeline as `record`, but the transcript is copied to
-  the clipboard and auto-pasted into the frontmost app instead of being
-  appended to inbox.md — see docs/backend.md; aliases:
+"record": "alt+cmd+r", "dictate": "alt+cmd+v", "ask": "alt+cmd+a" }` —
+  human-friendly combo strings for the four global shortcuts (`dictate`
+  triggers the same record→transcribe pipeline as `record`, but the
+  transcript is copied to the clipboard and auto-pasted into the frontmost
+  app instead of being appended to inbox.md; `ask` shows the popover and
+  emits `ask-open`, opening the Quick question pane — see docs/backend.md
+  and docs/ui.md; aliases:
   `cmd`/`command`/`super`/`meta`, `opt`/`option`/`alt`, `ctrl`/`control`,
   `shift`; key token is a bare letter/digit/`space` or a W3C `Code` name like
-  `F5`/`Comma`); missing or invalid falls back to the ⌥⌘Space/⌥⌘R/⌥⌘V
-  default, read once at startup — changing it needs an app restart to take
+  `F5`/`Comma`); missing or invalid falls back to the
+  ⌥⌘Space/⌥⌘R/⌥⌘V/⌥⌘A default, read once at startup — changing it needs an
+  app restart to take
   effect, UNLESS it's changed through the Settings pane's Hotkeys section
   (the gear button in the header), which additionally calls the
   `apply_hotkeys` command to swap the OS-level registration live, no

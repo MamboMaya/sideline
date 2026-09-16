@@ -27,21 +27,24 @@ enum HeldShortcut {
 }
 
 pub fn run() {
-    let (toggle, record, dictate) = hotkeys::load_hotkeys();
+    let (toggle, record, dictate, ask) = hotkeys::load_hotkeys();
     let active_toggle = Arc::new(Mutex::new(toggle));
     let active_record = Arc::new(Mutex::new(record));
     let active_dictate = Arc::new(Mutex::new(dictate));
+    let active_ask = Arc::new(Mutex::new(ask));
     let handler_toggle = active_toggle.clone();
     let handler_record = active_record.clone();
     let handler_dictate = active_dictate.clone();
+    let handler_ask = active_ask.clone();
     // A second clone of each Arc, managed as one struct so the Settings
-    // pane's `apply_hotkeys` command can reach all three through a single
+    // pane's `apply_hotkeys` command can reach all four through a single
     // `tauri::State` — same Arcs the handler closure above compares
     // against, so updating one here is what the handler sees too.
     let managed_shortcuts = hotkeys::ActiveShortcuts {
         toggle: active_toggle.clone(),
         record: active_record.clone(),
         dictate: active_dictate.clone(),
+        ask: active_ask.clone(),
     };
     // Push-to-talk-only state: the hotkey (if any) whose hold is currently
     // "open" — set on a Pressed that starts a session, cleared on the
@@ -74,6 +77,22 @@ pub fn run() {
                     if *shortcut == *handler_toggle.lock().unwrap() {
                         if event.state() == ShortcutState::Pressed {
                             window::toggle_window(app, None);
+                        }
+                        return;
+                    }
+
+                    // Ask is show-only, never hide-on-press like toggle: the
+                    // Ask pane needs the popover open and focused to type
+                    // into. An already-visible popover (e.g. opened from the
+                    // tray at a different spot) just gets focus back rather
+                    // than being repositioned; a hidden one shows at the
+                    // hotkey spot. Either way the frontend then opens the
+                    // pane on `ask-open`.
+                    if *shortcut == *handler_ask.lock().unwrap() {
+                        if event.state() == ShortcutState::Pressed {
+                            window::show_or_focus_window(app);
+                            use tauri::Emitter;
+                            let _ = app.emit("ask-open", ());
                         }
                         return;
                     }
@@ -167,7 +186,9 @@ pub fn run() {
             // the Settings pane's Voice section device picker.
             audio::get_recording_state,
             audio::list_audio_devices,
-            hotkeys::apply_hotkeys
+            hotkeys::apply_hotkeys,
+            claude::ask_claude,
+            commands::notes::append_inbox_entry
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,
@@ -195,6 +216,13 @@ pub fn run() {
                 dictate,
                 hotkeys::default_dictate_shortcut(),
                 "dictate",
+            );
+            hotkeys::register_hotkey_with_fallback(
+                app.handle(),
+                &active_ask,
+                ask,
+                hotkeys::default_ask_shortcut(),
+                "ask",
             );
 
             tray::setup_tray(app.handle())?;

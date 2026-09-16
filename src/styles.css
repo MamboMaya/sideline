@@ -929,6 +929,57 @@ header .ghost.gear {
 .settings-dict + .settings-hint {
   margin-top: 4px;
 }
+/* Quick question pane (AskPane.tsx) — swapped into the `.cards` region like
+   Settings, so it shares the same flex:1/overflow-y/padding rhythm rather
+   than a bespoke layout. */
+.ask-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ask-input {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+}
+.ask-input:focus {
+  border-color: var(--accent);
+}
+.ask-hint {
+  color: var(--text-muted);
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 18px;
+}
+.ask-loading {
+  color: var(--accent);
+  font-style: italic;
+  font-size: 12px;
+}
+.ask-answer {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  font-size: 13px;
+}
+.ask-copy {
+  font-size: 11px;
+}
 /* iOS-style switch (SettingsPane.tsx's Switch): orange track + knob right
    = on; border-colour track + knob left = off. */
 .switch {

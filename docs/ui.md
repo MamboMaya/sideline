@@ -55,6 +55,34 @@ gone. The popover header deliberately does NOT mirror that notice (the
 pill owns it), and pressing either record hotkey during the notice starts
 a fresh session immediately.
 
+## Quick question
+
+`⌥⌘A` (global hotkey, configurable — see Settings below) shows the popover
+and opens the Ask pane (`src/components/AskPane.tsx`, `src/hooks/
+useAsk.ts`); `q` does the same from inside the popover, mirroring `r` for
+recording. The pane swaps in over the `.cards` region, same shape as
+Settings: a single-line input, autofocused, and an answer area below it.
+`Enter` sends the question to Claude (`models.ask`, default Sonnet — see Settings → Claude → "Question model" —
+picked over Haiku after a live comparison came back with Haiku answering
+wrong and slower on a real question) via the CLI with web search enabled
+(`--tools WebSearch,WebFetch`, see docs/backend.md); the answer renders
+below as plain text (the CLI is told to skip markdown, so nothing is
+linkified). `Esc` closes the pane, discarding everything. It's single-shot —
+no follow-up questions, no conversation — and entirely ephemeral: nothing
+touches disk until `⌘S`, which appends the question and answer to
+`inbox.md` as a `❓` entry (`**question**` then a blank line then the
+answer — see docs/data-model.md). A small ghost "Copy" button at the right
+end of the hint line copies just the answer text.
+
+Opening Settings closes Ask and vice versa — the two panes are mutually
+exclusive, same swapped-`.cards` slot. The one wrinkle: `⌥⌘A` shows the
+popover THEN emits the `ask-open` event Sideline listens for, so the
+window's focus-gain (which normally resets/closes every transient UI layer
+on reopen — see Views & navigation above) and `ask-open` can arrive in
+either order; the focus-gain reset deliberately does NOT close Ask if it
+was opened within the last second, so the hotkey's own open never races
+itself closed.
+
 ## Settings
 
 The header's ⚙ button (`src/components/Header.tsx`) or `⌘,` (the standard
@@ -88,12 +116,12 @@ hand-edited into one it does — survives untouched. Five sections, one
 scrollable pane:
 
 1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
-   `record`/`dictate` (`HotkeyCaptureField` in
+   `record`/`dictate`/`ask` (`HotkeyCaptureField` in
    `src/components/SettingsPane.tsx`), laid out label-left / field-right like the switches below, each field a
    fixed-width button drawing the combo as macOS key caps (`KeyCaps` /
    `hotkeyKeyCaps` in `src/lib/format.ts`): solid caps for a combo the
-   user set, dashed muted caps for the untouched ⌥⌘Space/⌥⌘R/⌥⌘V default.
-   A changed key gets a "default ⌥⌘R · reset" line under it (reset commits
+   user set, dashed muted caps for the untouched ⌥⌘Space/⌥⌘R/⌥⌘V/⌥⌘A
+   default. A changed key gets a "default ⌥⌘R · reset" line under it (reset commits
    blank, exactly like Delete in capture); an untouched one shows nothing
    extra. One instruction hint sits under the section instead of a
    per-field "currently …" note. There is no typing: the field is a button,
@@ -160,10 +188,14 @@ scrollable pane:
    effect on the very next press, no restart (see
    docs/data-model.md, docs/backend.md).
 3. **Claude** — an on/off switch for `claude` (default on; off is
-   no-Claude mode, see the Triage section below), plus dropdowns for `models.triage`/`models.batch` (the `claude` CLI's
+   no-Claude mode, see the Triage section below), plus dropdowns for `models.triage`/`models.batch`/`models.ask`
+   ("Question model" — see the Quick question section above; default
+   Sonnet, unlike triage/batch's Haiku) (the `claude` CLI's
    `haiku`/`sonnet`/`opus` aliases or "Default"; a hand-edited custom model
    id shows as its own "(custom)" option, never clobbered; written on
-   change) and textareas for `prompts.triage`/`prompts.batch`. Each prompt
+   change) and textareas for `prompts.triage`/`prompts.batch` (Quick
+   question has no prompt override — a one-shot question has no template
+   to customize). Each prompt
    field shows its raw override value (blank if unset) with the CURRENT
    EFFECTIVE value as its placeholder; a blank field on blur — or "Default"
    in a model dropdown — removes that key from the override entirely so

@@ -91,7 +91,11 @@ describe("parseConfig — full valid config", () => {
       batch: DEFAULT_PROMPTS.batch,
     });
     expect(cfg.promptsOverride).toEqual({ triage: "custom triage prompt" });
-    expect(cfg.models).toEqual({ triage: "opus", batch: DEFAULT_MODELS.batch });
+    expect(cfg.models).toEqual({
+      triage: "opus",
+      batch: DEFAULT_MODELS.batch,
+      ask: DEFAULT_MODELS.ask,
+    });
     expect(cfg.modelsOverride).toEqual({ triage: "opus" });
     expect(cfg.projectTags).toEqual(["sideline"]);
     expect(cfg.projectsOverride).toEqual({ sideline: "/path/unused" });
@@ -107,6 +111,30 @@ describe("parseConfig — full valid config", () => {
     expect(cfg.pushToTalk).toBe(true);
     expect(cfg.pushToTalkOverride).toBe(true);
     expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig / mergeModels — models.ask (Quick question)
+// ---------------------------------------------------------------------------
+
+describe("models.ask", () => {
+  test("absent models key defaults ask to sonnet", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.models.ask).toBe("sonnet");
+    expect(cfg.modelsOverride).toBeUndefined();
+  });
+
+  test("an explicit ask override round-trips", () => {
+    const cfg = parseConfig(JSON.stringify({ models: { ask: "opus" } }));
+    expect(cfg.models.ask).toBe("opus");
+    expect(cfg.modelsOverride).toEqual({ ask: "opus" });
+  });
+
+  test("mergeModels falls back to sonnet for a blank/missing ask", () => {
+    expect(mergeModels(undefined).ask).toBe("sonnet");
+    expect(mergeModels({ ask: "  " }).ask).toBe("sonnet");
+    expect(mergeModels({ ask: "haiku" }).ask).toBe("haiku");
   });
 });
 
@@ -730,9 +758,13 @@ describe("mergePrompts / mergeModels", () => {
     expect(mergePrompts({ batch: "" }).batch).toBe(DEFAULT_PROMPTS.batch);
   });
 
-  test("a non-blank field overrides its default, the other field stays default", () => {
+  test("a non-blank field overrides its default, the other fields stay default", () => {
     const merged = mergeModels({ triage: "opus" });
-    expect(merged).toEqual({ triage: "opus", batch: DEFAULT_MODELS.batch });
+    expect(merged).toEqual({
+      triage: "opus",
+      batch: DEFAULT_MODELS.batch,
+      ask: DEFAULT_MODELS.ask,
+    });
   });
 });
 

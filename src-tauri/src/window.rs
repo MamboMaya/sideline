@@ -8,35 +8,61 @@ use tauri::{LogicalPosition, Manager, PhysicalPosition};
 
 use crate::audio::RecState;
 
-/// Toggle the popover window: hide if visible, otherwise position and show.
-/// Tray clicks pass the click position and anchor the popover under the
-/// icon for that invocation only; the global hotkey passes None and the
-/// popover goes top-center of whichever monitor holds the cursor.
+/// Toggle the popover window: hide if visible, otherwise position and show
+/// (see `show_window`). Tray clicks pass the click position and anchor the
+/// popover under the icon for that invocation only; the global hotkey
+/// passes None and the popover goes top-center of whichever monitor holds
+/// the cursor.
 pub(crate) fn toggle_window(app: &tauri::AppHandle, position: Option<PhysicalPosition<f64>>) {
     if let Some(win) = app.get_webview_window("main") {
         if win.is_visible().unwrap_or(false) {
             let _ = win.hide();
         } else {
-            if let Some(pos) = position {
-                // Tray coords are physical, in the scale of the monitor the
-                // menu bar is on. Positioning with PhysicalPosition would
-                // convert them using the WINDOW's current monitor scale —
-                // wrong whenever the popover last sat on a different-DPI
-                // screen. Convert with the click's own monitor scale and
-                // position in logical points, which macOS applies directly.
-                let scale = monitor_at(app, pos.x, pos.y)
-                    .map(|m| m.scale_factor())
-                    .unwrap_or(1.0);
-                let _ = win.set_position(LogicalPosition::new(
-                    pos.x / scale - 190.0,
-                    pos.y / scale + 8.0,
-                ));
-            } else if let Some(pos) = hotkey_position(app, &win) {
-                let _ = win.set_position(pos);
-            }
-            let _ = win.show();
-            let _ = win.set_focus();
+            show_window(app, position);
         }
+    }
+}
+
+/// Show the popover at the hotkey spot if hidden, or just refocus it if it
+/// is already visible (no repositioning — a popover the user opened from
+/// the tray stays where it is). The `ask` hotkey's entry point.
+pub(crate) fn show_or_focus_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.set_focus();
+        } else {
+            show_window(app, None);
+        }
+    }
+}
+
+/// Position and show the popover, unconditionally — used by `toggle_window`
+/// and `show_or_focus_window`, whose callers already checked visibility.
+/// `position`
+/// is the tray click's physical point, if this call came from a tray click;
+/// None (the hotkey case) falls back to `hotkey_position`'s spot on the
+/// monitor holding the cursor.
+pub(crate) fn show_window(app: &tauri::AppHandle, position: Option<PhysicalPosition<f64>>) {
+    if let Some(win) = app.get_webview_window("main") {
+        if let Some(pos) = position {
+            // Tray coords are physical, in the scale of the monitor the
+            // menu bar is on. Positioning with PhysicalPosition would
+            // convert them using the WINDOW's current monitor scale —
+            // wrong whenever the popover last sat on a different-DPI
+            // screen. Convert with the click's own monitor scale and
+            // position in logical points, which macOS applies directly.
+            let scale = monitor_at(app, pos.x, pos.y)
+                .map(|m| m.scale_factor())
+                .unwrap_or(1.0);
+            let _ = win.set_position(LogicalPosition::new(
+                pos.x / scale - 190.0,
+                pos.y / scale + 8.0,
+            ));
+        } else if let Some(pos) = hotkey_position(app, &win) {
+            let _ = win.set_position(pos);
+        }
+        let _ = win.show();
+        let _ = win.set_focus();
     }
 }
 

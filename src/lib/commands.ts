@@ -79,6 +79,23 @@ export function sendToClaude(prompt: string, model?: string): Promise<string> {
   return invoke<string>("send_to_claude", { prompt, model });
 }
 
+// Quick question (⌥⌘A / `q` — see useAsk.ts): a single-shot, web-search-
+// enabled `claude` CLI call. Separate from sendToClaude because the Rust
+// side runs it with different flags (WebSearch/WebFetch tools) — see
+// docs/backend.md.
+export function askClaude(question: string, model?: string): Promise<string> {
+  return invoke<string>("ask_claude", { question, model });
+}
+
+// Appends one `### <icon> <timestamp>` entry straight to inbox.md — an
+// O_APPEND write like the native recorder's append_inbox_text (see
+// docs/backend.md), so it can't race a frontend write_inbox the way a
+// read-modify-write would. The Ask pane's ⌘S save (see useAsk.ts) is the
+// only frontend caller today.
+export function appendInboxEntry(icon: string, body: string): Promise<void> {
+  return invoke<void>("append_inbox_entry", { icon, body });
+}
+
 export function toggleRecording(): Promise<string> {
   return invoke<string>("toggle_recording");
 }
@@ -114,15 +131,17 @@ export interface ApplyHotkeysResponse {
   toggle: HotkeyApplyResult;
   record: HotkeyApplyResult;
   dictate: HotkeyApplyResult;
+  ask: HotkeyApplyResult;
 }
 
-// Live-applies the three global hotkeys (undefined/blank = default for that
+// Live-applies the four global hotkeys (undefined/blank = default for that
 // key) — see docs/backend.md. `.sideline.json` itself is written separately
 // via writeConfig; this only syncs the OS-level registration to match.
 export function applyHotkeys(combos: {
   toggle?: string;
   record?: string;
   dictate?: string;
+  ask?: string;
 }): Promise<ApplyHotkeysResponse> {
   return invoke<ApplyHotkeysResponse>("apply_hotkeys", combos);
 }

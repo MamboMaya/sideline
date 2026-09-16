@@ -21,6 +21,10 @@ pub(crate) fn default_dictate_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::ALT | Modifiers::SUPER), Code::KeyV)
 }
 
+pub(crate) fn default_ask_shortcut() -> Shortcut {
+    Shortcut::new(Some(Modifiers::ALT | Modifiers::SUPER), Code::KeyA)
+}
+
 /// Normalizes a human-friendly hotkey combo (e.g. `"opt+cmd+v"`) into the
 /// `"alt+super+KeyV"` form `Shortcut::from_str` expects. Modifier tokens are
 /// matched case-insensitively via aliases; the one remaining token is the
@@ -93,12 +97,12 @@ pub(crate) fn parse_hotkey_or_default(
     }
 }
 
-/// Reads `hotkeys.toggle` / `hotkeys.record` / `hotkeys.dictate` from
-/// `.sideline.json`. Fully failure-tolerant: missing file, malformed JSON,
-/// and a missing/invalid key each just fall back to the hardcoded default
-/// (current ⌥⌘Space / ⌥⌘R / ⌥⌘V behavior). Changing this file requires an
-/// app restart to take effect.
-pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut, Shortcut) {
+/// Reads `hotkeys.toggle` / `hotkeys.record` / `hotkeys.dictate` /
+/// `hotkeys.ask` from `.sideline.json`. Fully failure-tolerant: missing
+/// file, malformed JSON, and a missing/invalid key each just fall back to
+/// the hardcoded default (current ⌥⌘Space / ⌥⌘R / ⌥⌘V / ⌥⌘A behavior).
+/// Changing this file requires an app restart to take effect.
+pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut, Shortcut, Shortcut) {
     let raw = fs::read_to_string(notes_dir().join(".sideline.json")).unwrap_or_default();
     let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
     let hotkeys = parsed.get("hotkeys");
@@ -111,10 +115,12 @@ pub(crate) fn load_hotkeys() -> (Shortcut, Shortcut, Shortcut) {
     let dictate_raw = hotkeys
         .and_then(|h| h.get("dictate"))
         .and_then(|v| v.as_str());
+    let ask_raw = hotkeys.and_then(|h| h.get("ask")).and_then(|v| v.as_str());
     (
         parse_hotkey_or_default(toggle_raw, "toggle", default_toggle_shortcut()),
         parse_hotkey_or_default(record_raw, "record", default_record_shortcut()),
         parse_hotkey_or_default(dictate_raw, "dictate", default_dictate_shortcut()),
+        parse_hotkey_or_default(ask_raw, "ask", default_ask_shortcut()),
     )
 }
 
@@ -137,15 +143,16 @@ pub(crate) fn push_to_talk_enabled() -> bool {
         .unwrap_or(false)
 }
 
-/// The three hotkeys' live-registered state, managed via
-/// `app.manage(ActiveShortcuts { .. })` in lib.rs — the same three
+/// The four hotkeys' live-registered state, managed via
+/// `app.manage(ActiveShortcuts { .. })` in lib.rs — the same four
 /// `Arc<Mutex<Shortcut>>` the global-shortcut handler compares against,
-/// bundled so `apply_hotkeys` (below) can reach all three through one
+/// bundled so `apply_hotkeys` (below) can reach all four through one
 /// `tauri::State`.
 pub struct ActiveShortcuts {
     pub toggle: Arc<Mutex<Shortcut>>,
     pub record: Arc<Mutex<Shortcut>>,
     pub dictate: Arc<Mutex<Shortcut>>,
+    pub ask: Arc<Mutex<Shortcut>>,
 }
 
 /// One key's outcome from `apply_hotkeys`: `ok: true` means the combo (or
@@ -166,6 +173,7 @@ pub struct ApplyHotkeysResponse {
     pub toggle: HotkeyApplyResult,
     pub record: HotkeyApplyResult,
     pub dictate: HotkeyApplyResult,
+    pub ask: HotkeyApplyResult,
 }
 
 /// Resolves one `apply_hotkeys` argument to a target `Shortcut`: `None` or a
@@ -242,7 +250,7 @@ fn apply_one(
 }
 
 /// Live hotkey apply — the Settings pane's `apply_hotkeys` IPC command.
-/// Takes the three raw combo strings straight from the pane's text inputs
+/// Takes the four raw combo strings straight from the pane's text inputs
 /// (`None`/blank = default); for each key that actually changed, swaps the
 /// OS-level registration in place (see `apply_one`) so the new combo works
 /// immediately, no restart. `.sideline.json` itself is written separately by
@@ -255,6 +263,7 @@ pub fn apply_hotkeys(
     toggle: Option<String>,
     record: Option<String>,
     dictate: Option<String>,
+    ask: Option<String>,
 ) -> ApplyHotkeysResponse {
     ApplyHotkeysResponse {
         toggle: apply_one(
@@ -277,6 +286,13 @@ pub fn apply_hotkeys(
             dictate.as_deref(),
             default_dictate_shortcut(),
             "dictate",
+        ),
+        ask: apply_one(
+            &app,
+            &state.ask,
+            ask.as_deref(),
+            default_ask_shortcut(),
+            "ask",
         ),
     }
 }
@@ -398,6 +414,14 @@ mod tests {
     }
 
     #[test]
+    fn normalize_combo_matches_default_ask_shortcut() {
+        assert_eq!(
+            normalize_combo("option+cmd+a"),
+            Some("alt+super+KeyA".to_string())
+        );
+    }
+
+    #[test]
     fn normalize_combo_case_insensitive() {
         assert_eq!(
             normalize_combo("CMD+ALT+R"),
@@ -494,5 +518,13 @@ mod tests {
     #[test]
     fn resolve_combo_modifiers_only_is_an_error() {
         assert!(resolve_combo(Some("cmd+alt"), default_record_shortcut()).is_err());
+    }
+
+    #[test]
+    fn default_ask_shortcut_parses_from_its_combo_string() {
+        assert_eq!(
+            resolve_combo(Some("alt+cmd+a"), default_record_shortcut()),
+            Ok(default_ask_shortcut())
+        );
     }
 }

@@ -3,7 +3,7 @@
 Module map: `lib.rs` (plugin/builder wiring, `invoke_handler`, `.setup()`)
 delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`),
 `commands/notes.rs` + `commands/open.rs` (the IPC commands below, grouped by
-concern), `claude.rs` (`send_to_claude`), `archive.rs` (purge-archive flow),
+concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning + the recording-pill overlay window),
 `hotkeys.rs` (config + registration),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
@@ -29,7 +29,9 @@ already running — exits immediately instead of showing a second tray icon.
 
 Tray icon + popover window toggle (tray click anchors under the icon for that
 click only; the ⌥⌘Space hotkey opens top-center of the monitor holding the
-cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⌥⌘V dictation), fs
+cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⌥⌘V dictation, ⌥⌘A
+quick question — shows the popover and emits `ask-open`, same show-then-emit
+shape as the toggle hotkey; see docs/ui.md's Quick question section), fs
 watcher on `~/notes` emitting `inbox-changed`, and the commands:
 
 - The global-shortcut handler (`lib.rs`) reads `ShortcutState` on every
@@ -55,11 +57,11 @@ watcher on `~/notes` emitting `inbox-changed`, and the commands:
   the session already ended some other way) is ignored. Toggle mode never
   touches this state at all.
 - Hotkeys are configurable via `.sideline.json`'s `hotkeys.toggle`/
-  `hotkeys.record`/`hotkeys.dictate` (see docs/data-model.md), read directly
+  `hotkeys.record`/`hotkeys.dictate`/`hotkeys.ask` (see docs/data-model.md), read directly
   at startup (`load_hotkeys` in hotkeys.rs, not through `read_config`) and
   normalized (modifier aliases, bare letter/digit/`space` → `Code` name)
   before `Shortcut::from_str`; a missing key, unparseable combo, or OS-level
-  registration failure all fall back to the hardcoded ⌥⌘Space/⌥⌘R/⌥⌘V
+  registration failure all fall back to the hardcoded ⌥⌘Space/⌥⌘R/⌥⌘V/⌥⌘A
   default — the app never loses a hotkey to a typo. An OS-level registration
   failure (combo claimed by another app; the default also failing)
   additionally emits `hotkey-fallback`, which the frontend toasts — a
@@ -67,11 +69,11 @@ watcher on `~/notes` emitting `inbox-changed`, and the commands:
   pressing it. This startup path is unchanged and still governs a
   hand-edited `.sideline.json` — those still need a restart to take effect.
 - `apply_hotkeys` (hotkeys.rs) is the Settings pane's LIVE counterpart: takes
-  the three raw combo strings straight from the pane's text inputs (missing/
+  the four raw combo strings straight from the pane's text inputs (missing/
   blank = default for that key) and, for each key that actually changed,
-  swaps the OS-level registration in place — no restart. The three
+  swaps the OS-level registration in place — no restart. The four
   `Arc<Mutex<Shortcut>>` the global-shortcut handler in `lib.rs` compares
-  against (`active_toggle`/`active_record`/`active_dictate`) are cloned a
+  against (`active_toggle`/`active_record`/`active_dictate`/`active_ask`) are cloned a
   second time into a managed `hotkeys::ActiveShortcuts` struct
   (`app.manage(...)`) precisely so this command can reach and mutate the
   SAME Arcs the handler reads — updating one here is what the handler sees
@@ -83,7 +85,7 @@ watcher on `~/notes` emitting `inbox-changed`, and the commands:
   unregister the current shortcut, register the new one, and on failure
   (OS conflict) re-register the CURRENT one so the hotkey is never left
   dead. Returns one `{ ok, error }` result per key (`toggle`/`record`/
-  `dictate`), which the pane uses to mark the failing field and toast the
+  `dictate`/`ask`), which the pane uses to mark the failing field and toast the
   reason — `.sideline.json` itself is written separately by the frontend
   (`write_config`, same path every other Settings field uses); this command
   only syncs the live registration to match what was just written.
@@ -114,6 +116,16 @@ watcher on `~/notes` emitting `inbox-changed`, and the commands:
   Sideline's process identity — a hook touching a TCC-protected folder like
   ~/Documents would otherwise make macOS blame Sideline with a permissions
   popup on every triage; bare-config calls are also faster and cheaper)
+- `ask_claude` (async, Quick question's one-shot CLI call — see docs/ui.md;
+  `question` + optional `model` args; same `--setting-sources ""`/
+  `--strict-mcp-config` process isolation as `send_to_claude` above, plus
+  `--tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch --max-turns 6
+--append-system-prompt` telling it to answer plainly with no markdown —
+  `--allowedTools`, not just `--tools`, is what actually lets `-p` mode run
+  the searches instead of just offering them)
+- `append_inbox_entry` (`icon` + `body` args; an O_APPEND write of one
+  `### <icon> <timestamp>` block, same shape as `append_inbox_text` below —
+  the Ask pane's ⌘S save is the one frontend caller)
 - `read_todos` (all `~/notes/todos/*.md` as project/content pairs, mtime DESC;
   shares a `list_md_dir` listing helper with `read_triaged` below but is
   deliberately uncapped — a `todos/<project>.md` file is the only record of

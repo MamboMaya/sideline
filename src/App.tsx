@@ -20,6 +20,7 @@ import {
 } from "./lib/commands";
 import { useToast } from "./hooks/useToast";
 import { useRecorder } from "./hooks/useRecorder";
+import { useAsk } from "./hooks/useAsk";
 import { useConfig } from "./hooks/useConfig";
 import { useSearch } from "./hooks/useSearch";
 import { useInbox } from "./hooks/useInbox";
@@ -32,6 +33,7 @@ import { useKeyboard } from "./keys/useKeyboard";
 import { Toast } from "./components/Toast";
 import { ShortcutsModal } from "./components/ShortcutsModal";
 import { SettingsPane } from "./components/SettingsPane";
+import { AskPane } from "./components/AskPane";
 import { Header } from "./components/Header";
 import { SectionHeader } from "./components/SectionHeader";
 import { TodoCard } from "./components/TodoCard";
@@ -103,6 +105,23 @@ export default function App() {
     removeProject,
     updateConfig,
   } = useConfig({ showToast, dismissToast });
+
+  // Quick question (⌥⌘A / `q`) — see useAsk.ts. Called right after
+  // useConfig since it takes `models` (specifically `models.ask`) as a
+  // param.
+  const {
+    open: askOpen,
+    question: askQuestion,
+    setQuestion: setAskQuestion,
+    answer: askAnswer,
+    loading: askLoading,
+    error: askError,
+    openAsk,
+    closeAsk,
+    submit: submitAsk,
+    save: saveAsk,
+    lastOpenedAtRef: askLastOpenedAtRef,
+  } = useAsk({ models, showToast });
 
   // Inbox view state (preamble/notes/error/selection) plus the
   // reload/auto-tag/persist motion behind it — see useInbox's file comment.
@@ -246,6 +265,10 @@ export default function App() {
       setSearchQuery("");
       setShowShortcuts(false);
       setShowSettings(false);
+      // Don't fight the ⌥⌘A hotkey's own open: it shows the window THEN
+      // emits `ask-open`, so this focus-gain and that event can land in
+      // either order — see useAsk.ts's lastOpenedAtRef comment.
+      if (Date.now() - askLastOpenedAtRef.current >= 1000) closeAsk();
     });
     return () => {
       un.then((f) => f());
@@ -373,6 +396,29 @@ export default function App() {
     />
   );
 
+  // Opening Settings (⌘, — see commandKeymap — or the gear button, which
+  // shares this function via the Header prop below) closes Ask first;
+  // closing Settings leaves Ask alone (it's already closed by
+  // construction — the two panes are mutually exclusive).
+  const toggleSettings = () =>
+    setShowSettings((v) => {
+      const next = !v;
+      if (next) closeAsk();
+      return next;
+    });
+
+  // `q` funnels through this — closes Settings first, the reverse direction
+  // of toggleSettings above. The ⌥⌘A hotkey's `ask-open` event calls the
+  // hook's own openAsk directly (useAsk's listener), so the effect below
+  // covers that path: whenever Ask is open, Settings is not.
+  const openAskClosingSettings = () => {
+    setShowSettings(false);
+    openAsk();
+  };
+  useEffect(() => {
+    if (askOpen) setShowSettings(false);
+  }, [askOpen]);
+
   // Every keystroke the window sees, in one place: the tables in src/keys/
   // say what each key does, `dispatchKey` owns the layering between them,
   // and this context object is the ONLY thing they can touch. Rebuilt each
@@ -385,8 +431,12 @@ export default function App() {
     setShowShortcuts,
     settingsOpen: showSettings,
     closeSettings: () => setShowSettings(false),
-    toggleSettings: () => setShowSettings((v) => !v),
+    toggleSettings,
     hotkeyCapturing,
+    askOpen,
+    openAsk: openAskClosingSettings,
+    closeAsk,
+    saveAsk,
     setSearchOpen,
     setSearchQuery,
     hideWindow: () => {
@@ -453,7 +503,7 @@ export default function App() {
         showShortcuts={showShortcuts}
         onToggleShortcuts={() => setShowShortcuts((v) => !v)}
         showSettings={showSettings}
-        onToggleSettings={() => setShowSettings((v) => !v)}
+        onToggleSettings={toggleSettings}
       />
       {showShortcuts && (
         <ShortcutsModal
@@ -493,6 +543,19 @@ export default function App() {
           showToast={showToast}
           onClose={() => setShowSettings(false)}
           onHotkeyCapturingChange={setHotkeyCapturing}
+        />
+      ) : askOpen ? (
+        <AskPane
+          question={askQuestion}
+          setQuestion={setAskQuestion}
+          answer={askAnswer}
+          loading={askLoading}
+          error={askError}
+          model={models.ask}
+          open={askOpen}
+          submit={submitAsk}
+          closeAsk={closeAsk}
+          showToast={showToast}
         />
       ) : (
         <>

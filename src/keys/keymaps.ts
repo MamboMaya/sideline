@@ -81,6 +81,10 @@ export const globalKeymap: Keymap = {
   // global hotkey. State/level feedback arrives via the
   // recording-state/audio-level events, not this call's return value.
   r: (ctx) => ctx.toggleRecording(),
+  // `q` opens the Quick question pane — mirrors the ⌥⌘A global hotkey (see
+  // useAsk.ts). Once open, the dedicated Ask gate in dispatchKey takes
+  // over, same layering as Settings/`⌘,`.
+  q: (ctx) => ctx.openAsk(),
 };
 
 // ── Inbox view ─────────────────────────────────────────────────────────
