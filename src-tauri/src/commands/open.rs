@@ -54,7 +54,7 @@ pub(crate) fn reveal_inbox() -> Result<(), String> {
 /// CLI stores sessions per working directory and `ask_claude` ran there.
 /// `session_id` is validated to the UUID alphabet before it goes anywhere
 /// near a shell line.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub(crate) fn open_ask_session(session_id: String) -> Result<(), String> {
     let ok = session_id.len() == 36
         && session_id
