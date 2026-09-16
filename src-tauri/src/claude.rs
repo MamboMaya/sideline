@@ -13,7 +13,7 @@ use crate::paths::notes_dir;
 /// launched from a terminal. Checks a few well-known install locations
 /// first and falls back to the bare name (which still works if PATH does
 /// contain it, e.g. when running via `pnpm tauri dev`).
-fn claude_bin() -> std::ffi::OsString {
+pub(crate) fn claude_bin() -> std::ffi::OsString {
     let home = dirs::home_dir();
     let mut candidates = Vec::new();
     if let Some(home) = &home {
@@ -77,10 +77,23 @@ pub(crate) async fn send_to_claude(
 /// Ask pane is a small popover, not a chat transcript) and steers the model
 /// toward web search whenever the question is the kind a search engine
 /// would answer better than memorized training data.
-const ASK_SYSTEM_PROMPT: &str = "You answer quick, zero-context questions for a busy person who would otherwise open a search engine. Reply in plain text, at most about 120 words: no markdown headers or tables (a short dash bullet list is fine). Use web search when the answer depends on current facts, product options, prices, or a term you are not sure about. When you searched, end with 1-3 source URLs, one per line, prefixed 'Source: '. If the question is ambiguous, answer the most likely meaning and say in a few words which one you picked.";
+const ASK_SYSTEM_PROMPT: &str = "You answer quick, zero-context questions for a busy person who would otherwise open a search engine. The questions are short; keep the answer as short: at most 60 words, plain text, no preamble, no markdown headers or tables (up to three short dash bullets are fine). Lead with the answer itself. Use web search when the answer depends on current facts, product options, prices, or a term you are not sure about. When you searched, end with ONE source URL on its own line, prefixed 'Source: '. If the question is ambiguous, answer the most likely meaning and say in a few words which one you picked.";
+
+/// `ask_claude`'s return value: the answer text plus the CLI session id
+/// the answer was produced in (from `--output-format json`), so the Ask
+/// view can hand the same session to `open_ask_session` for a deeper
+/// follow-up in Terminal. `session_id` is None if the CLI's JSON lacked it.
+#[derive(serde::Serialize)]
+pub(crate) struct AskReply {
+    pub answer: String,
+    pub session_id: Option<String>,
+}
 
 #[tauri::command]
-pub(crate) async fn ask_claude(question: String, model: Option<String>) -> Result<String, String> {
+pub(crate) async fn ask_claude(
+    question: String,
+    model: Option<String>,
+) -> Result<AskReply, String> {
     let question = question.trim().to_string();
     if question.is_empty() {
         return Err("Empty question".to_string());
@@ -108,7 +121,12 @@ pub(crate) async fn ask_claude(question: String, model: Option<String>) -> Resul
             .arg("--max-turns")
             .arg("6")
             .arg("--append-system-prompt")
-            .arg(ASK_SYSTEM_PROMPT);
+            .arg(ASK_SYSTEM_PROMPT)
+            // JSON so the session id comes back with the answer; the
+            // session lives under the CLI's per-cwd project store, which
+            // is why `open_ask_session` resumes it from ~/notes too.
+            .arg("--output-format")
+            .arg("json");
         if let Some(m) = model {
             cmd.arg("--model").arg(m);
         }
@@ -117,7 +135,20 @@ pub(crate) async fn ask_claude(question: String, model: Option<String>) -> Resul
             .output()
             .map_err(|e| e.to_string())?;
         if out.status.success() {
-            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+            let raw = String::from_utf8_lossy(&out.stdout);
+            let parsed: serde_json::Value =
+                serde_json::from_str(raw.trim()).map_err(|e| format!("bad CLI output: {e}"))?;
+            let answer = parsed
+                .get("result")
+                .and_then(|v| v.as_str())
+                .ok_or("CLI output had no result")?
+                .trim()
+                .to_string();
+            let session_id = parsed
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            Ok(AskReply { answer, session_id })
         } else {
             let err = String::from_utf8_lossy(&out.stderr);
             Err(err.lines().next().unwrap_or("claude failed").to_string())

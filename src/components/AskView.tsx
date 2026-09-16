@@ -13,6 +13,7 @@ export interface AskViewProps {
   submit: (text?: string) => void;
   saveThread: (id: number) => void;
   copyThread: (id: number) => void;
+  continueThread: (id: number) => void;
   removeThread: (id: number) => void;
   model: string;
   view: "inbox" | "todos" | "ask";
@@ -38,6 +39,7 @@ export function AskView({
   submit,
   saveThread,
   copyThread,
+  continueThread,
   removeThread,
   model,
   view,
@@ -91,7 +93,7 @@ export function AskView({
               : "Transcribing…"}
           </span>
         ) : (
-          <span>Enter ask · ↑↓ select · ⌘S save selected · Esc hide</span>
+          <span>Enter ask · ↑↓ select · ⌘S save · o continue in Terminal</span>
         )}
       </div>
       {threads.map((thread, i) => (
@@ -131,6 +133,18 @@ export function AskView({
               }}
             >
               Save to inbox
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              disabled={!thread.sessionId}
+              title="Resume this answer's Claude session in Terminal (o)"
+              onClick={(e) => {
+                e.stopPropagation();
+                continueThread(thread.id);
+              }}
+            >
+              Continue in Terminal
             </button>
             <button
               type="button"

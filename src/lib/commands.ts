@@ -83,8 +83,22 @@ export function sendToClaude(prompt: string, model?: string): Promise<string> {
 // enabled `claude` CLI call. Separate from sendToClaude because the Rust
 // side runs it with different flags (WebSearch/WebFetch tools) — see
 // docs/backend.md.
-export function askClaude(question: string, model?: string): Promise<string> {
-  return invoke<string>("ask_claude", { question, model });
+// Wire shape of `ask_claude`'s `AskReply`: the answer plus the CLI session
+// it was produced in (null if the CLI didn't report one), which
+// `openAskSession` below resumes in Terminal.
+export interface AskReply {
+  answer: string;
+  session_id: string | null;
+}
+
+export function askClaude(question: string, model?: string): Promise<AskReply> {
+  return invoke<AskReply>("ask_claude", { question, model });
+}
+
+// Resumes an Ask thread's CLI session interactively in Terminal (writes
+// and `open`s a .command launcher in ~/notes — see docs/backend.md).
+export function openAskSession(sessionId: string): Promise<void> {
+  return invoke<void>("open_ask_session", { session_id: sessionId });
 }
 
 // Appends one `### <icon> <timestamp>` entry straight to inbox.md — an

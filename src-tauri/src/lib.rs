@@ -192,7 +192,8 @@ pub fn run() {
             audio::list_audio_devices,
             hotkeys::apply_hotkeys,
             claude::ask_claude,
-            commands::notes::append_inbox_entry
+            commands::notes::append_inbox_entry,
+            commands::open::open_ask_session
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,

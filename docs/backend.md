@@ -122,9 +122,20 @@ docs/ui.md's Quick question section), fs watcher on `~/notes` emitting
   `question` + optional `model` args; same `--setting-sources ""`/
   `--strict-mcp-config` process isolation as `send_to_claude` above, plus
   `--tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch --max-turns 6
---append-system-prompt` telling it to answer plainly with no markdown —
-  `--allowedTools`, not just `--tools`, is what actually lets `-p` mode run
-  the searches instead of just offering them)
+--append-system-prompt` telling it to answer in at most ~60 words of plain
+  text with one source line — `--allowedTools`, not just `--tools`, is what
+  actually lets `-p` mode run the searches instead of just offering them.
+  Runs with `--output-format json` and returns `AskReply { answer,
+session_id }`: the session id is what `open_ask_session` resumes)
+- `open_ask_session` (`session_id` arg, validated to the UUID alphabet;
+  the Ask view's `o` / "Continue in Terminal". Writes
+  `~/notes/.sideline-continue.command` — `cd ~/notes && exec claude
+--resume <id>`, since the CLI keeps sessions per working directory and
+  `ask_claude` ran in ~/notes — chmods it 755 and `open`s it, which
+  launches Terminal as the `.command` handler. Deliberately NOT
+  `osascript`/Apple Events into Terminal: that would be a new
+  TCC automation prompt blamed on Sideline; `open` is already an allowed
+  subprocess)
 - `append_inbox_entry` (`icon` + `body` args; an O_APPEND write of one
   `### <icon> <timestamp>` block, same shape as `append_inbox_text` below —
   the Ask pane's ⌘S save is the one frontend caller)

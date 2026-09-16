@@ -5,6 +5,10 @@ use std::path::Path;
 
 use crate::paths::{inbox_path, notes_dir, validate_component};
 
+/// Scratch launcher the Ask view's "Continue in Terminal" writes and
+/// `open`s — inside ~/notes, like every other file Sideline touches.
+const CONTINUE_SCRIPT: &str = ".sideline-continue.command";
+
 /// Shared body of `open_triaged`/`open_todos`/`open_inbox_in_vscode`: hand
 /// `path` to VS Code via `open -a "Visual Studio Code"`.
 fn open_in_vscode(path: impl AsRef<Path>) -> Result<(), String> {
@@ -34,6 +38,46 @@ pub(crate) fn reveal_inbox() -> Result<(), String> {
     std::process::Command::new("open")
         .arg("-R")
         .arg(inbox_path())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Ask view's `o` / "Continue in Terminal": resumes the CLI session an Ask
+/// thread's answer came from (`AskReply::session_id`) as a full
+/// interactive `claude` session, for the follow-ups the one-shot Ask view
+/// deliberately doesn't do. The mechanism is a `.command` file: Terminal
+/// is the default handler for that extension, so `open` alone launches it
+/// — no `osascript`/Apple Events (which would be a new TCC automation
+/// prompt blamed on Sideline) and no new subprocess beyond the ones
+/// CLAUDE.md already allows. The script `cd`s to ~/notes first because the
+/// CLI stores sessions per working directory and `ask_claude` ran there.
+/// `session_id` is validated to the UUID alphabet before it goes anywhere
+/// near a shell line.
+#[tauri::command]
+pub(crate) fn open_ask_session(session_id: String) -> Result<(), String> {
+    let ok = session_id.len() == 36
+        && session_id
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() || b == b'-');
+    if !ok {
+        return Err("Invalid session id".to_string());
+    }
+    let bin = crate::claude::claude_bin();
+    let script = format!(
+        "#!/bin/zsh\ncd \"{notes}\" || exit 1\nexec \"{bin}\" --resume {session_id}\n",
+        notes = notes_dir().display(),
+        bin = Path::new(&bin).display(),
+    );
+    let path = notes_dir().join(CONTINUE_SCRIPT);
+    std::fs::write(&path, script).map_err(|e| e.to_string())?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
+    std::process::Command::new("open")
+        .arg(&path)
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())

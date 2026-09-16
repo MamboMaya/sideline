@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { Models } from "../lib/config";
-import { askClaude, appendInboxEntry } from "../lib/commands";
+import { askClaude, appendInboxEntry, openAskSession } from "../lib/commands";
 
 // One question/answer exchange in the Ask view (AskView.tsx). Session-only
 // — nothing here is ever written to disk except via `saveThread` (⌘S), and
@@ -15,6 +15,9 @@ export interface AskThread {
   error: string | null;
   pending: boolean;
   createdAt: number;
+  // The CLI session the answer came from — what "Continue in Terminal"
+  // (`o`) resumes. Null until answered, or if the CLI didn't report one.
+  sessionId: string | null;
 }
 
 export interface UseAskParams {
@@ -49,6 +52,7 @@ export function useAsk({ models, showToast, onOpen }: UseAskParams) {
         error: null,
         pending: true,
         createdAt: Date.now(),
+        sessionId: null,
       },
       ...prev,
     ]);
@@ -58,7 +62,14 @@ export function useAsk({ models, showToast, onOpen }: UseAskParams) {
       .then((res) => {
         setThreads((prev) =>
           prev.map((t) =>
-            t.id === id ? { ...t, answer: res, pending: false } : t,
+            t.id === id
+              ? {
+                  ...t,
+                  answer: res.answer,
+                  sessionId: res.session_id,
+                  pending: false,
+                }
+              : t,
           ),
         );
       })
@@ -89,6 +100,17 @@ export function useAsk({ models, showToast, onOpen }: UseAskParams) {
     writeText(thread.answer)
       .then(() => showToast("Copied answer"))
       .catch((err) => showToast(`Copy failed: ${String(err)}`));
+  };
+
+  // `o` / "Continue in Terminal": the one-shot answer becomes the first
+  // turn of a full interactive session — see open_ask_session in
+  // docs/backend.md. Silently a no-op until the thread has a session id.
+  const continueThread = (id: number) => {
+    const thread = threads.find((t) => t.id === id);
+    if (!thread?.sessionId) return;
+    openAskSession(thread.sessionId)
+      .then(() => showToast("Continuing in Terminal"))
+      .catch((err) => showToast(`Couldn't open Terminal: ${String(err)}`));
   };
 
   const removeThread = (id: number) => {
@@ -129,6 +151,7 @@ export function useAsk({ models, showToast, onOpen }: UseAskParams) {
     submit,
     saveThread,
     copyThread,
+    continueThread,
     removeThread,
   };
 }

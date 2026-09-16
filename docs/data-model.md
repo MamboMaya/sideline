@@ -41,6 +41,10 @@
 - **`~/notes/archive.md`** — append-only archive of deleted notes, same entry
   format as inbox.md.
 
+- **`~/notes/.sideline-continue.command`** — scratch launcher rewritten on
+  every Ask-view "Continue in Terminal" (`open_ask_session`, docs/backend.md):
+  a two-line zsh script that resumes one `claude` CLI session. Safe to
+  delete at any time; never read back.
 - **`~/notes/.sideline.json`** — app config: `{ "pinnedTags": [...] }` (up to 6
   pinned tags), optional `"hiddenTags": [...]` (tags deleted from
   autocomplete via the suggest dropdown's ✕ — excluded from suggestions and

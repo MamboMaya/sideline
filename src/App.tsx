@@ -132,6 +132,7 @@ export default function App() {
     submit: submitAsk,
     saveThread: saveAskThread,
     copyThread: copyAskThread,
+    continueThread: continueAskThread,
     removeThread: removeAskThread,
   } = useAsk({ models, showToast, onOpen: onAskOpen });
 
@@ -432,6 +433,7 @@ export default function App() {
     setAskSelected,
     saveAskThread,
     copyAskThread,
+    continueAskThread,
     removeAskThread,
     focusAskInput,
     setSearchOpen,
@@ -556,6 +558,7 @@ export default function App() {
                 submit={submitAsk}
                 saveThread={saveAskThread}
                 copyThread={copyAskThread}
+                continueThread={continueAskThread}
                 removeThread={removeAskThread}
                 model={models.ask}
                 view={view}

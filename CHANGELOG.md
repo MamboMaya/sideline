@@ -15,8 +15,10 @@ Notable, user-visible changes to Sideline. Format follows
   back, never loses an earlier question or answer. `↑`/`↓` select a
   thread, `c` copies its answer, `x` removes it; each thread also has its
   own Copy / Save to inbox / ✕ buttons, and `⌘S` saves the selected
-  thread's answer to the inbox as a ❓ entry. Model configurable in
-  Settings → Claude → Question model (default Sonnet).
+  thread's answer to the inbox as a ❓ entry. Answers are kept short (about
+  60 words, one source); `o` / "Continue in Terminal" resumes that answer's
+  Claude session interactively in Terminal for a deeper follow-up. Model
+  configurable in Settings → Claude → Question model (default Sonnet).
 
 ## [0.3.0] - 2026-09-08
 

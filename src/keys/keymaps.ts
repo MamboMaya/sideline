@@ -303,6 +303,13 @@ export const askKeymap: Keymap = {
     const thread = ctx.threads[ctx.askSelected];
     if (thread) ctx.removeAskThread(thread.id);
   },
+  // `o` = "open" here too: the selected thread's CLI session, resumed
+  // interactively in Terminal (the Inbox/Todos `o` opens a file in VS
+  // Code; same key, same "take this somewhere bigger" meaning).
+  o: (ctx) => {
+    const thread = ctx.threads[ctx.askSelected];
+    if (thread) ctx.continueAskThread(thread.id);
+  },
   Enter: (ctx) => ctx.focusAskInput(),
 };
 

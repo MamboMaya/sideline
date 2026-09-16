@@ -103,6 +103,7 @@ export interface KeyContext {
   setAskSelected: Dispatch<SetStateAction<number>>;
   saveAskThread: (id: number) => void;
   copyAskThread: (id: number) => void;
+  continueAskThread: (id: number) => void;
   removeAskThread: (id: number) => void;
   // Focuses the Ask view's own input — used by askKeymap's Enter entry and
   // by `q`/⌥⌘A's open path (App.tsx) so the input is ready without a click,

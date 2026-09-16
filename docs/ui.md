@@ -86,9 +86,16 @@ persistent: unlike the old single-shot pane, they are NEVER reset by the
 popover hiding, by switching to another view and back, or by App.tsx's
 focus-gain reset effect — a question asked, answered or not, is still there
 next time the popover is shown. `↑`/`↓` move the selection among threads;
-`c` copies the selected thread's answer, `x` removes it, `Enter` (with no
-thread list focus) jumps back to the input. Each thread also has its own
-"Copy" and "Save to inbox" ghost buttons, plus a "✕" remove button. `⌘S`
+`c` copies the selected thread's answer, `x` removes it, `o` continues it
+in Terminal, `Enter` (with no thread list focus) jumps back to the input.
+Each thread also has its own "Copy", "Save to inbox" and "Continue in
+Terminal" ghost buttons, plus a "✕" remove button. Answers are deliberately
+short (the CLI is told ~60 words, one source line — the questions are
+one-liners, so the answers should be too); "Continue in Terminal" is the
+escape hatch for anything deeper: it resumes the exact `claude` session
+the answer came from (`open_ask_session`, docs/backend.md) as a full
+interactive session in Terminal, so the follow-up starts with the question
+and answer already in context. Disabled until the thread has an answer. `⌘S`
 saves the SELECTED thread — appends the question and answer to `inbox.md`
 as a `❓` entry (`**question**` then a blank line then the answer — see
 docs/data-model.md) — and is a no-op on a thread with no answer yet

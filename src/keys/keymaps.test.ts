@@ -70,6 +70,7 @@ function makeCtx(overrides: Partial<KeyContext> = {}): KeyContext {
     setAskSelected: vi.fn(),
     saveAskThread: vi.fn(),
     copyAskThread: vi.fn(),
+    continueAskThread: vi.fn(),
     removeAskThread: vi.fn(),
     focusAskInput: vi.fn(),
     setSearchOpen: vi.fn(),
@@ -209,7 +210,7 @@ describe("keymap tables", () => {
 
   it("binds exactly the documented Ask keys", () => {
     expect(Object.keys(askKeymap).sort()).toEqual(
-      ["ArrowDown", "ArrowUp", "Enter", "c", "x"].sort(),
+      ["ArrowDown", "ArrowUp", "Enter", "c", "o", "x"].sort(),
     );
   });
 
@@ -405,6 +406,7 @@ describe("dispatchKey — ⌘3 switches to Ask; ⌘S saves only there", () => {
     error: null,
     pending: false,
     createdAt: 0,
+    sessionId: null,
   };
 
   it("⌘S saves the selected thread's answer while the Ask view is active, even from a field", () => {
@@ -439,6 +441,7 @@ describe("askKeymap", () => {
       error: null,
       pending: false,
       createdAt: 1,
+      sessionId: "s2",
     },
     {
       id: 1,
@@ -447,6 +450,7 @@ describe("askKeymap", () => {
       error: null,
       pending: false,
       createdAt: 0,
+      sessionId: null,
     },
   ];
   const askCtx = (over: Partial<KeyContext> = {}) =>
@@ -475,6 +479,12 @@ describe("askKeymap", () => {
     expect(ctx.copyAskThread).toHaveBeenCalledWith(1);
     press("x", ctx);
     expect(ctx.removeAskThread).toHaveBeenCalledWith(1);
+  });
+
+  it("continues the selected thread in Terminal on o", () => {
+    const ctx = askCtx({ askSelected: 1 });
+    press("o", ctx);
+    expect(ctx.continueAskThread).toHaveBeenCalledWith(1);
   });
 
   it("focuses the input on Enter", () => {
