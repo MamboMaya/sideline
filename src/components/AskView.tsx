@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { AskThread } from "../hooks/useAsk";
 import type { RecMode, RecState } from "../hooks/useRecorder";
+import { formatHotkey } from "../lib/format";
 
 export interface AskViewProps {
   threads: AskThread[];
@@ -17,6 +18,9 @@ export interface AskViewProps {
   view: "inbox" | "todos" | "ask";
   recState: RecState;
   recMode: RecMode;
+  // Raw `hotkeys.ask` override, so the placeholder/listening hint name the
+  // combo the user actually set (default ⌥⌘A) — same as the shortcuts modal.
+  askHotkey: string | undefined;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
@@ -39,8 +43,10 @@ export function AskView({
   view,
   recState,
   recMode,
+  askHotkey,
   inputRef,
 }: AskViewProps) {
+  const speakKey = formatHotkey(askHotkey, "⌥⌘A");
   // Autofocuses whenever the Ask view is entered. Re-focusing on the
   // `ask-open` event itself (⌥⌘A pressed while already on this view) is
   // App.tsx's job — `focusAskInput` in the keyboard context — since this
@@ -62,7 +68,7 @@ export function AskView({
         ref={inputRef}
         className="ask-input"
         value={question}
-        placeholder="Ask a quick question… (⌥⌘A to speak)"
+        placeholder={`Ask a quick question… (${speakKey} to speak)`}
         onChange={(e) => setQuestion(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -81,7 +87,7 @@ export function AskView({
         {listening ? (
           <span>
             {recState === "recording"
-              ? "🎙️ Listening… (⌥⌘A to stop)"
+              ? `🎙️ Listening… (${speakKey} to stop)`
               : "Transcribing…"}
           </span>
         ) : (

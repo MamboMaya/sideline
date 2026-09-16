@@ -561,6 +561,7 @@ export default function App() {
                 view={view}
                 recState={recState}
                 recMode={recMode}
+                askHotkey={hotkeysOverride?.ask}
                 inputRef={askInputRef}
               />
             )}
