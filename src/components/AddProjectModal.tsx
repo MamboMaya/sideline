@@ -44,14 +44,16 @@ export function AddProjectModal({
   const [script, setScript] = useState("");
   const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Ref, not a dependency: the fetch must run once per added tag, not
+  // again whenever the parent re-renders with a fresh showToast closure.
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
 
   useEffect(() => {
     if (!added) return;
     invoke<string>("project_setup_script", { path, tag: added })
       .then(setScript)
-      .catch((e) => showToast(`Setup script: ${String(e)}`));
-    // showToast is a stable-enough callback for a one-shot fetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch((e) => showToastRef.current(`Setup script: ${String(e)}`));
   }, [added, path]);
 
   useEffect(() => {
@@ -102,7 +104,7 @@ export function AddProjectModal({
           strong LTR characters at both ends the bidi algorithm would drag
           the leading/trailing "/" to the wrong end. */}
       <div className="add-project-path" title={path}>
-        {"\u200E" + path + "\u200E"}
+        {`\u200E${path}\u200E`}
       </div>
       {added === null ? (
         <>
@@ -162,8 +164,8 @@ export function AddProjectModal({
       ) : (
         <>
           <div className="add-project-hint">
-            Notes tagged #{added} route to ~/notes/todos/{added}.md. Point
-            the repo's CLAUDE.local.md at it — this runs in your terminal:
+            Notes tagged #{added} route to ~/notes/todos/{added}.md. Point the
+            repo's CLAUDE.local.md at it — this runs in your terminal:
           </div>
           <pre className="add-project-snippet">{script}</pre>
           <div className="add-project-actions">
