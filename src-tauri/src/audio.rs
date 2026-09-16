@@ -53,12 +53,16 @@ const COPIED_NOTICE: Duration = Duration::from_millis(1500);
 /// "Dictate to clipboard" — see dictate.rs). Only meaningful while `state`
 /// is non-`Idle`; carried on `Inner` alongside `state_val` so a press of
 /// the OTHER mode's hotkey while a session is active can be told apart from
-/// a same-mode stop/no-op (see `toggle_recording_mode`).
+/// a same-mode stop/no-op (see `toggle_recording_mode`). `Ask` (⌥⌘A
+/// default, "Ask a question") hands the transcript to the frontend's Ask
+/// view as the `ask-transcript` event — it never touches inbox.md or the
+/// clipboard; the frontend sends it to `ask_claude` (claude.rs).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum RecMode {
     #[default]
     Note,
     Dictate,
+    Ask,
 }
 
 impl RecMode {
@@ -66,6 +70,7 @@ impl RecMode {
         match self {
             RecMode::Note => "note",
             RecMode::Dictate => "dictate",
+            RecMode::Ask => "ask",
         }
     }
 }
@@ -415,6 +420,16 @@ pub(crate) fn toggle_dictation(app: AppHandle) -> Result<String, String> {
     toggle_recording_mode(app, RecMode::Dictate)
 }
 
+/// Starts or stops+transcribes a spoken question in `RecMode::Ask` (⌥⌘A
+/// default) — the transcript is emitted as `ask-transcript` for the Ask
+/// view to submit to Claude (see lib.rs's hotkey handler, which also shows
+/// the popover and emits `ask-open` so the view is up while you speak).
+/// Hotkey-only, like `toggle_dictation`: typing a question in the popover
+/// never goes through the recorder.
+pub(crate) fn toggle_ask(app: AppHandle) -> Result<String, String> {
+    toggle_recording_mode(app, RecMode::Ask)
+}
+
 /// Shared toggle implementation behind `toggle_recording`/`toggle_dictation`.
 /// A press while a session is active in the OTHER mode is ignored outright
 /// (`capture-error` "Already recording") — the recorder never silently
@@ -567,7 +582,8 @@ fn reset_idle(app: &AppHandle) {
 
 /// The stop-side tail: receive the buffered samples from the capture
 /// thread, resample, transcribe, hand the transcript off per `mode`
-/// (inbox.md for `Note`, clipboard+paste for `Dictate` — see dictate.rs),
+/// (inbox.md for `Note`, clipboard+paste for `Dictate` — see dictate.rs —
+/// the `ask-transcript` event for `Ask`),
 /// and always land back on Idle. Runs inside `spawn_blocking` — never on
 /// the async runtime.
 fn finish_recording(
@@ -621,6 +637,12 @@ fn finish_recording(
                     show_copied_notice(&app);
                     return;
                 }
+            }
+            RecMode::Ask => {
+                // The frontend owns everything from here (thread list,
+                // `ask_claude` call); Tauri events aren't visibility-gated,
+                // so this lands even if the popover was hidden meanwhile.
+                let _ = app.emit("ask-transcript", text.trim().to_string());
             }
         },
         Ok(_) => {

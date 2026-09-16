@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { Note, TriagedNote } from "../inbox";
+import type { AskThread } from "../hooks/useAsk";
 import type { EditTarget } from "../hooks/useEditRow";
 import type { MergedRow } from "../hooks/useTodosData";
 
@@ -48,6 +49,12 @@ export interface CommandBinding {
 
 export type CommandKeymap = Record<string, CommandBinding>;
 
+// The three views a key's docs/ui.md — "Views & navigation" — describes,
+// jumped to by `⌘1`/`⌘2`/`⌘3` or the header tabs. Ask is a real view (see
+// AskView.tsx), not a swapped-in pane like Settings, so it's part of this
+// union rather than a separate open flag.
+export type View = "inbox" | "todos" | "ask";
+
 // A merged Todos row that is an actual card — what every Todos action key
 // (`d` `i` `x` `o` `c` `e` `a`) operates on. Collapsed-section header rows
 // are navigable but inert for those keys, so they are excluded here and the
@@ -62,8 +69,8 @@ export type TodosCardRow = Exclude<MergedRow, { kind: "header" }>;
 // anything not listed here, a key cannot do.
 export interface KeyContext {
   // ── View + chrome ────────────────────────────────────────────────────
-  view: "inbox" | "todos";
-  setView: Dispatch<SetStateAction<"inbox" | "todos">>;
+  view: View;
+  setView: Dispatch<SetStateAction<View>>;
   showShortcuts: boolean;
   setShowShortcuts: Dispatch<SetStateAction<boolean>>;
   // Settings pane open flag — see dispatchKey's top-of-function gate. Unlike
@@ -89,13 +96,19 @@ export interface KeyContext {
   // that layer — closes it when open. One toggle function serves both
   // directions; see useKeyboard.ts's step-0 comment.
   toggleSettings: () => void;
-  // Quick question pane (⌥⌘A / `q` — see AskPane.tsx, useAsk.ts). Its own
-  // gate sits right after the Settings gate in dispatchKey: ⌘S saves, Esc
-  // closes, zoom passes through, and ⌘, closes Ask before opening Settings.
-  askOpen: boolean;
-  openAsk: () => void;
-  closeAsk: () => void;
-  saveAsk: () => void;
+  // ── Ask view (⌥⌘A speaks a question, `q` opens the view — see
+  // docs/ui.md's Quick question section, useAsk.ts, AskView.tsx) ────────
+  threads: AskThread[];
+  askSelected: number;
+  setAskSelected: Dispatch<SetStateAction<number>>;
+  saveAskThread: (id: number) => void;
+  copyAskThread: (id: number) => void;
+  removeAskThread: (id: number) => void;
+  // Focuses the Ask view's own input — used by askKeymap's Enter entry and
+  // by `q`/⌥⌘A's open path (App.tsx) so the input is ready without a click,
+  // including a same-view re-trigger the view's own autofocus effect won't
+  // see (it only fires on a `view` transition).
+  focusAskInput: () => void;
   setSearchOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
   // Hides the popover (Escape's last resort). Injected rather than called

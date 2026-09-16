@@ -18,10 +18,12 @@ export type RecState =
 
 // Mirrors audio.rs's `RecMode` — which pipeline a recording session feeds:
 // `note` appends the transcript to inbox.md, `dictate` copies it to the
-// clipboard and auto-pastes into the frontmost app. Only meaningful while
-// `recState !== "idle"`; stays at its last value otherwise (harmless, since
-// nothing reads it at idle).
-export type RecMode = "note" | "dictate";
+// clipboard and auto-pastes into the frontmost app, `ask` (⌥⌘A — see
+// AskView.tsx/useAsk.ts) feeds the transcript to the Ask view as a question
+// via the `ask-transcript` event instead of touching disk or the clipboard.
+// Only meaningful while `recState !== "idle"`; stays at its last value
+// otherwise (harmless, since nothing reads it at idle).
+export type RecMode = "note" | "dictate" | "ask";
 
 // Native recorder state (audio.rs's `RecState`, mirrored via the
 // `recording-state` event) + mode (`recording-mode`, emitted once per
@@ -53,7 +55,11 @@ export function useRecorderStatus() {
       }
     });
     const unMode = listen<string>("recording-mode", (e) => {
-      if (e.payload === "note" || e.payload === "dictate") {
+      if (
+        e.payload === "note" ||
+        e.payload === "dictate" ||
+        e.payload === "ask"
+      ) {
         setRecMode(e.payload);
       }
     });

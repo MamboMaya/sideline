@@ -33,7 +33,7 @@ import { useKeyboard } from "./keys/useKeyboard";
 import { Toast } from "./components/Toast";
 import { ShortcutsModal } from "./components/ShortcutsModal";
 import { SettingsPane } from "./components/SettingsPane";
-import { AskPane } from "./components/AskPane";
+import { AskView } from "./components/AskView";
 import { Header } from "./components/Header";
 import { SectionHeader } from "./components/SectionHeader";
 import { TodoCard } from "./components/TodoCard";
@@ -43,13 +43,13 @@ import { EditArea } from "./components/EditArea";
 
 export default function App() {
   const { toast, showToast, dismissToast, runUndo } = useToast();
-  const { recState, audioLevel, recElapsed, toggleRecording } =
+  const { recState, recMode, audioLevel, recElapsed, toggleRecording } =
     useRecorder(showToast);
-  // Two views (`s` key / header tabs toggle inbox <-> Todos). The Todos view
-  // is refetched fresh on every switch into it — the fs watcher only covers
-  // ~/notes NonRecursive, so notes/ and todos/ edits never emit
-  // inbox-changed.
-  const [view, setView] = useState<"inbox" | "todos">("inbox");
+  // Three views — Inbox/Todos/Ask (header tabs, or ⌘1/⌘2/⌘3 — see
+  // src/keys/types.ts's `View`). The Todos view is refetched fresh on every
+  // switch into it — the fs watcher only covers ~/notes NonRecursive, so
+  // notes/ and todos/ edits never emit inbox-changed.
+  const [view, setView] = useState<"inbox" | "todos" | "ask">("inbox");
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Settings pane (gear button in the header) — a swapped-in view over the
   // `.cards` region, not a new window; see docs/ui.md's Settings section.
@@ -106,22 +106,34 @@ export default function App() {
     updateConfig,
   } = useConfig({ showToast, dismissToast });
 
-  // Quick question (⌥⌘A / `q`) — see useAsk.ts. Called right after
-  // useConfig since it takes `models` (specifically `models.ask`) as a
-  // param.
+  // Ask view's own input — App owns the ref (rather than the component)
+  // so `focusAskInput` below can reach it from the keyboard layer, not just
+  // from AskView's own view-entered effect.
+  const askInputRef = useRef<HTMLInputElement | null>(null);
+  const focusAskInput = () => askInputRef.current?.focus();
+
+  // Quick question (⌥⌘A speaks it / `q` opens the view) — see useAsk.ts.
+  // Called right after useConfig since it takes `models` (specifically
+  // `models.ask`) as a param. `onOpen` runs before a question is
+  // (re)submitted, whether from the `ask-open`/`ask-transcript` events or
+  // this component's own handlers below — it's what makes both the hotkey
+  // and `q` land on the Ask view.
+  const onAskOpen = () => {
+    setShowSettings(false);
+    setView("ask");
+    focusAskInput();
+  };
   const {
-    open: askOpen,
+    threads: askThreads,
     question: askQuestion,
     setQuestion: setAskQuestion,
-    answer: askAnswer,
-    loading: askLoading,
-    error: askError,
-    openAsk,
-    closeAsk,
+    selected: askSelected,
+    setSelected: setAskSelected,
     submit: submitAsk,
-    save: saveAsk,
-    lastOpenedAtRef: askLastOpenedAtRef,
-  } = useAsk({ models, showToast });
+    saveThread: saveAskThread,
+    copyThread: copyAskThread,
+    removeThread: removeAskThread,
+  } = useAsk({ models, showToast, onOpen: onAskOpen });
 
   // Inbox view state (preamble/notes/error/selection) plus the
   // reload/auto-tag/persist motion behind it — see useInbox's file comment.
@@ -265,10 +277,9 @@ export default function App() {
       setSearchQuery("");
       setShowShortcuts(false);
       setShowSettings(false);
-      // Don't fight the ⌥⌘A hotkey's own open: it shows the window THEN
-      // emits `ask-open`, so this focus-gain and that event can land in
-      // either order — see useAsk.ts's lastOpenedAtRef comment.
-      if (Date.now() - askLastOpenedAtRef.current >= 1000) closeAsk();
+      // Ask threads are deliberately NOT reset here — they're session-only
+      // state that survives the popover hiding (and this focus-gain reset),
+      // not just its own view switch. See useAsk.ts's file comment.
     });
     return () => {
       un.then((f) => f());
@@ -396,28 +407,11 @@ export default function App() {
     />
   );
 
-  // Opening Settings (⌘, — see commandKeymap — or the gear button, which
-  // shares this function via the Header prop below) closes Ask first;
-  // closing Settings leaves Ask alone (it's already closed by
-  // construction — the two panes are mutually exclusive).
-  const toggleSettings = () =>
-    setShowSettings((v) => {
-      const next = !v;
-      if (next) closeAsk();
-      return next;
-    });
-
-  // `q` funnels through this — closes Settings first, the reverse direction
-  // of toggleSettings above. The ⌥⌘A hotkey's `ask-open` event calls the
-  // hook's own openAsk directly (useAsk's listener), so the effect below
-  // covers that path: whenever Ask is open, Settings is not.
-  const openAskClosingSettings = () => {
-    setShowSettings(false);
-    openAsk();
-  };
-  useEffect(() => {
-    if (askOpen) setShowSettings(false);
-  }, [askOpen]);
+  // Settings (⌘, — see commandKeymap — or the gear button, which shares
+  // this function via the Header prop below) is still a swapped-in overlay
+  // pane, not a view — Ask is a view now, underneath it, so opening
+  // Settings no longer needs to close Ask.
+  const toggleSettings = () => setShowSettings((v) => !v);
 
   // Every keystroke the window sees, in one place: the tables in src/keys/
   // say what each key does, `dispatchKey` owns the layering between them,
@@ -433,10 +427,13 @@ export default function App() {
     closeSettings: () => setShowSettings(false),
     toggleSettings,
     hotkeyCapturing,
-    askOpen,
-    openAsk: openAskClosingSettings,
-    closeAsk,
-    saveAsk,
+    threads: askThreads,
+    askSelected,
+    setAskSelected,
+    saveAskThread,
+    copyAskThread,
+    removeAskThread,
+    focusAskInput,
     setSearchOpen,
     setSearchQuery,
     hideWindow: () => {
@@ -489,6 +486,7 @@ export default function App() {
         onChangeView={setView}
         notesCount={notes.length}
         todosPending={todosPending}
+        askPending={askThreads.filter((t) => t.pending).length}
         recState={recState}
         audioLevel={audioLevel}
         recElapsed={recElapsed}
@@ -544,23 +542,28 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           onHotkeyCapturingChange={setHotkeyCapturing}
         />
-      ) : askOpen ? (
-        <AskPane
-          question={askQuestion}
-          setQuestion={setAskQuestion}
-          answer={askAnswer}
-          loading={askLoading}
-          error={askError}
-          model={models.ask}
-          open={askOpen}
-          submit={submitAsk}
-          closeAsk={closeAsk}
-          showToast={showToast}
-        />
       ) : (
         <>
           {view === "inbox" && error && <div className="error">{error}</div>}
           <div className="cards" ref={cardsContainerRef}>
+            {view === "ask" && (
+              <AskView
+                threads={askThreads}
+                question={askQuestion}
+                setQuestion={setAskQuestion}
+                selected={askSelected}
+                setSelected={setAskSelected}
+                submit={submitAsk}
+                saveThread={saveAskThread}
+                copyThread={copyAskThread}
+                removeThread={removeAskThread}
+                model={models.ask}
+                view={view}
+                recState={recState}
+                recMode={recMode}
+                inputRef={askInputRef}
+              />
+            )}
             {view === "inbox" && filteredNotes.length === 0 && !error && (
               <div className="empty">
                 {notes.length === 0

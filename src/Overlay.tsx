@@ -17,25 +17,32 @@ export default function Overlay() {
   // Dictation mode never touches the inbox — words go to the clipboard (and
   // auto-paste into whatever app is frontmost) instead, so the pill needs a
   // visible tell apart from the normal REC look, not just a tooltip the
-  // user won't see mid-dictation.
+  // user won't see mid-dictation. Ask mode (⌥⌘A — see AskView.tsx) speaks a
+  // question instead, so it gets its own tell too.
   const dictating = recMode === "dictate";
+  const asking = recMode === "ask";
 
   return (
     <div
       className={
-        dictating ? "overlay-pill overlay-pill-dictate" : "overlay-pill"
+        dictating
+          ? "overlay-pill overlay-pill-dictate"
+          : asking
+            ? "overlay-pill overlay-pill-ask"
+            : "overlay-pill"
       }
     >
-      {/* Names the mode at a glance — "Capture" (orange) vs "Dictate"
-          (blue, via .overlay-pill-dictate) — same layout for both so the
-          two pills read the same way. For dictation the badge also answers
-          "where are these words going?", which only matters while they're
-          still in flight — the terminal clipboard notice below answers it
-          outright, so the badge steps aside there; capture has no such
-          terminal state, so its badge just stays up throughout. */}
+      {/* Names the mode at a glance — "Capture" (orange) vs "Dictate" (blue)
+          vs "Ask" (green, via .overlay-pill-ask) — same layout for all
+          three so every pill reads the same way. For dictation the badge
+          also answers "where are these words going?", which only matters
+          while they're still in flight — the terminal clipboard notice
+          below answers it outright, so the badge steps aside there;
+          capture/ask have no such terminal state, so their badge just
+          stays up throughout. */}
       {recState !== "copied" && (
         <span className="rec-mode-badge">
-          {dictating ? "Dictate" : "Capture"}
+          {dictating ? "Dictate" : asking ? "Ask" : "Capture"}
         </span>
       )}
       {recState === "recording" && (

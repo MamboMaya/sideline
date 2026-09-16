@@ -30,8 +30,9 @@ export type MergedRow =
 
 export interface UseTodosDataParams {
   // Which view is showing — drives the refetch-on-switch effect and the
-  // scroll-selected-into-view effect below (both no-ops in the Inbox view).
-  view: "inbox" | "todos";
+  // scroll-selected-into-view effect below (both no-ops outside Todos, so
+  // Ask is treated exactly like Inbox here).
+  view: "inbox" | "todos" | "ask";
   // From useSearch. `searchLower` is what the filtering memos below list in
   // their dep arrays (they intentionally omit `matchesSearch`, which is a
   // fresh closure every render — see the eslint-disable comments, carried

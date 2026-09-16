@@ -10,7 +10,7 @@ import type { DispatchableKeyEvent, KeyContext } from "./types";
 
 // Finds the handler for ONE keystroke and runs it. The layering here is the
 // whole contract — it is what decides, for a given keypress, which of the
-// four tables in keymaps.ts (if any) gets to act:
+// five tables in keymaps.ts (if any) gets to act:
 //
 //   0. Settings gate — FIRST, before even the ⌘ layer: while the Settings
 //      pane is open, none of the app's own keymap actions may fire (it has
@@ -28,19 +28,13 @@ import type { DispatchableKeyEvent, KeyContext } from "./types";
 //      (a hotkey field is mid-capture), this layer does nothing at all —
 //      not even Escape/⌘, — since the field itself owns Escape-cancels and
 //      Delete-clears for that keystroke.
-//   0.5. Ask gate — right after the Settings gate (the two panes are
-//      mutually exclusive by construction — see App.tsx's openAsk/
-//      toggleSettings wiring): while the Ask pane is open, ⌘S saves, a
-//      non-field Escape closes it, zoom passes through same as the
-//      Settings gate, and ⌘, closes Ask THEN opens Settings (App.tsx's
-//      openAsk wrapper does the reverse). Everything else is left alone —
-//      the pane's one input owns its own typing, same as an INPUT/TEXTAREA
-//      would under the guard in step 2 below, except Ask's input isn't
-//      reachable by that guard's target check until this gate returns.
-//   1. ⌘ layer — BEFORE the in-field guard, so ⌘1/⌘2, ⌘=/⌘−/⌘0 and ⌘Z work
-//      with the search input focused (⌘Z excepted: it yields to the field's
-//      native text undo). A ⌘ combo with no binding falls through to 2/3,
-//      where the modifier guard drops it — ⌘C/⌘V keep their defaults.
+//   1. ⌘ layer — BEFORE the in-field guard, so ⌘1/⌘2/⌘3, ⌘=/⌘−/⌘0 and ⌘Z
+//      work with the search input (or the Ask input) focused (⌘Z excepted:
+//      it yields to the field's native text undo). ⌘S is Ask-only — see
+//      commandKeymap — and also fires in fields, so it saves the selected
+//      thread even while the Ask input has focus. A ⌘ combo with no
+//      binding falls through to 2/3, where the modifier guard drops it —
+//      ⌘C/⌘V keep their defaults.
 //   2. Guards — nothing else is a shortcut while an INPUT/TEXTAREA has
 //      focus (the search input and the edit textarea bind their own keys),
 //      and nothing else is a shortcut with a modifier held. Shift is NOT a
@@ -77,39 +71,6 @@ export function dispatchKey(e: DispatchableKeyEvent, ctx: KeyContext): void {
       e.preventDefault();
       commandKeymap[e.key]?.run(ctx, e);
     }
-    return;
-  }
-
-  if (ctx.askOpen) {
-    if (e.metaKey && !e.ctrlKey && !e.altKey && e.key === "s") {
-      e.preventDefault();
-      ctx.saveAsk();
-      return;
-    }
-    if (e.key === "Escape" && !inField) {
-      e.preventDefault();
-      ctx.closeAsk();
-      return;
-    }
-    // Zoom passes through for the same reason it does under the Settings
-    // gate above.
-    if (e.metaKey && !e.ctrlKey && !e.altKey && ZOOM_KEYS.has(e.key)) {
-      e.preventDefault();
-      commandKeymap[e.key]?.run(ctx, e);
-      return;
-    }
-    // ⌘, closes Ask then opens Settings — the reverse direction (Settings
-    // open, `q`/⌥⌘A pressed) is App.tsx's openAsk wrapper closing Settings
-    // before calling openAsk.
-    if (e.metaKey && !e.ctrlKey && !e.altKey && e.key === ",") {
-      e.preventDefault();
-      ctx.closeAsk();
-      ctx.toggleSettings();
-      return;
-    }
-    // Everything else — including plain typing — belongs to the pane's own
-    // input, which owns the keystroke directly rather than through this
-    // window-level listener.
     return;
   }
 

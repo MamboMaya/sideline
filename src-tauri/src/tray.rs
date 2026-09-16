@@ -10,6 +10,7 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let record_item = MenuItem::with_id(app, "record", "Record voice note", true, None::<&str>)?;
     let dictate_item =
         MenuItem::with_id(app, "dictate", "Dictate to clipboard", true, None::<&str>)?;
+    let ask_item = MenuItem::with_id(app, "ask", "Ask a question", true, None::<&str>)?;
     let reveal = MenuItem::with_id(
         app,
         "reveal",
@@ -19,7 +20,17 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     )?;
     let purge = MenuItem::with_id(app, "purge", "Purge Archive…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Sideline", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&record_item, &dictate_item, &reveal, &purge, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &record_item,
+            &dictate_item,
+            &ask_item,
+            &reveal,
+            &purge,
+            &quit,
+        ],
+    )?;
 
     // `with_id("main")`: the REC ticker (audio.rs) fetches this tray
     // via `app.tray_by_id("main")` rather than holding its own handle.
@@ -34,6 +45,14 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
             "dictate" => {
                 let _ = audio::toggle_dictation(app.clone());
+            }
+            "ask" => {
+                // Same as the ⌥⌘A hotkey: popover up on the Ask view, then
+                // the recorder starts in ask mode (see lib.rs's handler).
+                crate::window::show_or_focus_window(app);
+                use tauri::Emitter;
+                let _ = app.emit("ask-open", ());
+                let _ = audio::toggle_ask(app.clone());
             }
             "reveal" => {
                 let _ = commands::open::reveal_inbox();

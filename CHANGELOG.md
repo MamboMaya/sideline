@@ -8,12 +8,15 @@ Notable, user-visible changes to Sideline. Format follows
 
 ### Added
 
-- **Quick question** (⌥⌘A, or `q` from inside the popover): ask Claude a
-  one-off question with web search enabled, without leaving Sideline. A
-  single input swaps in over the card list; Enter asks, the answer renders
-  below as plain text. Ephemeral by default — Esc discards it — but ⌘S
-  appends the question and answer to the inbox as a ❓ entry. Model
-  configurable in Settings → Claude → Question model (default Sonnet).
+- **Quick question / Ask view** (⌘3 or the header's "Ask" tab; `q` opens it,
+  ⌥⌘A speaks a question straight into it): ask Claude a one-off question
+  with web search enabled, without leaving Sideline. Threads persist for
+  the whole session, newest first — asking again, or switching away and
+  back, never loses an earlier question or answer. `↑`/`↓` select a
+  thread, `c` copies its answer, `x` removes it; each thread also has its
+  own Copy / Save to inbox / ✕ buttons, and `⌘S` saves the selected
+  thread's answer to the inbox as a ❓ entry. Model configurable in
+  Settings → Claude → Question model (default Sonnet).
 
 ## [0.3.0] - 2026-09-08
 

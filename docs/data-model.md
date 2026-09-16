@@ -50,7 +50,7 @@
   overriding the built-in triage/batch-triage prompt templates, optional
   `"models": { "triage": "haiku", "batch": "haiku", "ask": "sonnet" }`
   (Haiku is the default for triage/batch — triage just files and routes;
-  `ask` — the Quick question pane, docs/ui.md — defaults to Sonnet instead,
+  `ask` — the Quick question / Ask view, docs/ui.md — defaults to Sonnet instead,
   since a web-search answer needs more judgment than Haiku reliably gives),
   and optional
   `"projects": { "<tag>": "<repo path>" }` (legacy shape, path unused) or a
@@ -70,9 +70,10 @@
   human-friendly combo strings for the four global shortcuts (`dictate`
   triggers the same record→transcribe pipeline as `record`, but the
   transcript is copied to the clipboard and auto-pasted into the frontmost
-  app instead of being appended to inbox.md; `ask` shows the popover and
-  emits `ask-open`, opening the Quick question pane — see docs/backend.md
-  and docs/ui.md; aliases:
+  app instead of being appended to inbox.md; `ask` shows the popover,
+  switches to the Ask view (`ask-open`), and starts a spoken question — the
+  recorder's `ask` mode — whose finished transcript arrives as
+  `ask-transcript` — see docs/backend.md and docs/ui.md; aliases:
   `cmd`/`command`/`super`/`meta`, `opt`/`option`/`alt`, `ctrl`/`control`,
   `shift`; key token is a bare letter/digit/`space` or a W3C `Code` name like
   `F5`/`Comma`); missing or invalid falls back to the

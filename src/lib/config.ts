@@ -40,7 +40,7 @@ export const DEFAULT_PROMPTS: Prompts = {
 export interface Models {
   triage: string;
   batch: string;
-  // Quick question (⌥⌘A / `q`) model — see AskPane.tsx. Sonnet, not Haiku:
+  // Quick question (⌥⌘A / `q`) model — see AskView.tsx. Sonnet, not Haiku:
   // a live side-by-side on "WISP in real estate" had Sonnet answer right in
   // ~9s while Haiku picked the wrong expansion in ~17s — a web-search
   // answer needs the judgment Haiku doesn't reliably have.
@@ -167,8 +167,9 @@ export interface HotkeysConfig {
   // docs/backend.md. Default ⌥⌘V (src-tauri/src/hotkeys.rs's
   // `default_dictate_shortcut`).
   dictate?: string;
-  // Quick question (see AskPane.tsx / useAsk.ts): shows the popover and
-  // emits `ask-open`, same show-then-emit shape as the toggle hotkey.
+  // Quick question (see AskView.tsx / useAsk.ts): shows the popover,
+  // switches to the Ask view, and starts a spoken question (`ask` mode
+  // recording) — same show-then-emit shape as the toggle hotkey.
   // Default ⌥⌘A.
   ask?: string;
 }

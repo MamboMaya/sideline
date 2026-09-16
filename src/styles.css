@@ -9,6 +9,7 @@
   --border-strong: #3a3a44;
   --project: #4a9edb;
   --danger: #e05252;
+  --ask: #4fb37a;
 }
 * {
   box-sizing: border-box;
@@ -72,6 +73,11 @@ body.overlay {
 .overlay-pill-dictate {
   box-shadow: inset 0 0 0 1.5px var(--project);
 }
+/* Ask mode (⌥⌘A speaks a question — see AskView.tsx): a third ring color,
+   distinct from capture's orange and dictate's blue. */
+.overlay-pill-ask {
+  box-shadow: inset 0 0 0 1.5px var(--ask);
+}
 /* Default (capture pill): "Capture" in the app's orange accent. */
 .rec-mode-badge {
   color: var(--accent);
@@ -80,6 +86,10 @@ body.overlay {
 /* Dictate pill overrides to the same blue as its ring. */
 .overlay-pill-dictate .rec-mode-badge {
   color: var(--project);
+}
+/* Ask pill overrides to the same green as its ring. */
+.overlay-pill-ask .rec-mode-badge {
+  color: var(--ask);
 }
 header {
   display: flex;
@@ -929,16 +939,13 @@ header .ghost.gear {
 .settings-dict + .settings-hint {
   margin-top: 4px;
 }
-/* Quick question pane (AskPane.tsx) — swapped into the `.cards` region like
-   Settings, so it shares the same flex:1/overflow-y/padding rhythm rather
-   than a bespoke layout. */
-.ask-pane {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* Quick question — a THIRD VIEW (AskView.tsx), rendered inside the same
+   `.cards` scroll container as Inbox/Todos. `display: contents` makes the
+   wrapper invisible to layout, so the input/hint/thread children become
+   direct flex items of `.cards` and inherit its flex/overflow-y/gap/
+   padding rhythm rather than needing a bespoke layout of their own. */
+.ask-view {
+  display: contents;
 }
 .ask-input {
   background: var(--bg);
@@ -967,17 +974,24 @@ header .ghost.gear {
   font-style: italic;
   font-size: 12px;
 }
+/* One thread (AskView.tsx) — reuses `.card`/`.card.selected` for the
+   block/selection look, same as every other card in the app. */
+.ask-thread-q {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
 .ask-answer {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.45;
   font-size: 13px;
 }
-.ask-copy {
+.ask-thread-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ask-thread-actions .ghost {
   font-size: 11px;
 }
 /* iOS-style switch (SettingsPane.tsx's Switch): orange track + knob right

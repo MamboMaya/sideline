@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 
 import { openInboxInVscode, openTriaged, openTodos } from "../lib/commands";
 import {
+  askKeymap,
   commandKeymap,
   globalKeymap,
   inboxKeymap,
@@ -64,10 +65,13 @@ function makeCtx(overrides: Partial<KeyContext> = {}): KeyContext {
     closeSettings: vi.fn(),
     toggleSettings: vi.fn(),
     hotkeyCapturing: false,
-    askOpen: false,
-    openAsk: vi.fn(),
-    closeAsk: vi.fn(),
-    saveAsk: vi.fn(),
+    threads: [],
+    askSelected: 0,
+    setAskSelected: vi.fn(),
+    saveAskThread: vi.fn(),
+    copyAskThread: vi.fn(),
+    removeAskThread: vi.fn(),
+    focusAskInput: vi.fn(),
     setSearchOpen: vi.fn(),
     setSearchQuery: vi.fn(),
     hideWindow: vi.fn(),
@@ -142,7 +146,7 @@ beforeEach(() => {
 describe("keymap tables", () => {
   it("binds exactly the documented ⌘ layer", () => {
     expect(Object.keys(commandKeymap).sort()).toEqual(
-      ["+", "-", "0", "1", "2", "=", ",", "z"].sort(),
+      ["+", "-", "0", "1", "2", "3", "=", ",", "s", "z"].sort(),
     );
   });
 
@@ -203,10 +207,17 @@ describe("keymap tables", () => {
     }
   });
 
+  it("binds exactly the documented Ask keys", () => {
+    expect(Object.keys(askKeymap).sort()).toEqual(
+      ["ArrowDown", "ArrowUp", "Enter", "c", "x"].sort(),
+    );
+  });
+
   it("never lets a view map shadow a global key", () => {
     for (const key of Object.keys(globalKeymap)) {
       expect(inboxKeymap[key]).toBeUndefined();
       expect(todosKeymap[key]).toBeUndefined();
+      expect(askKeymap[key]).toBeUndefined();
     }
   });
 });
@@ -369,56 +380,117 @@ describe("dispatchKey — Settings gate", () => {
   });
 });
 
-describe("dispatchKey — Ask gate", () => {
-  it("⌘S saves while Ask is open", () => {
-    const ctx = makeCtx({ askOpen: true });
-    const e = press("s", ctx, { metaKey: true });
-    expect(ctx.saveAsk).toHaveBeenCalledTimes(1);
-    expect(e.preventDefault).toHaveBeenCalled();
-  });
-
-  it("closes Ask on a non-field Escape, but not while a field has focus", () => {
-    const ctx = makeCtx({ askOpen: true });
-    press("Escape", ctx, { tagName: "DIV" });
-    expect(ctx.closeAsk).toHaveBeenCalledTimes(1);
-
-    const fieldCtx = makeCtx({ askOpen: true });
-    press("Escape", fieldCtx, { tagName: "INPUT" });
-    expect(fieldCtx.closeAsk).not.toHaveBeenCalled();
-  });
-
-  it("lets zoom pass through while Ask is open", () => {
-    const ctx = makeCtx({ askOpen: true });
-    press("=", ctx, { metaKey: true });
-    press("-", ctx, { metaKey: true });
-    press("0", ctx, { metaKey: true });
-    expect((ctx.adjustZoom as ReturnType<typeof vi.fn>).mock.calls).toEqual([
-      [0.1],
-      [-0.1],
-      [0],
-    ]);
-  });
-
-  it("closes Ask then opens Settings on ⌘,", () => {
-    const ctx = makeCtx({ askOpen: true });
-    const e = press(",", ctx, { metaKey: true });
-    expect(ctx.closeAsk).toHaveBeenCalledTimes(1);
-    expect(ctx.toggleSettings).toHaveBeenCalledTimes(1);
-    expect(e.preventDefault).toHaveBeenCalled();
-  });
-
-  it("leaves every other key alone — the pane's own input owns typing", () => {
-    const ctx = makeCtx({ askOpen: true });
-    press("t", ctx);
-    press("a", ctx, { tagName: "INPUT" });
-    expect(ctx.triageWithClaude).not.toHaveBeenCalled();
-    expect(ctx.openTagEditor).not.toHaveBeenCalled();
-  });
-
-  it("q opens Ask when it's closed", () => {
+describe("dispatchKey — `q` switches to Ask and focuses its input", () => {
+  it("preventDefaults first, then switches view and focuses the input", () => {
     const ctx = makeCtx();
-    press("q", ctx);
-    expect(ctx.openAsk).toHaveBeenCalledTimes(1);
+    const e = press("q", ctx);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(ctx.setView).toHaveBeenCalledWith("ask");
+    expect(ctx.focusAskInput).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dispatchKey — ⌘3 switches to Ask; ⌘S saves only there", () => {
+  it("⌘3 switches view even from inside a focused field", () => {
+    const ctx = makeCtx();
+    const e = press("3", ctx, { metaKey: true, tagName: "INPUT" });
+    expect(ctx.setView).toHaveBeenCalledWith("ask");
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  const thread = {
+    id: 1,
+    question: "q",
+    answer: "a",
+    error: null,
+    pending: false,
+    createdAt: 0,
+  };
+
+  it("⌘S saves the selected thread's answer while the Ask view is active, even from a field", () => {
+    const ctx = makeCtx({ view: "ask", threads: [thread], askSelected: 0 });
+    const e = press("s", ctx, { metaKey: true, tagName: "INPUT" });
+    expect(ctx.saveAskThread).toHaveBeenCalledWith(1);
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  it("⌘S is a no-op outside the Ask view, or on a thread with no answer yet", () => {
+    const inbox = makeCtx({ view: "inbox", threads: [thread], askSelected: 0 });
+    press("s", inbox, { metaKey: true });
+    expect(inbox.saveAskThread).not.toHaveBeenCalled();
+
+    const pending = { ...thread, answer: null, pending: true };
+    const noAnswer = makeCtx({
+      view: "ask",
+      threads: [pending],
+      askSelected: 0,
+    });
+    press("s", noAnswer, { metaKey: true });
+    expect(noAnswer.saveAskThread).not.toHaveBeenCalled();
+  });
+});
+
+describe("askKeymap", () => {
+  const threads = [
+    {
+      id: 2,
+      question: "second",
+      answer: "a2",
+      error: null,
+      pending: false,
+      createdAt: 1,
+    },
+    {
+      id: 1,
+      question: "first",
+      answer: "a1",
+      error: null,
+      pending: false,
+      createdAt: 0,
+    },
+  ];
+  const askCtx = (over: Partial<KeyContext> = {}) =>
+    makeCtx({ view: "ask", threads, ...over });
+
+  it("clamps arrow navigation to the thread list", () => {
+    const ctx = askCtx({ askSelected: 0 });
+    const down = press("ArrowDown", ctx);
+    expect(down.preventDefault).toHaveBeenCalled();
+    const next = (ctx.setAskSelected as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(next(0)).toBe(1);
+    expect(next(1)).toBe(1);
+
+    const up = press("ArrowUp", ctx);
+    expect(up.preventDefault).toHaveBeenCalled();
+    const prev = (ctx.setAskSelected as ReturnType<typeof vi.fn>).mock
+      .calls[1][0];
+    expect(prev(1)).toBe(0);
+    expect(prev(0)).toBe(0);
+  });
+
+  it("copies and removes the selected thread by id", () => {
+    const ctx = askCtx({ askSelected: 1 });
+    press("c", ctx);
+    expect(ctx.copyAskThread).toHaveBeenCalledWith(1);
+    press("x", ctx);
+    expect(ctx.removeAskThread).toHaveBeenCalledWith(1);
+  });
+
+  it("focuses the input on Enter", () => {
+    const ctx = askCtx();
+    press("Enter", ctx);
+    expect(ctx.focusAskInput).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing with an empty thread list", () => {
+    const ctx = makeCtx({ view: "ask", threads: [] });
+    press("ArrowDown", ctx);
+    press("c", ctx);
+    press("x", ctx);
+    expect(ctx.setAskSelected).not.toHaveBeenCalled();
+    expect(ctx.copyAskThread).not.toHaveBeenCalled();
+    expect(ctx.removeAskThread).not.toHaveBeenCalled();
   });
 });
 

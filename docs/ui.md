@@ -11,8 +11,9 @@ below is a behavior spec over that surface, not a file-by-file walkthrough.
 
 ## Views & navigation
 
-Card list (newest first). Two views, jumped to by `⌘1`/`⌘2` or the header
-tabs (`Inbox (N)` / `Todos (P)`). Selection moves with `↑`/`↓` — and with a
+Card list (newest first). Three views, jumped to by `⌘1`/`⌘2`/`⌘3` or the
+header tabs (`Inbox (N)` / `Todos (P)` / `Ask`, the last suffixed
+`(N…)` while N threads are still awaiting an answer). Selection moves with `↑`/`↓` — and with a
 click: clicking a card (anywhere except an interactive child that handles
 its own click, like a button or the tag input) selects it too, exactly as
 arrowing to it would, so `t`/`d`/`e` and the rest of the keyboard layer act
@@ -57,31 +58,43 @@ a fresh session immediately.
 
 ## Quick question
 
-`⌥⌘A` (global hotkey, configurable — see Settings below) shows the popover
-and opens the Ask pane (`src/components/AskPane.tsx`, `src/hooks/
-useAsk.ts`); `q` does the same from inside the popover, mirroring `r` for
-recording. The pane swaps in over the `.cards` region, same shape as
-Settings: a single-line input, autofocused, and an answer area below it.
-`Enter` sends the question to Claude (`models.ask`, default Sonnet — see Settings → Claude → "Question model" —
-picked over Haiku after a live comparison came back with Haiku answering
-wrong and slower on a real question) via the CLI with web search enabled
-(`--tools WebSearch,WebFetch`, see docs/backend.md); the answer renders
-below as plain text (the CLI is told to skip markdown, so nothing is
-linkified). `Esc` closes the pane, discarding everything. It's single-shot —
-no follow-up questions, no conversation — and entirely ephemeral: nothing
-touches disk until `⌘S`, which appends the question and answer to
-`inbox.md` as a `❓` entry (`**question**` then a blank line then the
-answer — see docs/data-model.md). A small ghost "Copy" button at the right
-end of the hint line copies just the answer text.
+The Ask view (`src/components/AskView.tsx`, `src/hooks/useAsk.ts`) — a THIRD
+VIEW, `⌘3` or the header's "Ask" tab, not a swapped-in pane like Settings —
+holds a running, session-only list of question/answer threads, newest
+first. `q` switches to it and focuses its input, mirroring `r` for
+recording. `⌥⌘A` (global hotkey, configurable — see Settings below) shows
+the popover, switches to Ask, and — unlike the toggle/record/dictate
+hotkeys — starts SPEAKING the question immediately: it's a press-again-to-
+stop (or push-to-talk, per Settings) voice recording in the recorder's
+`ask` mode, same state machine as note/dictate recording (see
+docs/backend.md), with its own pill badge ("Ask", in green) and popover
+hint line ("🎙️ Listening…" / "Transcribing…"). When transcription finishes,
+the transcript is submitted as a new thread automatically — no typing
+required for the hotkey path. Typing `Enter` in the input submits the
+draft the same way. Sending a question calls Claude (`models.ask`, default
+Sonnet — see Settings → Claude → "Question model" — picked over Haiku
+after a live comparison came back with Haiku answering wrong and slower on
+a real question) via the CLI with web search enabled
+(`--tools WebSearch,WebFetch`, see docs/backend.md); the answer renders as
+plain text (the CLI is told to skip markdown, so nothing is linkified)
+under its question, in a new thread at the top of the list. There are no
+follow-ups — each question is its own one-shot exchange, no shared
+conversation state.
 
-Opening Settings closes Ask and vice versa — the two panes are mutually
-exclusive, same swapped-`.cards` slot. The one wrinkle: `⌥⌘A` shows the
-popover THEN emits the `ask-open` event Sideline listens for, so the
-window's focus-gain (which normally resets/closes every transient UI layer
-on reopen — see Views & navigation above) and `ask-open` can arrive in
-either order; the focus-gain reset deliberately does NOT close Ask if it
-was opened within the last second, so the hotkey's own open never races
-itself closed.
+Threads are session-only (nothing survives an app quit) but otherwise
+persistent: unlike the old single-shot pane, they are NEVER reset by the
+popover hiding, by switching to another view and back, or by App.tsx's
+focus-gain reset effect — a question asked, answered or not, is still there
+next time the popover is shown. `↑`/`↓` move the selection among threads;
+`c` copies the selected thread's answer, `x` removes it, `Enter` (with no
+thread list focus) jumps back to the input. Each thread also has its own
+"Copy" and "Save to inbox" ghost buttons, plus a "✕" remove button. `⌘S`
+saves the SELECTED thread — appends the question and answer to `inbox.md`
+as a `❓` entry (`**question**` then a blank line then the answer — see
+docs/data-model.md) — and is a no-op on a thread with no answer yet
+(pending, or errored) or outside the Ask view. `Esc` in the input blurs it
+first, same convention as the header search input; a second `Esc` then
+hides the popover as usual.
 
 ## Settings
 

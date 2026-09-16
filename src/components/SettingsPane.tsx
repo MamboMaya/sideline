@@ -104,7 +104,7 @@ const HOTKEY_FIELDS = [
   },
   {
     key: "ask" as const,
-    label: "Quick question",
+    label: "Ask a question (voice)",
     defaultCombo: "option+cmd+a",
     fallback: "⌥⌘A",
   },

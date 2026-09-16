@@ -36,7 +36,7 @@ export function ShortcutsModal({
             <kbd>⌘,</kbd> settings
           </div>
           <div className="shortcut">
-            <kbd>⌘1/2</kbd> switch view
+            <kbd>⌘1/2/3</kbd> switch view
           </div>
           <div className="shortcut">
             <kbd>↑ ↓</kbd> navigate
@@ -72,10 +72,10 @@ export function ShortcutsModal({
           </div>
           <div className="shortcut">
             <kbd>q / {formatHotkey(hotkeysOverride?.ask, "⌥⌘A")}</kbd> quick
-            question
+            question (⌥⌘A speaks it)
           </div>
           <div className="shortcut">
-            <kbd>⌘S</kbd> save quick-question answer
+            <kbd>⌘S</kbd> save answer (Ask tab)
           </div>
         </div>
       </div>

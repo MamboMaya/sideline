@@ -4,10 +4,13 @@ import type { useSearch } from "../hooks/useSearch";
 import { RecBars } from "./RecBars";
 
 interface HeaderProps {
-  view: "inbox" | "todos";
-  onChangeView: (view: "inbox" | "todos") => void;
+  view: "inbox" | "todos" | "ask";
+  onChangeView: (view: "inbox" | "todos" | "ask") => void;
   notesCount: number;
   todosPending: number;
+  // Threads still awaiting an answer — shown on the Ask tab as "Ask (N…)"
+  // so a question asked from another view doesn't go unnoticed.
+  askPending: number;
   // Recorder state, threaded straight from useRecorder — drives the rec
   // indicator (dot + elapsed + level bars while recording, status text while
   // transcribing/downloading the model).
@@ -40,6 +43,7 @@ export function Header({
   onChangeView,
   notesCount,
   todosPending,
+  askPending,
   recState,
   audioLevel,
   recElapsed,
@@ -74,6 +78,14 @@ export function Header({
           onClick={() => onChangeView("todos")}
         >
           Todos ({todosPending})
+        </button>
+        <button
+          type="button"
+          className={view === "ask" ? "tab active" : "tab"}
+          title="⌘3"
+          onClick={() => onChangeView("ask")}
+        >
+          {askPending > 0 ? `Ask (${askPending}…)` : "Ask"}
         </button>
       </div>
       <div className="header-spacer" />

@@ -12,9 +12,10 @@ import type {
   TodosCardRow,
 } from "./types";
 
-// Every key the app binds, as four tables. `dispatchKey` (useKeyboard.ts)
-// owns the LAYERING between them — ⌘ layer first, then the in-field and
-// modifier guards, then global keys, then the active view's map. The tables
+// Every key the app binds, as five tables: the ⌘ layer, global keys, and
+// one per view (Inbox/Todos/Ask). `dispatchKey` (useKeyboard.ts) owns the
+// LAYERING between them — ⌘ layer first, then the in-field and modifier
+// guards, then global keys, then the active view's map. The tables
 // themselves only say what each key DOES; docs/ui.md is the user-facing
 // spec of the same set.
 
@@ -25,6 +26,18 @@ import type {
 export const commandKeymap: CommandKeymap = {
   "1": { firesInFields: true, run: (ctx) => ctx.setView("inbox") },
   "2": { firesInFields: true, run: (ctx) => ctx.setView("todos") },
+  "3": { firesInFields: true, run: (ctx) => ctx.setView("ask") },
+  // ⌘S — Ask-only: saves the SELECTED thread's answer to the inbox (see
+  // useAsk.ts's saveThread). A no-op outside the Ask view, or on a thread
+  // that has no answer yet (still pending, or errored).
+  s: {
+    firesInFields: true,
+    run: (ctx) => {
+      if (ctx.view !== "ask") return;
+      const thread = ctx.threads[ctx.askSelected];
+      if (thread?.answer) ctx.saveAskThread(thread.id);
+    },
+  },
   // ⌘+ arrives as "=" unshifted and "+" shifted, depending on layout.
   "=": { firesInFields: true, run: (ctx) => ctx.adjustZoom(0.1) },
   "+": { firesInFields: true, run: (ctx) => ctx.adjustZoom(0.1) },
@@ -81,10 +94,16 @@ export const globalKeymap: Keymap = {
   // global hotkey. State/level feedback arrives via the
   // recording-state/audio-level events, not this call's return value.
   r: (ctx) => ctx.toggleRecording(),
-  // `q` opens the Quick question pane — mirrors the ⌥⌘A global hotkey (see
-  // useAsk.ts). Once open, the dedicated Ask gate in dispatchKey takes
-  // over, same layering as Settings/`⌘,`.
-  q: (ctx) => ctx.openAsk(),
+  // `q` switches to the Ask view and focuses its input — the keyboard-only
+  // mirror of ⌥⌘A, which instead starts a spoken question (see
+  // docs/ui.md's Quick question section). preventDefault first, same
+  // reason as `a` and `/` below: without it, the same keystroke types "q"
+  // into the input this focuses.
+  q: (ctx, e) => {
+    e.preventDefault();
+    ctx.setView("ask");
+    ctx.focusAskInput();
+  },
 };
 
 // ── Inbox view ─────────────────────────────────────────────────────────
@@ -262,10 +281,35 @@ export const todosKeymap: Keymap = {
   // in this view.
 };
 
-// The active view's map. Inbox and Todos are the only two, and a key missing
-// from the active one does nothing — it never falls through to the other.
+// ── Ask view ───────────────────────────────────────────────────────────
+// Nav over the thread list, newest first (see useAsk.ts) — only reachable
+// with the input unfocused, same as the other two views' arrow keys; the
+// input owns its own Enter (submit) and Escape (blur) directly.
+export const askKeymap: Keymap = {
+  ArrowDown: (ctx, e) => {
+    e.preventDefault();
+    if (ctx.threads.length)
+      ctx.setAskSelected((s) => Math.min(s + 1, ctx.threads.length - 1));
+  },
+  ArrowUp: (ctx, e) => {
+    e.preventDefault();
+    if (ctx.threads.length) ctx.setAskSelected((s) => Math.max(s - 1, 0));
+  },
+  c: (ctx) => {
+    const thread = ctx.threads[ctx.askSelected];
+    if (thread) ctx.copyAskThread(thread.id);
+  },
+  x: (ctx) => {
+    const thread = ctx.threads[ctx.askSelected];
+    if (thread) ctx.removeAskThread(thread.id);
+  },
+  Enter: (ctx) => ctx.focusAskInput(),
+};
+
+// The active view's map. A key missing from the active one does nothing —
+// it never falls through to another view's map.
 export const viewKeymap = (view: KeyContext["view"]): Keymap =>
-  view === "todos" ? todosKeymap : inboxKeymap;
+  view === "todos" ? todosKeymap : view === "ask" ? askKeymap : inboxKeymap;
 
 // ── Search input ───────────────────────────────────────────────────────
 // The keys of the header search input, which `dispatchKey` never sees: it

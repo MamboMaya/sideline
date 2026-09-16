@@ -15,8 +15,8 @@ mod watcher;
 mod whisper;
 mod window;
 
-/// Push-to-talk bookkeeping: which of the two toggleable hotkeys (record or
-/// dictate) is currently being held down and is the one that started the
+/// Push-to-talk bookkeeping: which of the three toggleable hotkeys (record,
+/// dictate or ask) is currently being held down and is the one that started the
 /// live session — so its Released event, and only its Released event, is
 /// allowed to stop that session. See the global-shortcut handler in `run()`
 /// below.
@@ -24,6 +24,7 @@ mod window;
 enum HeldShortcut {
     Record,
     Dictate,
+    Ask,
 }
 
 pub fn run() {
@@ -81,26 +82,12 @@ pub fn run() {
                         return;
                     }
 
-                    // Ask is show-only, never hide-on-press like toggle: the
-                    // Ask pane needs the popover open and focused to type
-                    // into. An already-visible popover (e.g. opened from the
-                    // tray at a different spot) just gets focus back rather
-                    // than being repositioned; a hidden one shows at the
-                    // hotkey spot. Either way the frontend then opens the
-                    // pane on `ask-open`.
-                    if *shortcut == *handler_ask.lock().unwrap() {
-                        if event.state() == ShortcutState::Pressed {
-                            window::show_or_focus_window(app);
-                            use tauri::Emitter;
-                            let _ = app.emit("ask-open", ());
-                        }
-                        return;
-                    }
-
                     let held_variant = if *shortcut == *handler_record.lock().unwrap() {
                         HeldShortcut::Record
                     } else if *shortcut == *handler_dictate.lock().unwrap() {
                         HeldShortcut::Dictate
+                    } else if *shortcut == *handler_ask.lock().unwrap() {
+                        HeldShortcut::Ask
                     } else {
                         return;
                     };
@@ -108,8 +95,25 @@ pub fn run() {
                         let _ = match held_variant {
                             HeldShortcut::Record => audio::toggle_recording(app.clone()),
                             HeldShortcut::Dictate => audio::toggle_dictation(app.clone()),
+                            HeldShortcut::Ask => audio::toggle_ask(app.clone()),
                         };
                     };
+
+                    // Ask is a recording session like the other two (same
+                    // toggle / push-to-talk handling below), plus the popover
+                    // comes up on its Ask view first so you can watch the
+                    // question land: an already-visible popover (e.g. opened
+                    // from the tray at a different spot) just gets focus
+                    // back rather than being repositioned, a hidden one
+                    // shows at the hotkey spot, and `ask-open` switches the
+                    // frontend to the Ask view. Never hides — the second
+                    // press of a toggle-mode session only stops recording.
+                    if held_variant == HeldShortcut::Ask && event.state() == ShortcutState::Pressed
+                    {
+                        window::show_or_focus_window(app);
+                        use tauri::Emitter;
+                        let _ = app.emit("ask-open", ());
+                    }
 
                     if !hotkeys::push_to_talk_enabled() {
                         // Toggle mode (default, and the only mode before

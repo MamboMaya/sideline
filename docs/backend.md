@@ -30,9 +30,11 @@ already running — exits immediately instead of showing a second tray icon.
 Tray icon + popover window toggle (tray click anchors under the icon for that
 click only; the ⌥⌘Space hotkey opens top-center of the monitor holding the
 cursor), global hotkeys (⌥⌘Space popover, ⌥⌘R recording, ⌥⌘V dictation, ⌥⌘A
-quick question — shows the popover and emits `ask-open`, same show-then-emit
-shape as the toggle hotkey; see docs/ui.md's Quick question section), fs
-watcher on `~/notes` emitting `inbox-changed`, and the commands:
+quick question — shows the popover, emits `ask-open`, and starts an `ask`-
+mode recording (see `RecMode` below); the finished transcript arrives as
+`ask-transcript`; the tray menu's "Ask a question" item does the same; see
+docs/ui.md's Quick question section), fs watcher on `~/notes` emitting
+`inbox-changed`, and the commands:
 
 - The global-shortcut handler (`lib.rs`) reads `ShortcutState` on every
   event, not just `Pressed`, because push-to-talk needs both halves. The
@@ -191,7 +193,7 @@ failure — no input device, model download error, etc.) emits
 `capture-error` (string payload) and the state machine still lands back on
 Idle.
 
-Orthogonal to `RecState` is `audio::RecMode` (`Note` | `Dictate`), carried on
+Orthogonal to `RecState` is `audio::RecMode` (`Note` | `Dictate` | `Ask`), carried on
 the same managed `Inner` alongside the state — which pipeline a session
 feeds, not what phase it's in. `toggle_recording` (⌥⌘R / tray "Record voice
 note" / popover `r`) and `toggle_dictation` (⌥⌘V / tray "Dictate to
@@ -202,10 +204,13 @@ active is ignored outright and emits `capture-error` "Already recording" —
 the recorder never silently switches modes mid-recording. The transient
 Copied notice counts as idle for all of this (`RecState::can_start`):
 either hotkey during it starts a fresh session, and the notice's hide
-timer stands down when it sees the state has moved on. `emit_state` additionally emits `recording-mode` (`"note"`/
-`"dictate"` string payload) once, at the moment a session enters Recording,
-so the overlay pill can tell the two apart; it does not change the
-`recording-state` payload shape.
+timer stands down when it sees the state has moved on. `emit_state`
+additionally emits `recording-mode` (`"note"`/`"dictate"`/`"ask"` string
+payload) once, at the moment a session enters Recording, so the overlay
+pill can tell the three apart; it does not change the `recording-state`
+payload shape. `Ask` mode's finished transcript is emitted as
+`ask-transcript` (string payload) rather than feeding `append_inbox_text`
+or the clipboard — see docs/ui.md's Quick question section.
 
 Every transition also drives the recording-pill overlay: `sync_overlay`
 (window.rs), called from the same `emit_state` choke point, shows the
