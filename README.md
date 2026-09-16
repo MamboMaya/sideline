@@ -7,14 +7,22 @@ project todo list, or delete it. Everything is plain Markdown under `~/notes`,
 and nothing ever leaves your machine except the (optional) Claude-assisted
 triage calls and quick questions.
 
-> **New in 0.4 — quick questions.** The kind of question you'd open a browser
-> tab for ("what does WISP mean in real estate?", "good VPN options?") now
-> has a hotkey: press ⌥⌘A, say it, and a short web-searched answer from
-> Claude lands in the popover's new Ask tab — no browser, no chat window, no
-> note created unless you press ⌘S to keep it. Want to go deeper? `o`
-> reopens that exact conversation in your terminal (iTerm2 and friends are
-> auto-detected). Needs the `claude` CLI; everything else in Sideline still
-> works without it. Details under [What it does](#what-it-does).
+> **New in 0.5 — add a project with the mouse.** Right-click the tray icon →
+> **Add project…** (or Settings → Tags → **Choose folder…**), pick the repo's
+> folder, and Sideline prefills the routing tag from its name
+> (`Content-Studio` → `#content-studio`), pins it, and offers to set the
+> repo up: one click opens your terminal and appends the todos pointer to
+> that repo's `CLAUDE.local.md`, so a Claude Code session there knows where
+> its routed notes live. No new permissions — the folder picker is macOS's
+> own, Sideline only remembers the path, and the terminal does the write.
+> Details under [What it does](#what-it-does).
+
+> **Quick questions** (0.4): the kind of question you'd open a browser tab
+> for ("what does WISP mean in real estate?") has a hotkey: press ⌥⌘A, say
+> it, and a short web-searched answer from Claude lands in the popover's Ask
+> tab — no note created unless you press ⌘S to keep it. `o` reopens that
+> conversation in your terminal. Needs the `claude` CLI; everything else in
+> Sideline still works without it.
 
 > **Dictation pass-through** (0.3): press ⌥⌘V, talk, and the transcript is
 > pasted into whatever app you're in — the inbox is never involved. It always
@@ -53,6 +61,12 @@ triage calls and quick questions.
   cheap models).
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
   and undo.
+- **Add a project by picking its folder**: tray → Add project…, or Settings
+  → Tags → Choose folder…. The tag is prefilled from the folder name and
+  pinned, and "Set up repo in Terminal" runs a small, idempotent script in
+  your terminal that appends the `~/notes/todos/<tag>.md` pointer to the
+  repo's `CLAUDE.local.md` (or copy the command and run it yourself). Typing
+  a tag into Settings still works too.
 - **Quick questions** (⌥⌘A by default, or `q` / ⌘3 in the popover): speak
   or type a one-off question and get a short answer from Claude with web
   search, in the Ask tab. Answers stay for the session (click away, come
@@ -63,7 +77,8 @@ triage calls and quick questions.
 - **Settings in-app** (⌘, or the gear in the header): remap the four global
   hotkeys by pressing the new combo (applied live, no restart), pick the
   input mic, toggle/tune Claude triage, choose the question model and the
-  terminal for "Continue in Terminal", manage tags, adjust zoom.
+  terminal for "Continue in Terminal", manage tags and projects, adjust
+  zoom.
 
 ![Record a voice note, watch it land in the inbox, triage it to a project todo](assets/demo.gif)
 
@@ -124,7 +139,10 @@ transcript into the frontmost app. Skip granting it and dictation still
 works; the transcript just stays on the clipboard for you to paste yourself.
 Everything else is deliberately prompt-free — notes live in `~/notes`, which
 is not a TCC-protected folder (Documents/Desktop/Downloads are; that's why
-the location is fixed).
+the location is fixed). The "Add project" folder picker is macOS's own
+consent dialog and never prompts: Sideline stores the path you picked and
+nothing more — it never reads or writes inside that folder (the repo setup
+script runs in your terminal, under your terminal's permissions).
 
 If you rebuild the app yourself, sign it with a stable identity so macOS
 remembers your permission answers across builds:
@@ -153,8 +171,9 @@ you want recording off the app's permission identity or you live in Raycast:
 ## Configuration
 
 `~/notes/.sideline.json` — pinned tags, hidden tags, zoom, hotkeys, triage
-prompts and models (plus the question model), project routing, the no-Claude
-toggle, audio input device, the terminal for "Continue in Terminal".
+prompts and models (plus the question model), project routing (tag → folder,
+the folder is informational only), the no-Claude toggle, audio input device,
+the terminal for "Continue in Terminal".
 All of it is editable in-app via the Settings pane (⌘,); the file is still
 plain JSON if you'd rather hand-edit (hotkey edits made that way need a
 restart; Settings applies them live). Schema in
