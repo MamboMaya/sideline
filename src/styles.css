@@ -657,6 +657,10 @@ header .ghost.gear {
   grid-template-rows: repeat(7, auto);
   grid-auto-flow: column;
 }
+/* The Ask section: same two-column flow, two rows. */
+.shortcuts-grid-2 {
+  grid-template-rows: repeat(2, auto);
+}
 .shortcuts-row {
   display: flex;
   gap: 16px;

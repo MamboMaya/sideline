@@ -19,9 +19,12 @@ export function ShortcutsModal({
   return (
     <div className="shortcuts" onClick={onClose}>
       {/* Row 1: Everywhere spans the full width, items flowing down
-          two columns. Row 2: Inbox left, Todos right. `o` and `c` are
-          context-sensitive (act on the view / selected row) but listed
-          once here since the MEANING is uniform. */}
+          two columns of exactly 7 — a 15th entry would spill into a
+          hidden third column (overflow-x: clip), so view-specific keys
+          belong in the rows below. Row 2: Inbox left, Todos right. Row 3:
+          Ask. `o` and `c` are context-sensitive (act on the view /
+          selected row) but listed once here since the MEANING is
+          uniform. */}
       <div>
         <div className="shortcuts-title">Everywhere</div>
         <div className="shortcuts-grid">
@@ -70,13 +73,6 @@ export function ShortcutsModal({
             <kbd>{formatHotkey(hotkeysOverride?.dictate, "⌥⌘V")}</kbd> dictate
             to clipboard
           </div>
-          <div className="shortcut">
-            <kbd>q / {formatHotkey(hotkeysOverride?.ask, "⌥⌘A")}</kbd> quick
-            question (⌥⌘A speaks it)
-          </div>
-          <div className="shortcut">
-            <kbd>⌘S</kbd> save answer (Ask tab)
-          </div>
         </div>
       </div>
       <div className="shortcuts-row">
@@ -117,6 +113,27 @@ export function ShortcutsModal({
           </div>
           <div className="shortcut">
             <kbd>⧉</kbd> copy whole tag
+          </div>
+        </div>
+      </div>
+      {/* Row 3: Ask, full width like Everywhere — its entries pair a
+          key with a long label, so two columns beat squeezing a third
+          column into row 2. */}
+      <div>
+        <div className="shortcuts-title">Ask</div>
+        <div className="shortcuts-grid shortcuts-grid-2">
+          <div className="shortcut">
+            <kbd>q</kbd> open Ask tab
+          </div>
+          <div className="shortcut">
+            <kbd>⌘S</kbd> save answer to inbox
+          </div>
+          <div className="shortcut">
+            <kbd>{formatHotkey(hotkeysOverride?.ask, "⌥⌘A")}</kbd> speak a
+            question
+          </div>
+          <div className="shortcut">
+            <kbd>o</kbd> continue in terminal
           </div>
         </div>
       </div>
