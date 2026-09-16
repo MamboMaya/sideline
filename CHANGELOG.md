@@ -6,6 +6,8 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-16
+
 ### Added
 
 - **Quick question / Ask view** (⌘3 or the header's "Ask" tab; `q` opens it,

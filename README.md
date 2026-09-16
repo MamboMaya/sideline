@@ -5,17 +5,24 @@ in your macOS menu bar: press a hotkey, talk, and a locally-transcribed note
 lands in your inbox — tag it, triage it into its own file, route it to a
 project todo list, or delete it. Everything is plain Markdown under `~/notes`,
 and nothing ever leaves your machine except the (optional) Claude-assisted
-triage calls.
+triage calls and quick questions.
 
-> **New — dictation pass-through.** Sideline started as capture-only: talk,
-> and a note lands in your inbox. It now also does straight dictation: press
-> ⌥⌘V, talk, and the transcript is pasted into whatever app you're in — the
-> inbox is never involved. It always lands on the clipboard too, so a paste
-> that goes nowhere is one ⌘V from being recovered. This is the one feature
-> that asks for a second macOS permission (Accessibility, used only to send
-> the auto-paste ⌘V); decline it and the clipboard is simply the whole
-> delivery. Like every Sideline hotkey, ⌥⌘V is just the default — remap it in
-> Settings (⌘,). Details under [What it does](#what-it-does) and
+> **New in 0.4 — quick questions.** The kind of question you'd open a browser
+> tab for ("what does WISP mean in real estate?", "good VPN options?") now
+> has a hotkey: press ⌥⌘A, say it, and a short web-searched answer from
+> Claude lands in the popover's new Ask tab — no browser, no chat window, no
+> note created unless you press ⌘S to keep it. Want to go deeper? `o`
+> reopens that exact conversation in your terminal (iTerm2 and friends are
+> auto-detected). Needs the `claude` CLI; everything else in Sideline still
+> works without it. Details under [What it does](#what-it-does).
+
+> **Dictation pass-through** (0.3): press ⌥⌘V, talk, and the transcript is
+> pasted into whatever app you're in — the inbox is never involved. It always
+> lands on the clipboard too, so a paste that goes nowhere is one ⌘V from
+> being recovered. This is the one feature that asks for a second macOS
+> permission (Accessibility, used only to send the auto-paste ⌘V); decline it
+> and the clipboard is simply the whole delivery. Like every Sideline hotkey,
+> ⌥⌘V is just the default — remap it in Settings (⌘,). See
 > [Permissions](#permissions).
 
 ## What it does
@@ -46,13 +53,21 @@ triage calls.
   cheap models).
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
   and undo.
-- **Settings in-app** (⌘, or the gear in the header): remap the three global
+- **Quick questions** (⌥⌘A by default, or `q` / ⌘3 in the popover): speak
+  or type a one-off question and get a short answer from Claude with web
+  search, in the Ask tab. Answers stay for the session (click away, come
+  back later — they're still there), nothing is written unless you save one
+  to the inbox with ⌘S, and `o` continues the thread in your terminal as a
+  full Claude session. Uses the `claude` CLI with only its web tools
+  enabled — no file access, no hooks, no MCP servers.
+- **Settings in-app** (⌘, or the gear in the header): remap the four global
   hotkeys by pressing the new combo (applied live, no restart), pick the
-  input mic, toggle/tune Claude triage, manage tags, adjust zoom.
+  input mic, toggle/tune Claude triage, choose the question model and the
+  terminal for "Continue in Terminal", manage tags, adjust zoom.
 
 ![Record a voice note, watch it land in the inbox, triage it to a project todo](assets/demo.gif)
 
-_In the demo I record with ⌥⌘V instead of the default ⌥⌘R — all three
+_In the demo I record with ⌥⌘V instead of the default ⌥⌘R — all four
 hotkeys are remappable in Settings (⌘,)._
 
 ## How this was built
@@ -88,7 +103,8 @@ after that, System Settings > General > Login Items is authoritative (change
 it there anytime).
 
 Optional: install the [`claude` CLI](https://claude.com/claude-code) to enable
-Claude-assisted triage and note headers. Everything else works without it.
+Claude-assisted triage, note headers, and the Ask tab's quick questions.
+Everything else works without it.
 
 ### Using without Claude
 
@@ -96,7 +112,8 @@ No `claude` CLI or subscription? Flip the Claude toggle off in Settings
 (⌘,) — or set `"claude": false` in `~/notes/.sideline.json`. Capture and transcription are already fully local
 (Whisper); with this set, triage stops calling out too — notes file with
 locally-derived headers (the note's own first line) instead of Haiku-written
-ones, and no `## Claude` reply appendix.
+ones, and no `## Claude` reply appendix. Quick questions are the one thing
+that genuinely needs the CLI; without it the Ask tab just reports the error.
 
 ## Permissions
 
@@ -136,7 +153,8 @@ you want recording off the app's permission identity or you live in Raycast:
 ## Configuration
 
 `~/notes/.sideline.json` — pinned tags, hidden tags, zoom, hotkeys, triage
-prompts and models, project routing, the no-Claude toggle, audio input device.
+prompts and models (plus the question model), project routing, the no-Claude
+toggle, audio input device, the terminal for "Continue in Terminal".
 All of it is editable in-app via the Settings pane (⌘,); the file is still
 plain JSON if you'd rather hand-edit (hotkey edits made that way need a
 restart; Settings applies them live). Schema in
