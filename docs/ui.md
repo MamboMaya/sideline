@@ -245,9 +245,9 @@ scrollable pane:
    → `content-studio`; editable, Enter = Add), and a **Pin tag** checkbox
    (on by default, greyed out at the 6-pin cap). Add is disabled while the
    tag is empty or already a project (inline note). Add writes the project
-   entry AND the pin in ONE `updateConfig` write (`addProject(tag, {path,
-   pin})` in `src/hooks/useConfig.ts` — two separate writes off the same
-   closure would clobber each other); a picked path is stored with the tag,
+   entry AND the pin in ONE `updateConfig` write — `useConfig.ts`'s
+   `addProject(tag, {path, pin})`; two separate writes off the same
+   closure would clobber each other. A picked path is stored with the tag,
    which means the map shape is written (an existing array is upgraded,
    old entries get `""`). The path is informational only — never read or
    written to. A done state then sets the repo up: it shows the setup
