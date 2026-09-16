@@ -20,6 +20,11 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
+# Direct rfd (the dialog plugin's own backend, same version/features) for
+# the folder picker: the plugin's file dialogs always attach as a SHEET to
+# the app's first window, which for a menu-bar popover is hidden/unfocused
+# — the sheet never shows and macOS beeps. See commands/projects.rs.
+rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }
 cpal = "0.18.1"
 whisper-rs = { version = "0.16.0", features = ["metal"] }
 regex = "1.13.1"

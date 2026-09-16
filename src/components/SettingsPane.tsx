@@ -53,6 +53,8 @@ export interface SettingsPaneProps {
   projectTags: string[];
   addProject: (tag: string) => void;
   removeProject: (tag: string) => void;
+  // "Choose folder…": native folder picker → AddProjectModal (App.tsx).
+  onChooseFolder: () => void;
   // Zoom
   zoom: number;
   adjustZoom: (delta: number) => void;
@@ -566,6 +568,7 @@ export function SettingsPane({
   projectTags,
   addProject,
   removeProject,
+  onChooseFolder,
   zoom,
   adjustZoom,
   updateConfig,
@@ -926,6 +929,11 @@ export function SettingsPane({
             addPlaceholder="add project tag…"
             chipClassName="tag project"
           />
+          <div>
+            <button type="button" className="tag-add" onClick={onChooseFolder}>
+              Choose folder…
+            </button>
+          </div>
         </div>
       </section>
 

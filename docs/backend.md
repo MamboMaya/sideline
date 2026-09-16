@@ -2,8 +2,8 @@
 
 Module map: `lib.rs` (plugin/builder wiring, `invoke_handler`, `.setup()`)
 delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`),
-`commands/notes.rs` + `commands/open.rs` (the IPC commands below, grouped by
-concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
+`commands/notes.rs` + `commands/open.rs` + `commands/projects.rs` (the IPC
+commands below, grouped by concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning + the recording-pill overlay window),
 `hotkeys.rs` (config + registration),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
@@ -143,6 +143,31 @@ session_id }`: the session id is what `open_ask_session` resumes)
 - `list_terminals` (installed `KNOWN_TERMINALS` in that preference order,
   always ending in "Terminal" — the Settings → Claude "Continue in"
   dropdown's options; detection is a `/Applications/<name>.app` check)
+- `pick_project_folder` (`commands/projects.rs`; Settings → Tags → "Choose
+  folder…": the native NSOpenPanel folder picker, returns the absolute
+  path or `None` on cancel, then re-focuses the popover. Uses `rfd`
+  DIRECTLY (sync `FileDialog`, run on the main thread via
+  `run_on_main_thread` + a channel; the command is `async` so the wait
+  stays off the main thread) rather than `tauri-plugin-dialog`'s file
+  dialogs: those attach as a sheet to the app's first window, which for a
+  menu-bar popover is hidden or hides itself on focus loss — the sheet
+  never shows and macOS beeps. While the panel is up,
+  `window::SUPPRESS_HIDE` stops `hide_on_focus_loss` from closing the
+  popover. No TCC surface — the panel is the OS's own consent UI, and the
+  path is only ever STORED (`.sideline.json` `projects`), never read or
+  written under; keep it that way)
+- `project_setup_script` / `setup_project_repo` (`commands/projects.rs`;
+  the Add project panel's done state). `path` (absolute, existing dir, no
+  `'`/control chars — it's single-quoted in the script) and `tag`
+  (`[a-z0-9_-]`, ≤24) are validated before either touches a shell line.
+  The script `cd`s to the folder and appends the CLAUDE.local.md todos
+  pointer unless a `todos/<tag>.md` line is already there. The first
+  command returns the script text (shown and copied by the panel); the
+  second writes it to `~/notes/.sideline-setup.command` and opens it in
+  the configured terminal through `open_command_script` — the helper
+  `open_ask_session` now shares, with `resolve_terminal` (both in
+  `commands/open.rs`). The terminal does the write in the repo; Sideline
+  never writes outside ~/notes)
 - `append_inbox_entry` (`icon` + `body` args; an O_APPEND write of one
   `### <icon> <timestamp>` block, same shape as `append_inbox_text` below —
   the Ask pane's ⌘S save is the one frontend caller)
@@ -185,7 +210,12 @@ plain fn, called only from the tray menu below.
 
 The tray menu also carries "Purge Archive…" (see docs/data-model.md),
 implemented Rust-side with `tauri-plugin-dialog` native confirms and
-`move_to_user_trash` (plain rename into `~/.Trash`, collision-suffixed).
+`move_to_user_trash` (plain rename into `~/.Trash`, collision-suffixed),
+and "Add project…" (`commands/projects.rs`'s `add_project_from_tray`, on
+its own thread like purge): the same folder picker as
+`pick_project_folder`, then `show_or_focus_window` and a `project-picked`
+event carrying the path — the frontend's AddProjectModal does the rest
+(docs/ui.md's Settings section).
 
 ## In-app voice recording (audio.rs + whisper.rs)
 

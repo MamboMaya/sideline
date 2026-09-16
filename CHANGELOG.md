@@ -6,6 +6,16 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- Add a project with the mouse: tray menu "Add project…" or Settings → Tags →
+  "Choose folder…" opens the native folder picker, prefills the routing tag
+  from the folder name, pins it (optional), and then sets the repo up:
+  "Set up repo in Terminal" runs a small script in your terminal that
+  appends the `CLAUDE.local.md` todos pointer (or copy the command and run
+  it yourself). No new permissions — Sideline only stores the path; the
+  terminal does the write.
+
 ## [0.4.0] - 2026-09-16
 
 ### Added

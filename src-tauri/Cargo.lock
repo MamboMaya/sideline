@@ -3913,6 +3913,7 @@ dependencies = [
  "notify",
  "regex",
  "reqwest",
+ "rfd",
  "serde",
  "serde_json",
  "tauri",

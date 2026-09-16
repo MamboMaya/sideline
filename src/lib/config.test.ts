@@ -13,6 +13,7 @@ import {
   mergePrompts,
   projectTagsFrom,
   projectsAdd,
+  tagFromFolder,
   projectsRemove,
   dictionaryFromRows,
   dictionaryRows,
@@ -893,6 +894,28 @@ describe("projectsAdd", () => {
     });
     // Already present: untouched, existing path not clobbered.
     expect(projectsAdd({ a: "/path/a" }, "a")).toEqual({ a: "/path/a" });
+  });
+
+  test("with a path (folder-picked): map shape, upgrading an array", () => {
+    expect(projectsAdd(undefined, "b", "/p/b")).toEqual({ b: "/p/b" });
+    expect(projectsAdd({ a: "/p/a" }, "b", "/p/b")).toEqual({
+      a: "/p/a",
+      b: "/p/b",
+    });
+    expect(projectsAdd(["a"], "b", "/p/b")).toEqual({ a: "", b: "/p/b" });
+    // Already present: shape and existing path untouched.
+    expect(projectsAdd(["a"], "a", "/p/a")).toEqual(["a"]);
+    expect(projectsAdd({ a: "/p/a" }, "a", "/other")).toEqual({ a: "/p/a" });
+  });
+});
+
+describe("tagFromFolder", () => {
+  test("basename through sanitizeTag", () => {
+    expect(tagFromFolder("/Users/me/projects/Content-Studio")).toBe(
+      "content-studio",
+    );
+    expect(tagFromFolder("/Users/me/My App/")).toBe("my-app");
+    expect(tagFromFolder("/")).toBe("");
   });
 });
 

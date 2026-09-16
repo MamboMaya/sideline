@@ -331,10 +331,26 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   // Settings' Tags section: add/remove a `projects` entry, preserving
   // whichever shape (array or legacy tag->path map) is already on disk —
   // see projectsAdd/projectsRemove in config.ts.
-  const addProject = (tag: string) => {
+  // `path`/`pin` come from AddProjectModal (folder-picked project): the
+  // path is stored alongside the tag (map shape — see projectsAdd) and the
+  // pin lands in the SAME write as the project entry — a separate togglePin
+  // call would be a second read-modify-write off the same stale closure
+  // and clobber the first. Pin silently skipped at the 6-pin cap (the modal
+  // already greys the checkbox out).
+  const addProject = (
+    tag: string,
+    opts: { path?: string; pin?: boolean } = {},
+  ) => {
     const sanitized = sanitizeTag(tag);
     if (!sanitized) return;
-    updateConfig({ projects: projectsAdd(projectsOverride, sanitized) });
+    const pin =
+      opts.pin === true &&
+      !pinnedTags.includes(sanitized) &&
+      pinnedTags.length < 6;
+    updateConfig({
+      projects: projectsAdd(projectsOverride, sanitized, opts.path),
+      ...(pin ? { pinnedTags: [...pinnedTags, sanitized] } : {}),
+    });
   };
 
   const removeProject = (tag: string) => {

@@ -194,7 +194,10 @@ pub fn run() {
             claude::ask_claude,
             commands::notes::append_inbox_entry,
             commands::open::open_ask_session,
-            commands::open::list_terminals
+            commands::open::list_terminals,
+            commands::projects::pick_project_folder,
+            commands::projects::project_setup_script,
+            commands::projects::setup_project_repo
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,

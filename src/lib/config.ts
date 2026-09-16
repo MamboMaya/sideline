@@ -116,21 +116,39 @@ export function projectTagsFrom(
 }
 
 // Adds a project tag to `projects`, preserving whichever shape (array or
-// legacy `{tag: path}` map) is already on disk; a brand-new `projects` key
-// (currently absent) defaults to the array shape — the map shape only
-// exists for backward compatibility with hand-edited files, never written
-// fresh. A tag already present is left untouched (no duplicate entries).
+// `{tag: path}` map) is already on disk. A typed tag (no path) on a
+// brand-new `projects` key defaults to the array shape; a folder-picked
+// project (AddProjectModal, `path` given) needs somewhere to keep the path,
+// so it writes the map shape — upgrading an existing array (every old
+// entry gets `""`) rather than dropping the path. The path stays
+// informational (docs/data-model.md): shown back in Settings, never read
+// or written to. A tag already present is left untouched (no duplicate
+// entries, existing path never clobbered).
 export function projectsAdd(
   current: ProjectsConfig | undefined,
   tag: string,
+  path?: string,
 ): ProjectsConfig {
   if (Array.isArray(current)) {
-    return current.includes(tag) ? current : [...current, tag];
+    if (current.includes(tag)) return current;
+    if (path === undefined) return [...current, tag];
+    return {
+      ...Object.fromEntries(current.map((t) => [t, ""])),
+      [tag]: path,
+    };
   }
   if (current && typeof current === "object") {
-    return tag in current ? current : { ...current, [tag]: "" };
+    return tag in current ? current : { ...current, [tag]: path ?? "" };
   }
-  return [tag];
+  return path === undefined ? [tag] : { [tag]: path };
+}
+
+// The tag AddProjectModal prefills from a picked folder: its basename run
+// through sanitizeTag (`Content-Studio` → `content-studio`, `My App` →
+// `my-app`). Empty when the path has no usable name (e.g. `/`).
+export function tagFromFolder(path: string): string {
+  const base = path.replace(/\/+$/, "").split("/").pop() ?? "";
+  return sanitizeTag(base);
 }
 
 // Removes a project tag from `projects`, in whichever shape it's in;

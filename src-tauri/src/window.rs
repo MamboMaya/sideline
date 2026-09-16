@@ -134,11 +134,21 @@ pub(crate) fn hotkey_position(
 }
 
 /// Hide the popover when it loses focus (standard popover behavior).
+/// Set while a native panel Sideline itself opened (the "Add project"
+/// folder picker, commands/projects.rs) has focus: the popover losing focus
+/// to OUR OWN panel must not hide it — the user is mid-flow and comes
+/// straight back to it.
+pub(crate) static SUPPRESS_HIDE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 pub(crate) fn hide_on_focus_loss(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let win_clone = win.clone();
         win.on_window_event(move |event| {
             if let tauri::WindowEvent::Focused(false) = event {
+                if SUPPRESS_HIDE.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
                 let _ = win_clone.hide();
             }
         });

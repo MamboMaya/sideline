@@ -233,9 +233,36 @@ scrollable pane:
    (max 6, same `togglePin` used everywhere a pinned-tag chip is clicked),
    hidden tags (excluded from autocomplete — adding here is `hideTag`,
    removing is the new `unhideTag`), and project routing tags (`projects`
-   — add/remove preserve whichever shape, array or legacy `{tag: path}`
-   map, is already on disk; a brand-new key is always written as an array,
-   since the map shape only exists for old hand-edited files).
+   — add/remove preserve whichever shape, array or `{tag: path}` map, is
+   already on disk; a TYPED tag on a brand-new key is written as an array).
+   Below the project chips, a **Choose folder…** button is the click path:
+   it opens the native folder picker (`pick_project_folder`, docs/backend.md)
+   and hands the pick to the **Add project** panel
+   (`src/components/AddProjectModal.tsx`, a strip under the header like the
+   `?` panel, so it also works over any view). The panel shows the path,
+   prefills the tag from the folder name (`tagFromFolder` in
+   `src/lib/config.ts`: basename through `sanitizeTag`, so `Content-Studio`
+   → `content-studio`; editable, Enter = Add), and a **Pin tag** checkbox
+   (on by default, greyed out at the 6-pin cap). Add is disabled while the
+   tag is empty or already a project (inline note). Add writes the project
+   entry AND the pin in ONE `updateConfig` write (`addProject(tag, {path,
+   pin})` in `src/hooks/useConfig.ts` — two separate writes off the same
+   closure would clobber each other); a picked path is stored with the tag,
+   which means the map shape is written (an existing array is upgraded,
+   old entries get `""`). The path is informational only — never read or
+   written to. A done state then sets the repo up: it shows the setup
+   script (`project_setup_script`, docs/backend.md — an idempotent append
+   of the `Pending <tag> todos: ~/notes/todos/<tag>.md …` pointer to the
+   folder's `CLAUDE.local.md`) with **Set up repo in Terminal**
+   (`setup_project_repo`: the same `.command`-in-`~/notes` hand-off as
+   Ask's "Continue in Terminal", honoring the Settings → Claude terminal
+   choice) and **Copy command** (clipboard) as the do-it-yourself
+   fallback. The TERMINAL performs the write — Sideline never writes into
+   the repo itself. The tray menu's **Add project…**
+   item runs the same picker Rust-side and, on a pick, raises the popover
+   on the Settings pane with the panel open (`project-picked` event), so
+   the new chip is visible once added. Esc closes the panel (its own
+   handler, before the app's Esc layering).
 5. **Zoom** — the current `zoom` value as a percentage, with −/+ steppers
    and a Reset button (all three just call the existing `adjustZoom`, so
    they toast and clamp exactly like ⌘+/⌘−/⌘0 do) plus a hint pointing at

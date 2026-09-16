@@ -92,19 +92,7 @@ pub(crate) fn reveal_inbox() -> Result<(), String> {
 /// the others get `open -a <name>`.
 #[tauri::command(rename_all = "snake_case")]
 pub(crate) fn open_ask_session(session_id: String, terminal: Option<String>) -> Result<(), String> {
-    let terminal = match terminal.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        Some(t) => {
-            if !KNOWN_TERMINALS.contains(&t) {
-                return Err(format!("Unknown terminal {t:?}"));
-            }
-            t.to_string()
-        }
-        None => KNOWN_TERMINALS
-            .iter()
-            .find(|n| terminal_installed(n))
-            .unwrap_or(&"Terminal")
-            .to_string(),
-    };
+    let terminal = resolve_terminal(terminal)?;
     let ok = session_id.len() == 36
         && session_id
             .bytes()
@@ -118,7 +106,34 @@ pub(crate) fn open_ask_session(session_id: String, terminal: Option<String>) -> 
         notes = notes_dir().display(),
         bin = Path::new(&bin).display(),
     );
-    let path = notes_dir().join(CONTINUE_SCRIPT);
+    open_command_script(CONTINUE_SCRIPT, &script, &terminal)
+}
+
+/// `.sideline.json`'s `terminal` value → the app name to hand `open -a`:
+/// a `KNOWN_TERMINALS` entry as-is (anything else rejected), None/blank =
+/// the first installed known terminal.
+pub(crate) fn resolve_terminal(terminal: Option<String>) -> Result<String, String> {
+    match terminal.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => {
+            if !KNOWN_TERMINALS.contains(&t) {
+                return Err(format!("Unknown terminal {t:?}"));
+            }
+            Ok(t.to_string())
+        }
+        None => Ok(KNOWN_TERMINALS
+            .iter()
+            .find(|n| terminal_installed(n))
+            .unwrap_or(&"Terminal")
+            .to_string()),
+    }
+}
+
+/// Writes `script` to `~/notes/<name>` (0755) and opens it in `terminal`
+/// (a name `resolve_terminal` returned). Shared by `open_ask_session` and
+/// `setup_project_repo` (commands/projects.rs): every terminal hand-off
+/// goes through a `.command` file inside ~/notes.
+pub(crate) fn open_command_script(name: &str, script: &str, terminal: &str) -> Result<(), String> {
+    let path = notes_dir().join(name);
     std::fs::write(&path, script).map_err(|e| e.to_string())?;
     {
         use std::os::unix::fs::PermissionsExt;
@@ -127,7 +142,7 @@ pub(crate) fn open_ask_session(session_id: String, terminal: Option<String>) -> 
     }
     let mut cmd = std::process::Command::new("open");
     if terminal != "Terminal" {
-        cmd.args(["-a", &terminal]);
+        cmd.args(["-a", terminal]);
     }
     cmd.arg(&path)
         .spawn()

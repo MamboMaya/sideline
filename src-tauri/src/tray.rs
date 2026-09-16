@@ -18,6 +18,8 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let add_project =
+        MenuItem::with_id(app, "add-project", "Add project…", true, None::<&str>)?;
     let purge = MenuItem::with_id(app, "purge", "Purge Archive…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Sideline", true, None::<&str>)?;
     let menu = Menu::with_items(
@@ -27,6 +29,7 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             &dictate_item,
             &ask_item,
             &reveal,
+            &add_project,
             &purge,
             &quit,
         ],
@@ -56,6 +59,11 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
             "reveal" => {
                 let _ = commands::open::reveal_inbox();
+            }
+            "add-project" => {
+                // Own thread: the folder picker blocks (see commands/projects.rs).
+                let handle = app.clone();
+                std::thread::spawn(move || commands::projects::add_project_from_tray(&handle));
             }
             "purge" => {
                 // Own thread: the confirm dialog blocks.

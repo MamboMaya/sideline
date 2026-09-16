@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   archiveBlock,
   parseTriagedFile,
@@ -32,6 +34,7 @@ import { useEditRow } from "./hooks/useEditRow";
 import { useKeyboard } from "./keys/useKeyboard";
 import { Toast } from "./components/Toast";
 import { ShortcutsModal } from "./components/ShortcutsModal";
+import { AddProjectModal } from "./components/AddProjectModal";
 import { SettingsPane } from "./components/SettingsPane";
 import { AskView } from "./components/AskView";
 import { Header } from "./components/Header";
@@ -107,6 +110,28 @@ export default function App() {
     removeProject,
     updateConfig,
   } = useConfig({ showToast, dismissToast });
+
+  // "Add project…" (tray menu, or Settings' "Choose folder…"): the picked
+  // folder, while the AddProjectModal is up; null = closed. The tray path
+  // arrives as the `project-picked` event (commands/projects.rs) and lands
+  // on the Settings pane so the new chip is visible once added; the
+  // Settings button invokes the same picker directly.
+  const [addProjectPath, setAddProjectPath] = useState<string | null>(null);
+  useEffect(() => {
+    const un = listen<string>("project-picked", (e) => {
+      setShowShortcuts(false);
+      setShowSettings(true);
+      setAddProjectPath(e.payload);
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+  const chooseProjectFolder = () => {
+    invoke<string | null>("pick_project_folder").then((path) => {
+      if (path) setAddProjectPath(path);
+    });
+  };
 
   // Ask view's own input — App owns the ref (rather than the component)
   // so `focusAskInput` below can reach it from the keyboard layer, not just
@@ -518,6 +543,21 @@ export default function App() {
           onClose={() => setShowShortcuts(false)}
         />
       )}
+      {addProjectPath !== null && (
+        <AddProjectModal
+          key={addProjectPath}
+          path={addProjectPath}
+          projectTags={projectTags}
+          pinnedTags={pinnedTags}
+          terminalOverride={terminalOverride}
+          showToast={showToast}
+          onAdd={(tag, path, pin) => {
+            addProject(tag, { path, pin });
+            showToast(`Added #${tag}`);
+          }}
+          onClose={() => setAddProjectPath(null)}
+        />
+      )}
       {showSettings ? (
         <SettingsPane
           hotkeysOverride={hotkeysOverride}
@@ -546,6 +586,7 @@ export default function App() {
           projectTags={projectTags}
           addProject={addProject}
           removeProject={removeProject}
+          onChooseFolder={chooseProjectFolder}
           zoom={zoom}
           adjustZoom={adjustZoom}
           updateConfig={updateConfig}

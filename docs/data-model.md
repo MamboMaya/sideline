@@ -57,9 +57,11 @@
   `ask` — the Quick question / Ask view, docs/ui.md — defaults to Sonnet instead,
   since a web-search answer needs more judgment than Haiku reliably gives),
   and optional
-  `"projects": { "<tag>": "<repo path>" }` (legacy shape, path unused) or a
-  plain array of tags — opts a tag into todo routing. Only the
-  tag itself matters; no repo path is ever read or written to. Also
+  `"projects": { "<tag>": "<repo path>" }` or a plain array of tags — opts
+  a tag into todo routing. Only the tag itself matters; the path is
+  informational (what the folder-picked "Add project" flow stores, see
+  docs/ui.md's Settings section — a typed tag gets `""`, or the array
+  shape) and is never read or written to. Also
   optional `"claude": false` (default `true`) — no-Claude mode: every
   non-project triage flow (single-note and batch) skips `send_to_claude`
   entirely, deriving titles locally instead of a Haiku call (first
