@@ -135,7 +135,14 @@ session_id }`: the session id is what `open_ask_session` resumes)
   launches Terminal as the `.command` handler. Deliberately NOT
   `osascript`/Apple Events into Terminal: that would be a new
   TCC automation prompt blamed on Sideline; `open` is already an allowed
-  subprocess)
+  subprocess. Optional `terminal` arg — `.sideline.json`'s `terminal` key,
+  an app name from the `KNOWN_TERMINALS` list (iTerm, Ghostty, Warp,
+  kitty, WezTerm, Alacritty, Terminal; anything else is rejected rather
+  than passed to `open -a`) — selects `open -a <name>`; absent = the
+  first installed known terminal, iTerm2 first, stock Terminal last)
+- `list_terminals` (installed `KNOWN_TERMINALS` in that preference order,
+  always ending in "Terminal" — the Settings → Claude "Continue in"
+  dropdown's options; detection is a `/Applications/<name>.app` check)
 - `append_inbox_entry` (`icon` + `body` args; an O_APPEND write of one
   `### <icon> <timestamp>` block, same shape as `append_inbox_text` below —
   the Ask pane's ⌘S save is the one frontend caller)

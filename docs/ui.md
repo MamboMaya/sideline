@@ -94,8 +94,11 @@ short (the CLI is told ~60 words, one source line — the questions are
 one-liners, so the answers should be too); "Continue in Terminal" is the
 escape hatch for anything deeper: it resumes the exact `claude` session
 the answer came from (`open_ask_session`, docs/backend.md) as a full
-interactive session in Terminal, so the follow-up starts with the question
-and answer already in context. Disabled until the thread has an answer. `⌘S`
+interactive session, so the follow-up starts with the question and answer
+already in context. It opens in the terminal configured at Settings →
+Claude → "Continue in" — auto (the default) picks iTerm2 if installed, else
+the next known terminal, else Terminal. Disabled until the thread has an
+answer. `⌘S`
 saves the SELECTED thread — appends the question and answer to `inbox.md`
 as a `❓` entry (`**question**` then a blank line then the answer — see
 docs/data-model.md) — and is a no-op on a thread with no answer yet
@@ -213,7 +216,12 @@ scrollable pane:
    Sonnet, unlike triage/batch's Haiku) (the `claude` CLI's
    `haiku`/`sonnet`/`opus` aliases or "Default"; a hand-edited custom model
    id shows as its own "(custom)" option, never clobbered; written on
-   change) and textareas for `prompts.triage`/`prompts.batch` (Quick
+   change), a **Continue in** dropdown for `terminal` (Ask's `o` — see the
+   Quick question section above; "Auto (first installed)" plus one option
+   per app `list_terminals` reports, `iTerm` shown as "iTerm2"; a
+   hand-edited name absent from that list shows as its own "(custom)"
+   option, same convention as the model dropdowns), and textareas for
+   `prompts.triage`/`prompts.batch` (Quick
    question has no prompt override — a one-shot question has no template
    to customize). Each prompt
    field shows its raw override value (blank if unset) with the CURRENT

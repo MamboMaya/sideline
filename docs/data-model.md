@@ -103,6 +103,12 @@
   startup, so a Settings toggle — or a hand-edit — takes effect on the very
   next press, no restart; the tray menu's "Record voice note"/"Dictate to
   clipboard" items always toggle, in either mode. Also optional
+  `"terminal": "iTerm"` (default: absent = auto) — the macOS app name
+  (`open -a` name) Ask's "Continue in Terminal" (`o`, `open_ask_session`)
+  opens the resumed session in (Settings → Claude → "Continue in"); absent
+  lets Rust auto-pick the first installed terminal from its own preference
+  list (iTerm2 first, Terminal always last and always available — see
+  `list_terminals` in docs/backend.md). Also optional
   `"dictionary":
 { "Tauri": ["towery", "tory"], "Raycast": ["ray cast"], "Whisper": [] }`
   — the transcription vocabulary, correctly-spelled term → the ways whisper

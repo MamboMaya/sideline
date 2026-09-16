@@ -95,10 +95,27 @@ export function askClaude(question: string, model?: string): Promise<AskReply> {
   return invoke<AskReply>("ask_claude", { question, model });
 }
 
-// Resumes an Ask thread's CLI session interactively in Terminal (writes
+// Resumes an Ask thread's CLI session interactively in a terminal (writes
 // and `open`s a .command launcher in ~/notes — see docs/backend.md).
-export function openAskSession(sessionId: string): Promise<void> {
-  return invoke<void>("open_ask_session", { session_id: sessionId });
+// `terminal` names an app from listTerminals() below; undefined/null lets
+// Rust auto-pick the first installed terminal from its own preference list
+// (iTerm2 first, Terminal always last and always available).
+export function openAskSession(
+  sessionId: string,
+  terminal?: string,
+): Promise<void> {
+  return invoke<void>("open_ask_session", {
+    session_id: sessionId,
+    terminal: terminal ?? null,
+  });
+}
+
+// App names (macOS `open -a` names) of installed known terminals, in
+// preference order — Settings' Claude section "Continue in" dropdown
+// (SettingsPane.tsx) is its one caller. `"Terminal"` is always last and
+// always present.
+export function listTerminals(): Promise<string[]> {
+  return invoke<string[]>("list_terminals");
 }
 
 // Appends one `### <icon> <timestamp>` entry straight to inbox.md — an

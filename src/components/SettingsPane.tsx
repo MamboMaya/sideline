@@ -10,7 +10,7 @@ import {
   dictionaryFromRows,
   dictionaryRows,
 } from "../lib/config";
-import { applyHotkeys, listAudioDevices } from "../lib/commands";
+import { applyHotkeys, listAudioDevices, listTerminals } from "../lib/commands";
 import {
   HOTKEY_MOD_SYMBOLS,
   comboFromKeyEvent,
@@ -37,6 +37,10 @@ export interface SettingsPaneProps {
   setClaudeEnabled: (enabled: boolean) => void;
   modelsOverride: Partial<Models> | undefined;
   setModelOverride: (key: keyof Models, value: string) => void;
+  // "Continue in" dropdown (Ask's `o` — see useAsk.ts's continueThread):
+  // the app name `.sideline.json`'s `terminal` key holds, undefined = auto.
+  terminalOverride: string | undefined;
+  setTerminal: (name: string | undefined) => void;
   prompts: Prompts;
   promptsOverride: Partial<Prompts> | undefined;
   setPromptOverride: (key: keyof Prompts, value: string) => void;
@@ -549,6 +553,8 @@ export function SettingsPane({
   setClaudeEnabled,
   modelsOverride,
   setModelOverride,
+  terminalOverride,
+  setTerminal,
   prompts,
   promptsOverride,
   setPromptOverride,
@@ -657,6 +663,15 @@ export function SettingsPane({
   }, []);
   const currentDevice = audioDeviceFrom(audioOverride);
   const overlayHidden = overlayHiddenFrom(overlayOverride);
+
+  // Claude: terminal list is enumerated once on mount via list_terminals —
+  // same one-shot pattern as the Voice section's device list above.
+  const [terminals, setTerminals] = useState<string[]>([]);
+  useEffect(() => {
+    listTerminals()
+      .then(setTerminals)
+      .catch(() => setTerminals([]));
+  }, []);
 
   return (
     <div className="settings">
@@ -831,6 +846,29 @@ export function SettingsPane({
             </div>
           );
         })}
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="terminal-select">
+            Continue in
+          </label>
+          <select
+            id="terminal-select"
+            className="settings-input"
+            value={terminalOverride ?? ""}
+            onChange={(e) => setTerminal(e.target.value)}
+          >
+            <option value="">Auto (first installed)</option>
+            {terminals.map((t) => (
+              <option key={t} value={t}>
+                {t === "iTerm" ? "iTerm2" : t}
+              </option>
+            ))}
+            {terminalOverride && !terminals.includes(terminalOverride) && (
+              <option value={terminalOverride}>
+                {terminalOverride} (custom)
+              </option>
+            )}
+          </select>
+        </div>
         {(["triage", "batch"] as const).map((key) => (
           <div
             className="settings-row settings-row-column"

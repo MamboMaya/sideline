@@ -104,11 +104,17 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [dictionaryOverride, setDictionaryOverride] = useState<
     DictionaryConfig | undefined
   >(undefined);
+  // Raw `terminal` value as read from the file (undefined = auto) —
+  // Settings' Claude section "Continue in" dropdown; see openAskSession /
+  // list_terminals in docs/backend.md.
+  const [terminalOverride, setTerminalOverride] = useState<string | undefined>(
+    undefined,
+  );
 
-  // The 9 opaque `.sideline.json` overrides, read from current state —
+  // The 10 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // overlay/pushToTalk/dictionary value.
+  // overlay/pushToTalk/dictionary/terminal value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -118,6 +124,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     hotkeys: hotkeysOverride,
     overlay: overlayOverride,
     pushToTalk: pushToTalkOverride,
+    terminal: terminalOverride,
     dictionary: dictionaryOverride,
   });
 
@@ -153,6 +160,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     overlay?: unknown;
     pushToTalk?: boolean | undefined;
     dictionary?: DictionaryConfig | undefined;
+    terminal?: string | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
     const nextHidden = patch.hiddenTags ?? hiddenTags;
@@ -174,6 +182,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "pushToTalk" in patch ? patch.pushToTalk : pushToTalkOverride;
     const nextDictionaryOverride =
       "dictionary" in patch ? patch.dictionary : dictionaryOverride;
+    const nextTerminalOverride =
+      "terminal" in patch ? patch.terminal : terminalOverride;
 
     setPinnedTags(nextPinned);
     setHiddenTags(nextHidden);
@@ -192,6 +202,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalkOverride(nextPushToTalkOverride);
     setPushToTalkState(nextPushToTalkOverride ?? false);
     setDictionaryOverride(nextDictionaryOverride);
+    setTerminalOverride(nextTerminalOverride);
 
     await writeConfig({
       pinnedTags: nextPinned,
@@ -206,6 +217,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         hotkeys: nextHotkeysOverride,
         overlay: nextOverlayOverride,
         pushToTalk: nextPushToTalkOverride,
+        terminal: nextTerminalOverride,
         dictionary: nextDictionaryOverride,
       },
     });
@@ -263,6 +275,17 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   // `true`.
   const setPushToTalk = (enabled: boolean) => {
     updateConfig({ pushToTalk: enabled ? true : undefined });
+  };
+
+  // Settings' Claude section "Continue in" dropdown (SettingsPane.tsx).
+  // Blank or "auto" clears the override entirely so open_ask_session falls
+  // back to its own preference-ordered auto-detect — same omit-at-default
+  // convention as the other overrides above.
+  const setTerminal = (name: string | undefined) => {
+    const trimmed = name?.trim();
+    updateConfig({
+      terminal: trimmed && trimmed !== "auto" ? trimmed : undefined,
+    });
   };
 
   // The Voice section's device picker. `device` undefined/empty = "System
@@ -340,6 +363,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalkState(config.pushToTalk);
     setPushToTalkOverride(config.pushToTalkOverride);
     setDictionaryOverride(config.dictionaryOverride);
+    setTerminalOverride(config.terminalOverride);
   };
 
   const persistPinnedTags = async (next: string[]) => {
@@ -421,6 +445,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     audioOverride,
     overlayOverride,
     dictionaryOverride,
+    terminalOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -429,6 +454,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setOverlayHidden,
     setPushToTalk,
     setDictionary,
+    setTerminal,
     addProject,
     removeProject,
     updateConfig,

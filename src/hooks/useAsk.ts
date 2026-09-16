@@ -27,6 +27,10 @@ export interface UseAskParams {
   // hotkey event and a spoken `ask-transcript` land the caller (App.tsx) on
   // the Ask view — it closes Settings and calls `setView("ask")`.
   onOpen: () => void;
+  // `.sideline.json`'s `terminal` override (Settings → Claude → "Continue
+  // in") — the app name `continueThread` opens the session in. Undefined =
+  // auto (Rust's open_ask_session picks the first installed, iTerm2 first).
+  terminal: string | undefined;
 }
 
 // Quick question (⌥⌘A speaks it, `q` opens the view — see docs/ui.md).
@@ -34,7 +38,7 @@ export interface UseAskParams {
 // can drop a thread while its `askClaude` call is still in flight, and a
 // stale response for a removed id is silently ignored by the `.map` below
 // (no matching id, no-op).
-export function useAsk({ models, showToast, onOpen }: UseAskParams) {
+export function useAsk({ models, showToast, onOpen, terminal }: UseAskParams) {
   const [threads, setThreads] = useState<AskThread[]>([]);
   const [question, setQuestion] = useState("");
   const [selected, setSelected] = useState(0);
@@ -105,11 +109,16 @@ export function useAsk({ models, showToast, onOpen }: UseAskParams) {
   // `o` / "Continue in Terminal": the one-shot answer becomes the first
   // turn of a full interactive session — see open_ask_session in
   // docs/backend.md. Silently a no-op until the thread has a session id.
+  // `terminal` is the configured app name (see UseAskParams); "iTerm" shows
+  // as "iTerm2" in the toast, matching SettingsPane's dropdown label — every
+  // other name displays as-is, undefined (auto) reads as "your terminal".
   const continueThread = (id: number) => {
     const thread = threads.find((t) => t.id === id);
     if (!thread?.sessionId) return;
-    openAskSession(thread.sessionId)
-      .then(() => showToast("Continuing in Terminal"))
+    const displayName =
+      terminal === "iTerm" ? "iTerm2" : (terminal ?? "your terminal");
+    openAskSession(thread.sessionId, terminal)
+      .then(() => showToast(`Continuing in ${displayName}`))
       .catch((err) => showToast(`Couldn't open Terminal: ${String(err)}`));
   };
 

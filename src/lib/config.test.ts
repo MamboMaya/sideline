@@ -39,6 +39,7 @@ const DEFAULTS: SidelineConfig = {
   pushToTalk: false,
   pushToTalkOverride: undefined,
   dictionaryOverride: undefined,
+  terminalOverride: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -81,6 +82,7 @@ describe("parseConfig — full valid config", () => {
       hotkeys: { toggle: "alt+cmd+space", record: "alt+cmd+r" },
       overlay: { hidden: true },
       pushToTalk: true,
+      terminal: "iTerm",
       dictionary: { Tauri: ["towery"], Whisper: [] },
     });
     const cfg = parseConfig(raw);
@@ -110,6 +112,7 @@ describe("parseConfig — full valid config", () => {
     expect(cfg.overlayOverride).toEqual({ hidden: true });
     expect(cfg.pushToTalk).toBe(true);
     expect(cfg.pushToTalkOverride).toBe(true);
+    expect(cfg.terminalOverride).toBe("iTerm");
     expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
   });
 });
@@ -169,6 +172,77 @@ describe("parseConfig — pushToTalk", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseConfig — terminal (Ask's "Continue in Terminal")
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — terminal", () => {
+  test("absent key defaults to auto, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.terminalOverride).toBeUndefined();
+  });
+
+  test("an explicit terminal override round-trips", () => {
+    const cfg = parseConfig(JSON.stringify({ terminal: "iTerm" }));
+    expect(cfg.terminalOverride).toBe("iTerm");
+  });
+
+  test("a blank/whitespace-only terminal value is ignored (treated as absent)", () => {
+    const cfg = parseConfig(JSON.stringify({ terminal: "   " }));
+    expect(cfg.terminalOverride).toBeUndefined();
+  });
+
+  test("a non-string terminal value is ignored (treated as absent)", () => {
+    const cfg = parseConfig(JSON.stringify({ terminal: 5 }));
+    expect(cfg.terminalOverride).toBeUndefined();
+  });
+
+  test("serializeConfig emits terminal right after pushToTalk and before dictionary, and omits it when absent", () => {
+    const withTerminal = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: {
+        prompts: undefined,
+        models: undefined,
+        projects: undefined,
+        claude: undefined,
+        audio: undefined,
+        hotkeys: undefined,
+        overlay: undefined,
+        pushToTalk: true,
+        terminal: "iTerm",
+        dictionary: { Tauri: ["towery"] },
+      },
+    });
+    expect(Object.keys(JSON.parse(withTerminal))).toEqual([
+      "pinnedTags",
+      "pushToTalk",
+      "terminal",
+      "dictionary",
+    ]);
+
+    const absent = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: {
+        prompts: undefined,
+        models: undefined,
+        projects: undefined,
+        claude: undefined,
+        audio: undefined,
+        hotkeys: undefined,
+        overlay: undefined,
+        pushToTalk: undefined,
+        terminal: undefined,
+        dictionary: undefined,
+      },
+    });
+    expect(JSON.parse(absent)).not.toHaveProperty("terminal");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // parseConfig — dictionary
 // ---------------------------------------------------------------------------
 
@@ -215,6 +289,7 @@ describe("parseConfig — dictionary", () => {
         hotkeys: { toggle: "alt+cmd+space" },
         overlay: undefined,
         pushToTalk: undefined,
+        terminal: undefined,
         dictionary: undefined,
       },
     };
@@ -519,6 +594,7 @@ const noOverrides = {
   hotkeys: undefined,
   overlay: undefined,
   pushToTalk: undefined,
+  terminal: undefined,
   dictionary: undefined,
 };
 
@@ -570,7 +646,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, dictionary when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -584,6 +660,7 @@ describe("serializeConfig", () => {
         hotkeys: { toggle: "alt+cmd+space" },
         overlay: { hidden: true },
         pushToTalk: true,
+        terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
       },
     });
@@ -599,11 +676,12 @@ describe("serializeConfig", () => {
       "hotkeys",
       "overlay",
       "pushToTalk",
+      "terminal",
       "dictionary",
     ]);
   });
 
-  test("overlay and pushToTalk land between hotkeys and dictionary when all three are present", () => {
+  test("overlay, pushToTalk, and terminal land between hotkeys and dictionary when all four are present", () => {
     const out = serializeConfig({
       pinnedTags: [],
       hiddenTags: [],
@@ -613,6 +691,7 @@ describe("serializeConfig", () => {
         hotkeys: { toggle: "alt+cmd+space" },
         overlay: { hidden: true },
         pushToTalk: true,
+        terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
       },
     });
@@ -621,6 +700,7 @@ describe("serializeConfig", () => {
       "hotkeys",
       "overlay",
       "pushToTalk",
+      "terminal",
       "dictionary",
     ]);
   });
@@ -709,6 +789,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       audio: { device: "AirPods", futureField: 42 },
       hotkeys: { toggle: "alt+cmd+space" },
       pushToTalk: true,
+      terminal: "iTerm",
     };
     const cfg = parseConfig(JSON.stringify(original));
     const rewritten = JSON.parse(
@@ -725,6 +806,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           hotkeys: cfg.hotkeysOverride,
           overlay: cfg.overlayOverride,
           pushToTalk: cfg.pushToTalkOverride,
+          terminal: cfg.terminalOverride,
           dictionary: undefined,
         },
       }),
@@ -739,6 +821,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.audio).toEqual(original.audio);
     expect(rewritten.hotkeys).toEqual(original.hotkeys);
     expect(rewritten.pushToTalk).toBe(original.pushToTalk);
+    expect(rewritten.terminal).toBe(original.terminal);
   });
 });
 

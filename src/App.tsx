@@ -93,6 +93,7 @@ export default function App() {
     overlayOverride,
     pushToTalk,
     dictionaryOverride,
+    terminalOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -101,6 +102,7 @@ export default function App() {
     setOverlayHidden,
     setPushToTalk,
     setDictionary,
+    setTerminal,
     addProject,
     removeProject,
     updateConfig,
@@ -134,7 +136,12 @@ export default function App() {
     copyThread: copyAskThread,
     continueThread: continueAskThread,
     removeThread: removeAskThread,
-  } = useAsk({ models, showToast, onOpen: onAskOpen });
+  } = useAsk({
+    models,
+    showToast,
+    onOpen: onAskOpen,
+    terminal: terminalOverride,
+  });
 
   // Inbox view state (preamble/notes/error/selection) plus the
   // reload/auto-tag/persist motion behind it — see useInbox's file comment.
@@ -526,6 +533,8 @@ export default function App() {
           setClaudeEnabled={setClaudeEnabled}
           modelsOverride={modelsOverride}
           setModelOverride={setModelOverride}
+          terminalOverride={terminalOverride}
+          setTerminal={setTerminal}
           prompts={prompts}
           promptsOverride={promptsOverride}
           setPromptOverride={setPromptOverride}

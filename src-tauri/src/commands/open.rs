@@ -9,6 +9,38 @@ use crate::paths::{inbox_path, notes_dir, validate_component};
 /// `open`s — inside ~/notes, like every other file Sideline touches.
 const CONTINUE_SCRIPT: &str = ".sideline-continue.command";
 
+/// Terminals `open_ask_session` knows how to hand a `.command` file to, as
+/// macOS app names (`open -a <name>`), in auto-pick preference order —
+/// a third-party terminal the user bothered to install beats the stock
+/// one. Every one of these executes a `.command`/shell file it's asked to
+/// open (verified for iTerm2 and Terminal). "Terminal" is the fallback and
+/// lives under /System/Applications, so it's treated as always present.
+const KNOWN_TERMINALS: &[&str] = &[
+    "iTerm",
+    "Ghostty",
+    "Warp",
+    "kitty",
+    "WezTerm",
+    "Alacritty",
+    "Terminal",
+];
+
+fn terminal_installed(name: &str) -> bool {
+    name == "Terminal" || Path::new(&format!("/Applications/{name}.app")).exists()
+}
+
+/// Installed known terminals in preference order (always ends with
+/// "Terminal") — the Settings → Claude "Continue in" dropdown's options.
+/// The frontend shows `iTerm` as "iTerm2".
+#[tauri::command]
+pub(crate) fn list_terminals() -> Vec<String> {
+    KNOWN_TERMINALS
+        .iter()
+        .filter(|n| terminal_installed(n))
+        .map(|n| n.to_string())
+        .collect()
+}
+
 /// Shared body of `open_triaged`/`open_todos`/`open_inbox_in_vscode`: hand
 /// `path` to VS Code via `open -a "Visual Studio Code"`.
 fn open_in_vscode(path: impl AsRef<Path>) -> Result<(), String> {
@@ -53,9 +85,26 @@ pub(crate) fn reveal_inbox() -> Result<(), String> {
 /// CLAUDE.md already allows. The script `cd`s to ~/notes first because the
 /// CLI stores sessions per working directory and `ask_claude` ran there.
 /// `session_id` is validated to the UUID alphabet before it goes anywhere
-/// near a shell line.
+/// near a shell line. `terminal` is `.sideline.json`'s `terminal` key (an
+/// app name from `KNOWN_TERMINALS`; anything else is rejected rather than
+/// passed to `open -a`); None = auto, the first installed known terminal.
+/// "Terminal" is a plain `open` (it's the `.command` default handler);
+/// the others get `open -a <name>`.
 #[tauri::command(rename_all = "snake_case")]
-pub(crate) fn open_ask_session(session_id: String) -> Result<(), String> {
+pub(crate) fn open_ask_session(session_id: String, terminal: Option<String>) -> Result<(), String> {
+    let terminal = match terminal.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => {
+            if !KNOWN_TERMINALS.contains(&t) {
+                return Err(format!("Unknown terminal {t:?}"));
+            }
+            t.to_string()
+        }
+        None => KNOWN_TERMINALS
+            .iter()
+            .find(|n| terminal_installed(n))
+            .unwrap_or(&"Terminal")
+            .to_string(),
+    };
     let ok = session_id.len() == 36
         && session_id
             .bytes()
@@ -76,8 +125,11 @@ pub(crate) fn open_ask_session(session_id: String) -> Result<(), String> {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| e.to_string())?;
     }
-    std::process::Command::new("open")
-        .arg(&path)
+    let mut cmd = std::process::Command::new("open");
+    if terminal != "Terminal" {
+        cmd.args(["-a", &terminal]);
+    }
+    cmd.arg(&path)
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())

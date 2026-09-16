@@ -17,8 +17,10 @@ Notable, user-visible changes to Sideline. Format follows
   own Copy / Save to inbox / ✕ buttons, and `⌘S` saves the selected
   thread's answer to the inbox as a ❓ entry. Answers are kept short (about
   60 words, one source); `o` / "Continue in Terminal" resumes that answer's
-  Claude session interactively in Terminal for a deeper follow-up. Model
-  configurable in Settings → Claude → Question model (default Sonnet).
+  Claude session interactively in Terminal for a deeper follow-up
+  (iTerm2 and other terminals auto-detected; Settings → Claude → Continue
+  in). Model configurable in Settings → Claude → Question model (default
+  Sonnet).
 
 ## [0.3.0] - 2026-09-08
 
