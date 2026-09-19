@@ -7,7 +7,14 @@ project todo list, or delete it. Everything is plain Markdown under `~/notes`,
 and nothing ever leaves your machine except the (optional) Claude-assisted
 triage calls and quick questions.
 
-> **New in 0.5 — add a project with the mouse.** Right-click the tray icon →
+> **New in 0.6 — screenshots on cards.** Copy a screenshot (⌃⇧⌘4), select a
+> card in the Todos view, press ⌘V: the image is saved under
+> `~/notes/inbox-assets/`, shows as a thumbnail on the card (click to open
+> it in Preview), and rides along in the todo file as a markdown image link
+> a Claude Code session can open. Pasting while editing a note (`e`) works
+> too. No new permissions.
+
+> **Add a project with the mouse** (0.5): right-click the tray icon →
 > **Add project…** (or Settings → Tags → **Choose folder…**), pick the repo's
 > folder, and Sideline prefills the routing tag from its name
 > (`Content-Studio` → `#content-studio`), pins it, and offers to set the
@@ -61,6 +68,10 @@ triage calls and quick questions.
   cheap models).
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
   and undo.
+- **Screenshots on cards**: copy a screenshot (⌃⇧⌘4), select a card, press
+  ⌘V — it's saved to `~/notes/inbox-assets/` and shows as a thumbnail (click
+  to open in Preview). The todo file gets a plain markdown image link, so a
+  Claude Code session working that todo can look at the screenshot too.
 - **Add a project by picking its folder**: tray → Add project…, or Settings
   → Tags → Choose folder…. The tag is prefilled from the folder name and
   pinned, and "Set up repo in Terminal" runs a small, idempotent script in

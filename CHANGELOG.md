@@ -6,6 +6,8 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-19
+
 ### Added
 
 - Screenshots on cards: copy a screenshot (⌃⇧⌘4), select a card in the Todos
