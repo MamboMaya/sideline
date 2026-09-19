@@ -51,6 +51,18 @@ export const commandKeymap: CommandKeymap = {
   // The one ⌘ binding that yields to a focused field: inside an input,
   // native text undo wins.
   z: { firesInFields: false, run: (ctx) => ctx.runUndo() },
+  // ⌘V — Todos-only: attaches the clipboard's image to the SELECTED card
+  // (see useTodosActions' pasteImageToRow). Yields to a focused field, where
+  // native paste wins — the edit textarea handles an image paste itself
+  // (EditArea's onPaste).
+  v: {
+    firesInFields: false,
+    run: (ctx) => {
+      if (ctx.view !== "todos") return;
+      const row = ctx.mergedFlat[ctx.todosSelected];
+      if (row && row.kind !== "header") ctx.pasteImageToRow(row);
+    },
+  },
 };
 
 const expandSection = (ctx: KeyContext, section: string) =>

@@ -18,6 +18,11 @@ interface EditAreaProps {
   // owns the dictionary config state — this component only owns the
   // selection UI and fixing up the draft text.
   onAddToDictionary: (term: string, mishear: string) => void;
+  // ⌘V with no text on the clipboard: saves the clipboard's image into
+  // inbox-assets/ and resolves to its ref, or null when there was no image
+  // (or the save failed — App.tsx owns the toast). The markdown link is
+  // spliced into the draft here.
+  onPasteImage: () => Promise<string | null>;
 }
 
 // A selection inside the textarea eligible for the add-to-dictionary bar:
@@ -57,6 +62,7 @@ export function EditArea({
   onCancel,
   onSave,
   onAddToDictionary,
+  onPasteImage,
 }: EditAreaProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -141,6 +147,23 @@ export function EditArea({
     onChange(value.slice(0, start) + term + value.slice(end));
   };
 
+  // Splices a pasted screenshot's link into the draft as its own paragraph
+  // at the cursor. Reads the textarea's LIVE value/selection after the
+  // await — the user may have kept typing while the PNG was being saved —
+  // and drops the link if the edit was closed meanwhile.
+  const pasteImage = async () => {
+    const ref = await onPasteImage();
+    const el = textareaRef.current;
+    if (!ref || !el?.isConnected) return;
+    const before = el.value.slice(0, el.selectionStart).replace(/\s+$/, "");
+    const after = el.value.slice(el.selectionEnd).replace(/^\s+/, "");
+    const link = `![screenshot](${ref})`;
+    const head = before ? `${before}\n\n${link}` : link;
+    pendingCursorRef.current = head.length;
+    setSelection(null);
+    onChange(after ? `${head}\n\n${after}` : head);
+  };
+
   return (
     <div
       className="edit-area-wrap"
@@ -196,6 +219,13 @@ export function EditArea({
             e.preventDefault();
             (e.target as HTMLTextAreaElement).blur();
           }
+        }}
+        onPaste={(e) => {
+          // Text on the clipboard → ordinary native paste. Anything else
+          // (a screenshot) goes to the Rust clipboard reader instead.
+          if (e.clipboardData.getData("text/plain")) return;
+          e.preventDefault();
+          pasteImage();
         }}
         onSelect={(e) => checkSelection(e.target as HTMLTextAreaElement)}
         onKeyUp={(e) => checkSelection(e.target as HTMLTextAreaElement)}

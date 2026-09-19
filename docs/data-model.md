@@ -22,7 +22,12 @@
   (`parseInbox`/`serializeInbox` in `src/inbox.ts`).
 
 - **`~/notes/inbox-assets/`** — screenshot PNGs, referenced from entries as
-  relative markdown image links (`![screenshot](inbox-assets/shot-....png)`).
+  relative markdown image links (`![screenshot](inbox-assets/shot-....png)`,
+  path relative to `~/notes`). Written by the app's ⌘V paste
+  (`shot-YYYYMMDD-HHMMSS.png`, docs/ui.md's "Screenshots on cards"); a link
+  is an ordinary body line in all three note formats, so it survives
+  triage, routing, and archiving with its note. Files are write-once and
+  only ever removed by Purge Archive.
 
 - **`~/notes/notes/`** — non-project triaged notes, one file each, named
   `YYYY-MM-DD-<slug-from-content>.md`, with YAML frontmatter

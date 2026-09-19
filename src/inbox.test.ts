@@ -7,6 +7,7 @@
 // serializeTodos must reproduce realistic input byte-for-byte.
 import { describe, expect, test } from "vitest";
 import {
+  appendBodyImage,
   parseInbox,
   serializeInbox,
   tagString,
@@ -17,6 +18,7 @@ import {
   setTriagedBody,
   parseTodos,
   serializeTodos,
+  splitBodyImages,
   splitTodoReply,
   todoRowDisplay,
   toTriagedFile,
@@ -490,6 +492,7 @@ describe("todoRowDisplay", () => {
     expect(todoRowDisplay(base)).toEqual({
       body: "Short body.",
       reply: null,
+      images: [],
       expandable: false,
     });
   });
@@ -506,7 +509,21 @@ describe("todoRowDisplay", () => {
     expect(todoRowDisplay(withReply)).toEqual({
       body: "The note body.",
       reply: "The reply body.",
+      images: [],
       expandable: true,
+    });
+  });
+
+  test("screenshot links are split out of the body and don't make a short note expandable", () => {
+    const withShot = {
+      ...base,
+      body: "Short body.\n\n![screenshot](inbox-assets/shot-20260919-101500.png)",
+    };
+    expect(todoRowDisplay(withShot)).toEqual({
+      body: "Short body.",
+      reply: null,
+      images: ["inbox-assets/shot-20260919-101500.png"],
+      expandable: false,
     });
   });
 
@@ -517,6 +534,60 @@ describe("todoRowDisplay", () => {
     };
     expect(todoRowDisplay(long).expandable).toBe(true);
     expect(todoRowDisplay(long).reply).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// splitBodyImages / appendBodyImage
+// ---------------------------------------------------------------------------
+
+describe("splitBodyImages", () => {
+  test("body with no image links is returned untouched", () => {
+    expect(splitBodyImages("Just text.\n\nMore text.")).toEqual({
+      text: "Just text.\n\nMore text.",
+      images: [],
+    });
+  });
+
+  test("pulls every inbox-assets link out, in order, closing the gaps", () => {
+    const body =
+      "Before.\n\n![screenshot](inbox-assets/a.png)\n\nBetween.\n\n![shot](inbox-assets/b.png)";
+    expect(splitBodyImages(body)).toEqual({
+      text: "Before.\n\nBetween.",
+      images: ["inbox-assets/a.png", "inbox-assets/b.png"],
+    });
+  });
+
+  test("an image-only body leaves empty text", () => {
+    expect(splitBodyImages("![screenshot](inbox-assets/a.png)")).toEqual({
+      text: "",
+      images: ["inbox-assets/a.png"],
+    });
+  });
+
+  test("image links pointing anywhere else stay in the text", () => {
+    const body =
+      "See ![pic](https://example.com/a.png) and ![x](../secret.png)";
+    expect(splitBodyImages(body)).toEqual({ text: body, images: [] });
+  });
+});
+
+describe("appendBodyImage", () => {
+  test("appends the link as its own trailing paragraph", () => {
+    expect(appendBodyImage("The note.", "inbox-assets/a.png")).toBe(
+      "The note.\n\n![screenshot](inbox-assets/a.png)",
+    );
+  });
+
+  test("lands ahead of an embedded '## Claude' reply, which survives intact", () => {
+    const next = appendBodyImage(
+      "The note.\n\n## Claude\n\nThe reply.",
+      "inbox-assets/a.png",
+    );
+    expect(next).toBe(
+      "The note.\n\n![screenshot](inbox-assets/a.png)\n\n## Claude\n\nThe reply.",
+    );
+    expect(splitTodoReply(next).reply).toBe("The reply.");
   });
 });
 

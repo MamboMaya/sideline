@@ -109,6 +109,9 @@ export function ShortcutsModal({
             <kbd>i</kbd> icebox / thaw
           </div>
           <div className="shortcut">
+            <kbd>⌘V</kbd> attach screenshot
+          </div>
+          <div className="shortcut">
             <kbd>a</kbd> add tag
           </div>
           <div className="shortcut">

@@ -5,10 +5,12 @@ import {
   type TodoEntry,
   type TodoStatus,
   type TriagedNote,
+  appendBodyImage,
   archiveBlock,
   parseTodos,
   parseTriagedFile,
   serializeTodos,
+  setTriagedBody,
   setTriagedStatus,
   setTriagedTags,
   tagString,
@@ -16,7 +18,9 @@ import {
 import { needsTitle } from "../lib/format";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
 import {
+  NO_IMAGE,
   deleteTriaged,
+  pasteClipboardImage,
   readTodos,
   triageNote,
   writeTodos,
@@ -509,6 +513,74 @@ export function useTodosActions({
     }
   }, []);
 
+  // Todos view ⌘V: saves the clipboard's image into inbox-assets/ (Rust —
+  // see commands/assets.rs) and attaches it to the SELECTED row as a
+  // `![screenshot](…)` body paragraph. Undo restores the pre-paste file
+  // content; the saved PNG stays behind, like any asset whose note is gone
+  // (nothing references it, so it's inert).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
+  const pasteImageToRow = useCallback(
+    async (row: MergedRow) => {
+      if (row.kind === "header") return;
+      let ref: string;
+      try {
+        ref = await pasteClipboardImage();
+      } catch (e) {
+        showToast(
+          String(e).includes(NO_IMAGE)
+            ? "No image on the clipboard"
+            : `Paste failed: ${String(e)}`,
+        );
+        return;
+      }
+      try {
+        if (row.kind === "todo") {
+          const { project, entryIndex } = row;
+          const section = todos.find((t) => t.project === project);
+          if (!section?.entries[entryIndex]) return;
+          const prevContent = serializeTodos(section.entries);
+          const apply = (entries: TodoEntry[]) => {
+            setTodos((prev) =>
+              prev.map((t) => (t.project === project ? { ...t, entries } : t)),
+            );
+            return writeTodos(project, serializeTodos(entries));
+          };
+          await apply(
+            section.entries.map((e, i) =>
+              i === entryIndex
+                ? { ...e, body: appendBodyImage(e.body, ref) }
+                : e,
+            ),
+          );
+          showToast("Screenshot added", () => {
+            apply(parseTodos(prevContent)).catch((e) =>
+              showToast(`Undo failed: ${String(e)}`),
+            );
+            dismissToast();
+          });
+        } else {
+          const { note } = row;
+          const content = triagedContent.get(note.filename);
+          if (content === undefined) return;
+          const body = appendBodyImage(note.body, ref);
+          await applyTriagedPatch(
+            note.filename,
+            { body },
+            setTriagedBody(content, body),
+          );
+          showToast("Screenshot added", () => {
+            applyTriagedPatch(note.filename, { body: note.body }, content);
+            dismissToast();
+          });
+        }
+      } catch (e) {
+        showToast(`Paste failed: ${String(e)}`);
+        loadTodos();
+      }
+    },
+    [todos, triagedContent],
+  );
+
   // Per-section ⧉ copy button: bundles a project's PENDING
   // entries (no status markers — they're pending by definition) as markdown
   // for pasting into a repo Claude session.
@@ -548,6 +620,7 @@ export function useTodosActions({
     deleteTodoEntry,
     deleteTriagedNote,
     copyRow,
+    pasteImageToRow,
     copyProjectTodos,
   };
 }

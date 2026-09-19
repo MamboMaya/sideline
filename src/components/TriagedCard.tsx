@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import type { TriagedNote } from "../inbox";
+import { type TriagedNote, splitBodyImages } from "../inbox";
 import { tagChipClass, tagLabel } from "../lib/format";
 import type { TagEditorHook } from "../hooks/useTagEditor";
+import { BodyImages } from "./BodyImages";
 import { TagEditor } from "./TagEditor";
 
 interface TriagedCardProps {
@@ -68,6 +69,7 @@ export function TriagedCard({
   tagEditor,
 }: TriagedCardProps) {
   const isDone = note.status === "done";
+  const { text, images } = splitBodyImages(note.body);
 
   const rootClassName =
     variant === "normal"
@@ -188,7 +190,14 @@ export function TriagedCard({
         )}
       </div>
       {note.title && <div className="card-title">{note.title}</div>}
-      {isEditing ? editArea : <div className={bodyClassName}>{note.body}</div>}
+      {isEditing ? (
+        editArea
+      ) : (
+        <>
+          {text && <div className={bodyClassName}>{text}</div>}
+          <BodyImages images={images} />
+        </>
+      )}
       {variant === "normal" && isExpanded && note.reply && (
         <div className="reply">
           <div className="reply-label">Claude</div>

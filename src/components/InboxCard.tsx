@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import type { Note } from "../inbox";
+import { type Note, splitBodyImages } from "../inbox";
 import { tagChipClass, tagLabel } from "../lib/format";
 import type { TagEditorHook } from "../hooks/useTagEditor";
+import { BodyImages } from "./BodyImages";
 import { TagEditor } from "./TagEditor";
 
 interface InboxCardProps {
@@ -56,6 +57,7 @@ export function InboxCard({
   hideTag,
   tagEditor,
 }: InboxCardProps) {
+  const { text, images } = splitBodyImages(note.body);
   return (
     <div
       className={
@@ -109,7 +111,14 @@ export function InboxCard({
           </>
         )}
       </div>
-      {isEditing ? editArea : <div className="body">{note.body}</div>}
+      {isEditing ? (
+        editArea
+      ) : (
+        <>
+          {text && <div className="body">{text}</div>}
+          <BodyImages images={images} />
+        </>
+      )}
       <div className="tags">
         {quickTags.map((t, i) => (
           <button

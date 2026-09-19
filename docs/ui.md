@@ -437,7 +437,24 @@ button mirroring `e`.
 todo entry, triaged file body; the triaged file's frontmatter and `## Claude`
 reply are preserved): textarea saves on Enter/⌘Enter/blur (Shift+Enter
 inserts a newline), cancels on Esc, empty text is a no-op, every save gets an
-Edited toast with undo. Undo is `u` or `⌘Z`; the last undoable action is
+Edited toast with undo.
+
+**Screenshots on cards.** `⌘V` in the Todos view attaches the clipboard's
+image to the SELECTED row (todo entry or triaged note): Rust saves it as
+`~/notes/inbox-assets/shot-<stamp>.png` (`paste_clipboard_image`,
+docs/backend.md) and the body gains a trailing `![screenshot](inbox-assets/…)`
+paragraph — ahead of an embedded `## Claude` reply — with a "Screenshot
+added" undo toast (undo restores the file; the PNG stays behind,
+unreferenced). "No image on the clipboard" toasts otherwise. The same paste
+works inside the `e` edit textarea for all three row kinds (that's the Inbox
+path): `⌘V` with no text on the clipboard splices the link in at the cursor
+as its own paragraph; a text paste is untouched. Every card renders its
+body's `inbox-assets/` image links as a thumbnail strip under the text
+instead of as markdown (`splitBodyImages` in `src/inbox.ts`,
+`components/BodyImages.tsx`); the links don't count toward the
+expand/clamp heuristic, a missing file shows an "image missing" chip, and
+clicking a thumbnail opens the full image in Preview (`open_asset`). To
+remove a screenshot, `e` and delete its link line. Undo is `u` or `⌘Z`; the last undoable action is
 retained for 2 minutes past its toast (replaced by the next action, cleared
 once run). Selecting text inside the edit textarea (mouse or keyboard) — a
 non-empty, single-line selection ≤40 characters after trimming — shows a

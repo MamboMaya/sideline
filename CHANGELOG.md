@@ -6,6 +6,13 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- Screenshots on cards: copy a screenshot (⌃⇧⌘4), select a card in the Todos
+  view, and press ⌘V to attach it — or paste while editing any note (`e`).
+  The image is saved to `~/notes/inbox-assets/` and shows as a thumbnail on
+  the card; click it to open the full image in Preview.
+
 ## [0.5.0] - 2026-09-16
 
 ### Added

@@ -14,6 +14,8 @@ import { QUICK_TAGS, tagLabel } from "./lib/format";
 import { addToDictionary } from "./lib/config";
 import { appendToArchive } from "./lib/archive";
 import {
+  NO_IMAGE,
+  pasteClipboardImage,
   readTriaged,
   deleteTriaged,
   readTodos,
@@ -368,6 +370,7 @@ export default function App() {
     deleteTodoEntry,
     deleteTriagedNote,
     copyRow,
+    pasteImageToRow,
     copyProjectTodos,
   } = useTodosActions({
     todos,
@@ -427,6 +430,19 @@ export default function App() {
     );
   };
 
+  // EditArea's image paste (⌘V in the edit textarea with no text on the
+  // clipboard): an empty clipboard is silent — nothing to paste is not an
+  // error there — anything else that fails gets a toast.
+  const onPasteImage = async () => {
+    try {
+      return await pasteClipboardImage();
+    } catch (e) {
+      if (!String(e).includes(NO_IMAGE))
+        showToast(`Paste failed: ${String(e)}`);
+      return null;
+    }
+  };
+
   // Shared textarea instance for all three row kinds — whichever card's
   // `isEditing` is currently true renders this same element.
   const editArea = (
@@ -437,6 +453,7 @@ export default function App() {
       onCancel={cancelEdit}
       onSave={saveEdit}
       onAddToDictionary={onAddToDictionary}
+      onPasteImage={onPasteImage}
     />
   );
 
@@ -511,6 +528,7 @@ export default function App() {
     deleteTriagedNote,
     deleteTodoEntry,
     copyRow,
+    pasteImageToRow,
   });
 
   return (

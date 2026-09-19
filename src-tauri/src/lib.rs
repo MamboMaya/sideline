@@ -197,7 +197,10 @@ pub fn run() {
             commands::open::list_terminals,
             commands::projects::pick_project_folder,
             commands::projects::project_setup_script,
-            commands::projects::setup_project_repo
+            commands::projects::setup_project_repo,
+            commands::assets::paste_clipboard_image,
+            commands::assets::read_asset,
+            commands::assets::open_asset
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,

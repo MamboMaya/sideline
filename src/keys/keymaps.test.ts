@@ -112,6 +112,7 @@ function makeCtx(overrides: Partial<KeyContext> = {}): KeyContext {
     deleteTriagedNote: vi.fn(),
     deleteTodoEntry: vi.fn(),
     copyRow: vi.fn(),
+    pasteImageToRow: vi.fn(),
     ...overrides,
   };
 }
@@ -147,7 +148,7 @@ beforeEach(() => {
 describe("keymap tables", () => {
   it("binds exactly the documented ⌘ layer", () => {
     expect(Object.keys(commandKeymap).sort()).toEqual(
-      ["+", "-", "0", "1", "2", "3", "=", ",", "s", "z"].sort(),
+      ["+", "-", "0", "1", "2", "3", "=", ",", "s", "v", "z"].sort(),
     );
   });
 
@@ -627,6 +628,33 @@ describe("todos keymap", () => {
   ];
   const todosCtx = (todosSelected: number, over: Partial<KeyContext> = {}) =>
     makeCtx({ view: "todos", mergedFlat: rows, todosSelected, ...over });
+
+  it("⌘V attaches the clipboard image to the selected card — Todos view, outside fields only", () => {
+    const todo = todosCtx(1);
+    const e = press("v", todo, { metaKey: true });
+    expect(todo.pasteImageToRow).toHaveBeenCalledWith(rows[1]);
+    expect(e.preventDefault).toHaveBeenCalled();
+
+    const triaged = todosCtx(2);
+    press("v", triaged, { metaKey: true });
+    expect(triaged.pasteImageToRow).toHaveBeenCalledWith(rows[2]);
+
+    // Inert on a header row, in another view, and inside a field (native
+    // paste wins there).
+    const header = todosCtx(0);
+    press("v", header, { metaKey: true });
+    expect(header.pasteImageToRow).not.toHaveBeenCalled();
+    const inbox = todosCtx(1, { view: "inbox" });
+    press("v", inbox, { metaKey: true });
+    expect(inbox.pasteImageToRow).not.toHaveBeenCalled();
+    const inField = todosCtx(1);
+    const fieldEvent = press("v", inField, {
+      metaKey: true,
+      tagName: "TEXTAREA",
+    });
+    expect(inField.pasteImageToRow).not.toHaveBeenCalled();
+    expect(fieldEvent.preventDefault).not.toHaveBeenCalled();
+  });
 
   it("dispatches the action keys per row kind", () => {
     const todo = todosCtx(1);

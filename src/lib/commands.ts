@@ -176,3 +176,23 @@ export function applyHotkeys(combos: {
 }): Promise<ApplyHotkeysResponse> {
   return invoke<ApplyHotkeysResponse>("apply_hotkeys", combos);
 }
+
+// Rejection message of pasteClipboardImage when the clipboard holds no
+// image — callers decide whether that's worth a toast.
+export const NO_IMAGE = "no-image";
+
+// Saves the clipboard's image into ~/notes/inbox-assets/ and resolves to its
+// notes-relative ref (`inbox-assets/shot-....png`).
+export function pasteClipboardImage(): Promise<string> {
+  return invoke<string>("paste_clipboard_image");
+}
+
+// Raw bytes of one inbox-assets/ file (the backend refuses any other ref).
+export function readAsset(rel: string): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("read_asset", { rel });
+}
+
+// Opens one inbox-assets/ file in its default app (Preview).
+export function openAsset(rel: string): Promise<void> {
+  return invoke<void>("open_asset", { rel });
+}

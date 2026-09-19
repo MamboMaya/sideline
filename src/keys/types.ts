@@ -169,4 +169,5 @@ export interface KeyContext {
   deleteTriagedNote: (note: TriagedNote) => void;
   deleteTodoEntry: (project: string, entryIndex: number) => void;
   copyRow: (row: MergedRow) => void;
+  pasteImageToRow: (row: MergedRow) => void;
 }

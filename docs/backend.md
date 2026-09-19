@@ -2,7 +2,8 @@
 
 Module map: `lib.rs` (plugin/builder wiring, `invoke_handler`, `.setup()`)
 delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`),
-`commands/notes.rs` + `commands/open.rs` + `commands/projects.rs` (the IPC
+`commands/notes.rs` + `commands/open.rs` + `commands/projects.rs` +
+`commands/assets.rs` (the IPC
 commands below, grouped by concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning + the recording-pill overlay window),
 `hotkeys.rs` (config + registration),
@@ -186,6 +187,17 @@ session_id }`: the session id is what `open_ask_session` resumes)
   as `delete_triaged`)
 - `open_todos` (opens `todos/<project>.md` in VS Code; same component
   validation as `write_todos`, mirrors `open_triaged`)
+- `paste_clipboard_image` (reads the general NSPasteboard via objc2 —
+  `public.png` as-is, else TIFF re-encoded to PNG through NSBitmapImageRep —
+  and writes it to `inbox-assets/shot-YYYYMMDD-HHMMSS.png`, `create_new` so
+  a same-second paste gets `-1`, `-2` instead of clobbering; PNG magic and a
+  40 MB cap are checked; returns the notes-relative ref, or the `no-image`
+  sentinel error. Reading the pasteboard is not a TCC surface.)
+- `read_asset` / `open_asset` (thumbnail bytes as a raw IPC response — the
+  frontend wraps them in a `blob:` URL, hence `img-src 'self' blob:` in the
+  CSP — and `open` of the full image in the default app; both take a ref
+  out of user-editable markdown, so it must sit under `inbox-assets/` AND
+  pass `confine()`, and the file must exist)
 - `delete_triaged` (plain `fs::remove_file` of a `notes/` file whose content
   was already preserved elsewhere — never the `trash` crate, whose macOS
   route goes through Finder automation and triggers a TCC prompt)

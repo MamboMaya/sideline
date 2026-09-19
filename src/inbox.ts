@@ -345,12 +345,49 @@ export function splitTodoReply(raw: string): {
 // enough to need clamping (same heuristic as the header trigger). Anything
 // else — a short, untitled, reply-less entry — has nothing more to show.
 export function todoRowDisplay(entry: TodoEntry) {
-  const { body, reply } = splitTodoReply(entry.body);
+  const { body: withImages, reply } = splitTodoReply(entry.body);
+  const { text: body, images } = splitBodyImages(withImages);
   return {
     body,
     reply,
+    images,
     expandable: !!entry.title || !!reply || needsTitle(body),
   };
+}
+
+// Screenshots attached to a note: markdown image links into
+// ~/notes/inbox-assets/ (`![screenshot](inbox-assets/shot-....png)`, see
+// docs/data-model.md). Same ref shape archive.rs's asset_refs() matches: up
+// to whitespace or the closing paren.
+const IMAGE_REF = /!\[[^\]\n]*\]\((inbox-assets\/[^\s)]+)\)/g;
+
+// Display-only parse, like splitTodoReply: pulls the image links out of a
+// body so a card shows the text as text and the screenshots as thumbnails.
+// Disk format/serialization never see this split.
+export function splitBodyImages(body: string): {
+  text: string;
+  images: string[];
+} {
+  const images: string[] = [];
+  const text = body
+    .replace(IMAGE_REF, (_m, ref: string) => {
+      images.push(ref);
+      return "";
+    })
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { text, images };
+}
+
+// Attaches a screenshot to a note body as its own trailing paragraph —
+// ahead of an embedded `## Claude` reply (see splitTodoReply), so the image
+// stays part of the note rather than the reply.
+export function appendBodyImage(body: string, ref: string): string {
+  const link = `![screenshot](${ref})`;
+  const { body: note, reply } = splitTodoReply(body);
+  const withImage = note ? `${note}\n\n${link}` : link;
+  return reply === null ? withImage : `${withImage}\n\n## Claude\n\n${reply}`;
 }
 
 export function serializeTodos(entries: TodoEntry[]): string {

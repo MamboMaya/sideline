@@ -301,6 +301,44 @@ header .ghost.gear {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Screenshot thumbnails under a card body (components/BodyImages.tsx) —
+   click opens the full-size image in Preview. */
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.thumb {
+  padding: 0;
+  height: 64px;
+  min-width: 48px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.thumb:hover {
+  border-color: var(--accent);
+}
+.thumb img {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  object-fit: cover;
+}
+.thumb-missing {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 24px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: default;
+}
 .section {
   display: flex;
   flex-direction: column;

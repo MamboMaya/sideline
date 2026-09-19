@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { type TodoEntry, todoRowDisplay } from "../inbox";
 import { tagChipClass, tagLabel } from "../lib/format";
 import type { TagEditorHook } from "../hooks/useTagEditor";
+import { BodyImages } from "./BodyImages";
 import { TagEditor } from "./TagEditor";
 
 interface TodoCardProps {
@@ -61,6 +62,7 @@ export function TodoCard({
   const {
     body: displayBody,
     reply: replyText,
+    images,
     expandable,
   } = todoRowDisplay(entry);
 
@@ -182,6 +184,7 @@ export function TodoCard({
           {displayBody}
         </div>
       )}
+      {!isEditing && <BodyImages images={images} />}
       {isExpanded && replyText && (
         <div className="reply">
           <div className="reply-label">Claude</div>
