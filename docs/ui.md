@@ -61,7 +61,7 @@ dropping away and the pill showing the error in red for ~3s before
 hiding, alongside the popover's toast — so a failed recording is never
 silent.
 
-STALE NOTES: an inbox note older than `.sideline.json`'s `staleDays`
+STALE NOTES: an inbox note at least `.sideline.json`'s `staleDays` days old
 (default 3, 0 = off — see Settings) gets a small amber age badge next to its
 timestamp (`"4d"`, whole days since capture; see `src/lib/stale.ts`), a
 nudge to triage it. The header shows an amber "N stale" badge, next to the
@@ -352,8 +352,8 @@ one scrollable pane:
    on the Settings pane with the panel open (`project-picked` event), so
    the new chip is visible once added. Esc closes the panel (its own
    handler, before the app's Esc layering).
-5. **Inbox** — a number input for `staleDays` ("Flag inbox notes older
-   than N days (0 = off)"; default 3), the threshold behind the age badge
+5. **Inbox** — a number input for `staleDays` ("Flag inbox notes N or more
+   days old (0 = off)"; default 3), the threshold behind the age badge
    on inbox cards and the header's "N stale" count (see Views &
    navigation above and `src/lib/stale.ts`). Clamped to a non-negative
    integer client-side; writing the default value removes the key from

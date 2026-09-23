@@ -8,11 +8,11 @@ Notable, user-visible changes to Sideline. Format follows
 
 ### Added
 
-- Stale inbox notes get flagged: a note older than `staleDays` days (default
-  3, in Settings → Inbox; 0 turns it off) shows a small amber age badge on
-  its card, and the header shows an amber "N stale" count from any view —
-  click it to jump to the Inbox. Both recompute on reload and at least
-  hourly.
+- Stale inbox notes get flagged: a note at least `staleDays` days old
+  (default 3, in Settings → Inbox; 0 turns it off) shows a small amber age
+  badge on its card, and the header shows an amber "N stale" count from any
+  view — click it to jump to the Inbox. Both recompute on reload and at
+  least hourly.
 - Filler-word cleanup for in-app voice transcripts: strips hesitation words
   (um, uh, erm, ...), discourse fillers ("you know", "I mean", "like", ...),
   and stutter repeats before a Note/Dictate/Ask recording is handed off.

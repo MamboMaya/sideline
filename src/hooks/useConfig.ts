@@ -331,7 +331,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     });
   };
 
-  // Settings' "Flag inbox notes older than N days" number input. Clamped to
+  // Settings' "Flag inbox notes N or more days old" number input. Clamped to
   // a non-negative integer client-side; `DEFAULT_STALE_DAYS` (the default)
   // clears the override entirely rather than writing it explicitly, same
   // omit-at-default convention as `setClaudeEnabled` — `0` (feature off) is

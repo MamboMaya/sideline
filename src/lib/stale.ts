@@ -17,13 +17,13 @@ export function ageDays(timestamp: string, now: Date): number {
 
 // Whether a note is old enough to flag. `staleDays <= 0` means the feature
 // is off (0 is the config's "off" sentinel — see DEFAULT_STALE_DAYS).
-// Strictly-greater-than: a note captured exactly `staleDays` days ago
-// hasn't crossed the threshold yet.
+// Inclusive: a note captured exactly `staleDays` days ago has crossed the
+// threshold too.
 export function isStale(
   timestamp: string,
   staleDays: number,
   now: Date,
 ): boolean {
   if (staleDays <= 0) return false;
-  return ageDays(timestamp, now) > staleDays;
+  return ageDays(timestamp, now) >= staleDays;
 }

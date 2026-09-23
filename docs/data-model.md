@@ -148,7 +148,7 @@
   with no restart; `capture/voice-note.sh` reads the same key via jq so
   Raycast captures get the identical prompt and corrections. Also optional
   `"staleDays": 5` (default 3, positive integer; `0` turns the feature off) —
-  an inbox note older than this many whole days gets an amber age badge on
+  an inbox note at least this many whole days old gets an amber age badge on
   its card and counts toward the header's "N stale" badge (Settings → Inbox
   — see docs/ui.md's Views & navigation and Settings sections,
   `src/lib/stale.ts`). Frontend-only — no Rust command reads or writes it;

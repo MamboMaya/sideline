@@ -609,6 +609,22 @@ export function SettingsPane({
     batch: promptsOverride?.batch ?? "",
   });
 
+  // Inbox's stale-days input: same commit-on-blur/Enter shape as the prompt
+  // drafts above, kept as a string so the field can sit empty mid-edit
+  // without immediately committing 0. Blur/Enter with a non-negative
+  // integer commits it; anything else (empty, negative, non-numeric)
+  // reverts the draft back to the current value instead of writing 0.
+  const [staleDaysDraft, setStaleDaysDraft] = useState(String(staleDays));
+  const commitStaleDays = () => {
+    const parsed = Number(staleDaysDraft);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      setStaleDaysDraft(String(parsed));
+      setStaleDays(parsed);
+    } else {
+      setStaleDaysDraft(String(staleDays));
+    }
+  };
+
   // Writes `.sideline.json`'s `hotkeys` key AND syncs the live OS
   // registration in one commit — called on Enter/blur of any ONE of the
   // three fields, always with all three current values (apply_hotkeys takes
@@ -966,7 +982,7 @@ export function SettingsPane({
         <div className="settings-section-title">Inbox</div>
         <div className="settings-row">
           <label className="settings-label" htmlFor="stale-days">
-            Flag inbox notes older than N days (0 = off)
+            Flag inbox notes N or more days old (0 = off)
           </label>
           <input
             id="stale-days"
@@ -974,14 +990,22 @@ export function SettingsPane({
             min={0}
             step={1}
             className="settings-input settings-input-number"
-            value={staleDays}
-            onChange={(e) => setStaleDays(Number(e.target.value))}
-            onKeyDown={blurOnEscape}
+            value={staleDaysDraft}
+            onChange={(e) => setStaleDaysDraft(e.target.value)}
+            onBlur={commitStaleDays}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              } else {
+                blurOnEscape(e);
+              }
+            }}
           />
         </div>
         <div className="settings-hint">
-          Notes captured longer ago than this get an amber age badge, and count
-          toward the header's stale total, as a nudge to triage them.
+          Notes captured at least this long ago get an amber age badge, and
+          count toward the header's stale total, as a nudge to triage them.
         </div>
       </section>
 

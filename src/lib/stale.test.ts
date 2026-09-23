@@ -36,8 +36,8 @@ describe("isStale", () => {
     expect(isStale("2026-09-22 09:14", 3, now)).toBe(false);
   });
 
-  it("is false for a note exactly at the threshold", () => {
-    expect(isStale("2026-09-20 09:14", 3, now)).toBe(false);
+  it("is true for a note exactly at the threshold", () => {
+    expect(isStale("2026-09-20 09:14", 3, now)).toBe(true);
   });
 
   it("is true for a note older than the threshold", () => {

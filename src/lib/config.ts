@@ -225,14 +225,6 @@ export interface HotkeysConfig {
 // list_terminals. No merged/resolved twin like `pushToTalk`'s boolean: the
 // override string IS the value; "auto" is simply undefined.
 
-// `.sideline.json`'s `dictionary` field — the transcription vocabulary:
-// correctly-spelled term → the mis-hearings whisper produces for it (may be
-// empty; a bare term still biases whisper's initial prompt). Read Rust-side
-// by whisper.rs on every transcription and by capture/voice-note.sh; the
-// frontend only edits it (Settings' Voice section) via the two text helpers
-// below.
-export type DictionaryConfig = Record<string, string[]>;
-
 // `.sideline.json`'s top-level `cleanFillers` boolean — Settings → Voice →
 // "Remove filler words (um, uh, repeats)". Default `true`: audio.rs strips
 // hesitation words, discourse fillers, and stutter repeats from every
@@ -240,6 +232,14 @@ export type DictionaryConfig = Record<string, string[]>;
 // Ask hand-off. Read Rust-side fresh on every recording, same
 // failure-tolerant shape as `audio`; `capture/voice-note.sh` does NOT read
 // this key, so external Raycast captures are never cleaned up.
+
+// `.sideline.json`'s `dictionary` field — the transcription vocabulary:
+// correctly-spelled term → the mis-hearings whisper produces for it (may be
+// empty; a bare term still biases whisper's initial prompt). Read Rust-side
+// by whisper.rs on every transcription and by capture/voice-note.sh; the
+// frontend only edits it (Settings' Voice section) via the two text helpers
+// below.
+export type DictionaryConfig = Record<string, string[]>;
 
 // One Settings-pane dictionary row: the term plus its mis-hearings as the
 // comma-separated text the row's second input holds.
@@ -315,8 +315,9 @@ export function addToDictionary(
 // App.tsx config state slice, including the 12 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
 // audioOverride, hotkeysOverride, overlayOverride, pushToTalkOverride,
-// dictionaryOverride, terminalOverride) kept around purely so a pin/zoom/hide
-// write doesn't clobber hand-edited config it didn't touch.
+// dictionaryOverride, terminalOverride, staleDaysOverride,
+// cleanFillersOverride) kept around purely so a pin/zoom/hide write doesn't
+// clobber hand-edited config it didn't touch.
 export interface SidelineConfig {
   pinnedTags: string[];
   hiddenTags: string[];

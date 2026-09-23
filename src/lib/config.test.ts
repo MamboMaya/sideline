@@ -774,7 +774,7 @@ describe("serializeConfig", () => {
     ]);
   });
 
-  test("overlay, pushToTalk, terminal, and staleDays land between hotkeys and dictionary/after it when all are present", () => {
+  test("overlay, pushToTalk, and terminal land between hotkeys and dictionary; staleDays lands after dictionary", () => {
     const out = serializeConfig({
       pinnedTags: [],
       hiddenTags: [],
