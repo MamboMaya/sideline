@@ -303,27 +303,24 @@ describe("dispatchKey — guards", () => {
 });
 
 describe("dispatchKey — Settings gate", () => {
-  it("suppresses every key except a non-field Escape while Settings is open", () => {
+  it("suppresses plain keys (letters, arrows, `?`) while Settings is open", () => {
     const ctx = makeCtx({ view: "todos", mergedFlat: [], settingsOpen: true });
     press("r", ctx);
     press("t", ctx);
     press("ArrowDown", ctx);
     press("?", ctx);
-    press("z", ctx, { metaKey: true });
     expect(ctx.toggleRecording).not.toHaveBeenCalled();
     expect(ctx.setShowShortcuts).not.toHaveBeenCalled();
     expect(ctx.setTodosSelected).not.toHaveBeenCalled();
-    expect(ctx.runUndo).not.toHaveBeenCalled();
     expect(ctx.closeSettings).not.toHaveBeenCalled();
   });
 
-  it("lets ⌘= / ⌘+ / ⌘− / ⌘0 zoom through the gate, even from a field, but not ⌘1/⌘2", () => {
+  it("lets ⌘= / ⌘+ / ⌘− / ⌘0 zoom through the gate, even from a field", () => {
     const ctx = makeCtx({ settingsOpen: true });
     const e = press("=", ctx, { metaKey: true, tagName: "INPUT" });
     press("+", ctx, { metaKey: true });
     press("-", ctx, { metaKey: true });
     press("0", ctx, { metaKey: true });
-    press("1", ctx, { metaKey: true });
     expect(e.preventDefault).toHaveBeenCalled();
     expect((ctx.adjustZoom as ReturnType<typeof vi.fn>).mock.calls).toEqual([
       [0.1],
@@ -331,8 +328,43 @@ describe("dispatchKey — Settings gate", () => {
       [-0.1],
       [0],
     ]);
-    expect(ctx.setView).not.toHaveBeenCalled();
     expect(ctx.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it("lets ⌘1/⌘2/⌘3 through the gate, closing Settings then switching view", () => {
+    for (const [key, view] of [
+      ["1", "inbox"],
+      ["2", "todos"],
+      ["3", "ask"],
+    ] as const) {
+      const ctx = makeCtx({ settingsOpen: true });
+      const e = press(key, ctx, { metaKey: true });
+      expect(e.preventDefault).toHaveBeenCalled();
+      expect(ctx.closeSettings).toHaveBeenCalledTimes(1);
+      expect(ctx.setView).toHaveBeenCalledWith(view);
+    }
+  });
+
+  it("⌘1/⌘2/⌘3 still switch view from inside a field while Settings is open", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    press("2", ctx, { metaKey: true, tagName: "INPUT" });
+    expect(ctx.closeSettings).toHaveBeenCalledTimes(1);
+    expect(ctx.setView).toHaveBeenCalledWith("todos");
+  });
+
+  it("lets ⌘Z undo through the gate outside a field", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    const e = press("z", ctx, { metaKey: true });
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(ctx.runUndo).toHaveBeenCalledTimes(1);
+    expect(ctx.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it("does NOT let ⌘Z through the gate while a field has focus — native undo wins", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    const e = press("z", ctx, { metaKey: true, tagName: "INPUT" });
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(ctx.runUndo).not.toHaveBeenCalled();
   });
 
   it("closes Settings on Escape when focus is outside a field", () => {

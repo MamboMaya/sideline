@@ -13,6 +13,11 @@ Notable, user-visible changes to Sideline. Format follows
   seconds before hiding, even with the popover closed.
 - The recording level bars now swing visibly with normal speech (dB-scaled),
   so a muted or zero-gain mic is obvious while you're still recording.
+- ⌘1/⌘2/⌘3 (view switch) and ⌘Z (undo) now work while the Settings pane is
+  open, instead of being silently swallowed — ⌘1/⌘2/⌘3 close Settings and
+  switch view, ⌘Z still yields to a focused field's native text undo. Every
+  other shortcut stays gated so typing in a Settings field never triggers
+  the list keymap.
 
 ## [0.6.0] - 2026-09-19
 

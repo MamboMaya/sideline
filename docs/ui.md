@@ -126,10 +126,15 @@ Settings is open, none of the app's list/card keymap
 actions fire — `src/keys/useKeyboard.ts`'s `dispatchKey` gates on
 `ctx.settingsOpen` before anything else runs, so a stray `t`/`d`/arrow key
 landing on a focused dropdown or button inside the pane can never triage,
-delete, or navigate the list underneath. The one ⌘ binding that still
-fires through the gate is zoom (`⌘+`/`⌘−`/`⌘0`): the pane's own Zoom
-section sits at the very bottom, and a too-large zoom is exactly when the
-shortcut is needed to reach it. One consolidated surface over every
+delete, or navigate the list underneath. A handful of `⌘` bindings still
+fire through the gate: zoom (`⌘+`/`⌘−`/`⌘0`, from anywhere including a
+focused field) — the pane's own Zoom section sits at the very bottom, and a
+too-large zoom is exactly when the shortcut is needed to reach it; `⌘1`/
+`⌘2`/`⌘3` (view switch, also from a focused field) — these close Settings
+and then switch view, so the shortcut both dismisses the pane and takes you
+where you asked; and `⌘Z` (undo), except with focus inside an input/
+textarea, where native text undo wins instead, same exception it has
+everywhere else. One consolidated surface over every
 key `.sideline.json` knows about (see docs/data-model.md); no new keys, no
 format change.
 
