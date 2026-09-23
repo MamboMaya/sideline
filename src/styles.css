@@ -1212,11 +1212,13 @@ header .ghost.gear {
   font-size: 13px;
 }
 
-/* Header's compact "N upcoming" hint — a not-yet-fired reminder count,
-   title tooltip lists them (see Header.tsx). Kept plain-text (no chip
+/* Header's compact "⏰ N" hint — a not-yet-fired reminder count, title
+   tooltip lists them (see Header.tsx). Kept plain-text (no chip
    background) so it doesn't compete with the rec indicator in the same
-   narrow strip. */
+   narrow strip, and kept to "⏰ N" (no "upcoming" word): next to the
+   stale badge a longer label squeezed the tabs to ellipses at 380px. */
 .reminder-hint {
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--accent);
   white-space: nowrap;

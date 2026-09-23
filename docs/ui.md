@@ -170,7 +170,7 @@ already was), a fired-and-undismissed reminder also shows as a banner strip
 at the very top of the popover, above the header, visible from every view:
 "⏰ <text> · <time>" plus a "+10 min" snooze button and a Dismiss button
 (`ReminderBanner`, `src/hooks/useReminders.ts`). Not-yet-fired reminders
-show as a compact "⏰ N upcoming" hint in the header, its tooltip listing
+show as a compact "⏰ N" hint in the header, its tooltip listing
 each one's text and due time. The banner and hint both load on mount
 (`list_reminders`) and refresh on the backend's `reminders-changed` event
 (emitted on every add/remove/dismiss/snooze, and by the background tick

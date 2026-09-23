@@ -25,7 +25,7 @@ Notable, user-visible changes to Sideline. Format follows
   fired reminder shows as "⏰ <text>" on the recording pill and in the tray
   title — never opens or focuses the popover — and, once the popover is
   opened, also as a banner at the top ("+10 min" snooze, Dismiss);
-  not-yet-fired ones show as a compact "⏰ N upcoming" hint in the header.
+  not-yet-fired ones show as a compact "⏰ N" hint in the header.
   Works for in-app voice notes, typed notes, and Raycast captures alike.
   No new permissions — just the existing pill, tray title, and popover, no
   system notifications.

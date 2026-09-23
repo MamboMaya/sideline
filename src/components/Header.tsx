@@ -23,7 +23,7 @@ interface HeaderProps {
   recState: ReturnType<typeof useRecorder>["recState"];
   audioLevel: number;
   recElapsed: number;
-  // Not-yet-fired reminders — a compact "⏰ N upcoming" hint, title tooltip
+  // Not-yet-fired reminders — a compact "⏰ N" hint, title tooltip
   // listing them (see useReminders.ts). Fired ones show in ReminderBanner
   // instead, above this header.
   upcomingReminders: Reminder[];
@@ -117,7 +117,7 @@ export function Header({
             .map((r) => `${r.text} · ${formatReminderTime(r.due_ms)}`)
             .join("\n")}
         >
-          ⏰ {upcomingReminders.length} upcoming
+          ⏰ {upcomingReminders.length}
         </span>
       )}
       <div className="header-spacer" />
