@@ -14,7 +14,11 @@ export type RecState =
   // Dictation finished with the transcript on the clipboard — the pill
   // shows "Copied — ⌘V to paste" until Rust's hide timer drops back
   // to idle (~1.5s).
-  | "copied";
+  | "copied"
+  // The session ended in an error (no speech detected, device died,
+  // transcription failed…) — the pill shows the `capture-error` text until
+  // Rust's hide timer drops back to idle (~3s).
+  | "failed";
 
 // Mirrors audio.rs's `RecMode` — which pipeline a recording session feeds:
 // `note` appends the transcript to inbox.md, `dictate` copies it to the
@@ -48,7 +52,8 @@ export function useRecorderStatus() {
         s === "recording" ||
         s === "transcribing" ||
         s === "downloading-model" ||
-        s === "copied"
+        s === "copied" ||
+        s === "failed"
       ) {
         setRecState(s);
         if (s !== "recording") setAudioLevel(0);

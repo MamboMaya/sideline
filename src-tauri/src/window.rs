@@ -232,7 +232,7 @@ fn overlay_hidden() -> bool {
 ///
 /// Only repositions on entering Recording: a fresh ⌥⌘R press might be on a
 /// different monitor than last time, but Transcribing/DownloadingModel —
-/// and dictation's terminal Copied notice — always follow a Recording on
+/// and the terminal Copied/Failed notices — always follow a Recording on
 /// the same monitor, so they just keep the pill visible where it already
 /// is (no jitter).
 ///
@@ -262,7 +262,10 @@ pub(crate) fn sync_overlay(app: &tauri::AppHandle, state: RecState) {
             }
             let _ = win.show();
         }
-        RecState::Transcribing | RecState::DownloadingModel | RecState::Copied => {
+        RecState::Transcribing
+        | RecState::DownloadingModel
+        | RecState::Copied
+        | RecState::Failed => {
             let _ = win.show();
         }
     }

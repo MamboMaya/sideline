@@ -47,7 +47,7 @@ docs/ui.md's Quick question section), fs watcher on `~/notes` emitting
   toggles start/stop and `Released` is a no-op. ON, a `Pressed` starts a
   session — via the same `toggle_recording`/`toggle_dictation` calls as
   before — ONLY if the recorder can currently start (`RecState::can_start`:
-  Idle or the Copied notice), and remembers which of the two shortcuts
+  Idle or the Copied/Failed notice), and remembers which of the two shortcuts
   (`HeldShortcut::Record`/`Dictate`) is the one holding it open, in a small
   `Arc<Mutex<Option<HeldShortcut>>>` local to `run()`; a `Pressed` while a
   session is already running instead calls the same toggle function so it
@@ -241,17 +241,24 @@ the audio thread. Device selection: the system default input, unless
 docs/data-model.md), matched case-insensitively against `list_audio_devices`.
 
 State machine (`audio::RecState`: Idle → Recording → Transcribing, plus a
-DownloadingModel sub-state of Transcribing and a terminal Copied notice
-state — dictation-only, see below) is managed via
+DownloadingModel sub-state of Transcribing, a terminal Copied notice
+state — dictation-only, see below — and a terminal Failed notice state)
+is managed via
 `app.manage(AudioState::default())`. Every transition emits
 `recording-state` (string payload) and updates the tray title via
 `app.tray_by_id("main")` — `🔴 m:ss` while recording (1 Hz ticker, same
 thread also emits `audio-level` at ~20 Hz, a 0..1 RMS float from the
-capture callback), `…` while transcribing or downloading, cleared at idle.
-Title only, no icon swap. A transcript that comes back empty (or any
-failure — no input device, model download error, etc.) emits
-`capture-error` (string payload) and the state machine still lands back on
-Idle.
+capture callback; the frontend dB-scales it for the bars — see
+`src/lib/meter.ts`), `…` while transcribing or downloading, cleared at
+idle. Title only, no icon swap. A transcript that comes back empty (or any
+failure — no input device, no speech, model download error, etc.) goes
+through `audio::fail`: it emits `capture-error` (string payload), then
+enters the Failed notice, so the pill shows the error text for ~3s
+(`FAILED_NOTICE`) before a timer drops back to Idle — the error is
+visible even with the popover closed, where the toast can't be seen.
+Copied and Failed share one notice mechanism (`show_notice`/
+`start_notice`, with `Inner::notice_gen` so a stale hide timer never
+cuts a newer notice short).
 
 Orthogonal to `RecState` is `audio::RecMode` (`Note` | `Dictate` | `Ask`), carried on
 the same managed `Inner` alongside the state — which pipeline a session
@@ -262,7 +269,7 @@ starts a session and records `mode`; a same-mode press while Recording stops
 it exactly as before; a press in the OTHER mode while a session is already
 active is ignored outright and emits `capture-error` "Already recording" —
 the recorder never silently switches modes mid-recording. The transient
-Copied notice counts as idle for all of this (`RecState::can_start`):
+Copied and Failed notices count as idle for all of this (`RecState::can_start`):
 either hotkey during it starts a fresh session, and the notice's hide
 timer stands down when it sees the state has moved on. `emit_state`
 additionally emits `recording-mode` (`"note"`/`"dictate"`/`"ask"` string
@@ -278,7 +285,7 @@ Every transition also drives the recording-pill overlay: `sync_overlay`
 no decorations, always-on-top, `focusable: false`) bottom-center of the
 monitor holding the cursor (its bottom edge 20% up the screen, mirroring
 the popover's 20%-down top edge) while recording, keeps it up through
-transcribing/downloading and dictation's Copied notice, and hides it at
+transcribing/downloading and the Copied/Failed notices, and hides it at
 idle — UNLESS `overlay.hidden` is `true` in `~/notes/.sideline.json`
 (Settings → Voice → "Show recording pill"), read fresh on every call
 (`window::overlay_hidden`, same failure-tolerant shape as
@@ -297,7 +304,7 @@ event grant fails `listen()` silently: the window shows but never hears
 `recording-state`. Both invariants are locked by
 `src/overlay-config.test.ts`. Its frontend is the tiny Overlay root (src/main.tsx
 branches on `?window=overlay` before importing App) listening only to
-`recording-state`/`audio-level`. Window transparency on macOS requires
+`recording-state`/`audio-level`/`capture-error`. Window transparency on macOS requires
 Tauri's `macos-private-api` cargo feature + `macOSPrivateApi` config flag —
 enabled deliberately: it affects compositing only and is NOT a TCC
 permission surface (no prompt, no System Settings entry); the only cost is
@@ -307,7 +314,9 @@ app.
 Silence gate: before transcription, the post-resample buffer is scanned in
 100 ms RMS windows (`max_window_rms`); if no window reaches
 `SPEECH_RMS_FLOOR` (0.01), the recording is rejected with a
-`capture-error` of "No speech detected" instead of being transcribed —
+`capture-error` of "No speech detected — check mic input level" instead
+of being transcribed (the usual cause is the mic, not the speaker: an
+audio interface whose input gain reset to zero after a replug) —
 whisper hallucinates caption-like text ("Don't forget to subscribe…") on
 non-speech audio, so silent recordings must never reach it.
 
@@ -359,7 +368,7 @@ needed for Accessibility — macOS gates it entirely through System
 Settings > Privacy & Security > Accessibility plus this API.
 
 Either way `finish_dictation` returns `DictationOutcome::Copied`, which
-routes to `audio::show_copied_notice`: the pill shows "Copied — ⌘V
+routes to `audio::show_notice`: the pill shows "Copied — ⌘V
 to paste" for ~1.5s (`COPIED_NOTICE`) before a timer drops the state
 machine back to Idle. EVERY dictation gets that notice — Sideline never
 inspects the frontmost app or what it has focused. An AX focused-element

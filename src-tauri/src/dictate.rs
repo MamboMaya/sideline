@@ -10,7 +10,7 @@
 //! defocused the target, no editable field was ever focused) is
 //! indistinguishable from one that landed, so instead of guessing, EVERY
 //! dictation ends with the pill's "Copied — ⌘V to paste" notice (see
-//! `audio::show_copied_notice`) and the transcript waits on the clipboard.
+//! `audio::show_notice`) and the transcript waits on the clipboard.
 //! Which also means the clipboard write stays plain — an attempt to hide
 //! dictations from clipboard-history managers (the org.nspasteboard
 //! transient/concealed marker types) was dropped for that reason: history
@@ -40,8 +40,8 @@ extern "C" {
 }
 
 /// How `finish_dictation` ended, so audio.rs can pick the terminal state:
-/// `Copied` shows the pill notice, `Failed` (clipboard write failed —
-/// nothing to recover, error already emitted) goes straight to Idle.
+/// `Copied` shows the pill's Copied notice, `Failed` (clipboard write
+/// failed — nothing to recover, error already emitted) its Failed notice.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum DictationOutcome {
     Copied,

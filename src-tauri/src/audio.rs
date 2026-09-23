@@ -24,6 +24,13 @@ pub enum RecState {
     /// then drops to Idle. Idle-equivalent for the hotkeys: a press during
     /// the notice starts a fresh recording (see `toggle_recording_mode`).
     Copied,
+    /// The session ended in an error (no speech detected, device died,
+    /// transcription failed…) — the pill shows the `capture-error` text for
+    /// `FAILED_NOTICE`, then drops to Idle. Without it the pill just
+    /// vanished and the error only reached the popover's toast, which is
+    /// invisible whenever the popover is closed. Idle-equivalent for the
+    /// hotkeys, same as Copied.
+    Failed,
 }
 
 impl RecState {
@@ -34,18 +41,23 @@ impl RecState {
             RecState::Transcribing => "transcribing",
             RecState::DownloadingModel => "downloading-model",
             RecState::Copied => "copied",
+            RecState::Failed => "failed",
         }
     }
 
     /// True for the states where no recording session is live and a hotkey
-    /// press should start one — Idle, plus the transient Copied notice.
+    /// press should start one — Idle, plus the transient Copied/Failed
+    /// notices.
     fn can_start(self) -> bool {
-        matches!(self, RecState::Idle | RecState::Copied)
+        matches!(self, RecState::Idle | RecState::Copied | RecState::Failed)
     }
 }
 
 /// How long the pill's "Copied — ⌘V to paste" notice stays up.
 const COPIED_NOTICE: Duration = Duration::from_millis(1500);
+/// How long the pill's failure notice stays up — longer than
+/// `COPIED_NOTICE` since it's a sentence to read, not a glance.
+const FAILED_NOTICE: Duration = Duration::from_millis(3000);
 
 /// What a recording session is for: `Note` appends the transcript to
 /// inbox.md (⌥⌘R, "Record voice note"), `Dictate` copies it to the
@@ -108,15 +120,24 @@ struct Inner {
     stop_tx: Option<mpsc::Sender<()>>,
     result_rx: Option<mpsc::Receiver<Result<CaptureResult, String>>>,
     recording_flag: Option<Arc<AtomicBool>>,
-    // Bumped each time a Copied notice goes up, so its hide timer only
-    // fires for ITS notice — a back-to-back dictation that lands on Copied
-    // again isn't hidden early by the first notice's timer.
-    copied_gen: u64,
+    // Bumped each time a Copied/Failed notice goes up, so its hide timer
+    // only fires for ITS notice — a back-to-back session that lands on a
+    // notice again isn't hidden early by the first notice's timer.
+    notice_gen: u64,
 }
 
 impl Inner {
     fn state(&self) -> RecState {
         self.state_val.unwrap_or(RecState::Idle)
+    }
+
+    /// Flips to a notice state (Copied/Failed) and returns its generation
+    /// for `start_notice`'s hide timer. Split out so the ticker's teardown
+    /// can enter Failed under the same lock it clears the session with.
+    fn enter_notice(&mut self, state: RecState) -> u64 {
+        self.state_val = Some(state);
+        self.notice_gen = self.notice_gen.wrapping_add(1);
+        self.notice_gen
     }
 }
 
@@ -154,7 +175,7 @@ fn set_tray_title(app: &AppHandle, state: RecState, elapsed: Option<Duration>) {
             Some(format!("🔴 {}:{:02}", secs / 60, secs % 60))
         }
         RecState::Transcribing | RecState::DownloadingModel => Some("…".to_string()),
-        RecState::Idle | RecState::Copied => None,
+        RecState::Idle | RecState::Copied | RecState::Failed => None,
     };
     let _ = tray.set_title(title.as_deref());
 }
@@ -450,7 +471,7 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
     }
 
     match state {
-        RecState::Idle | RecState::Copied => {
+        RecState::Idle | RecState::Copied | RecState::Failed => {
             let (stop_tx, stop_rx) = mpsc::channel::<()>();
             let (result_tx, result_rx) = mpsc::channel::<Result<CaptureResult, String>>();
             let level = Arc::new(AtomicU32::new(0));
@@ -498,10 +519,10 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
                             if let Some(f) = inner.recording_flag.take() {
                                 f.store(false, Ordering::Relaxed);
                             }
-                            inner.state_val = Some(RecState::Idle);
+                            let gen = inner.enter_notice(RecState::Failed);
                             drop(inner);
                             let _ = app_ticker.emit("capture-error", err);
-                            emit_state(&app_ticker, RecState::Idle);
+                            start_notice(&app_ticker, RecState::Failed, gen);
                         }
                         break;
                     }
@@ -543,25 +564,32 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
     }
 }
 
-/// Puts up the pill's "Copied — ⌘V to paste" notice: flips state to
-/// Copied, emits it, and spawns the hide timer that drops back to Idle
-/// after `COPIED_NOTICE` — unless the state has moved on (a new recording
-/// started, or a newer notice replaced this one; see `Inner::copied_gen`).
-fn show_copied_notice(app: &AppHandle) {
-    let state = app.state::<AudioState>();
-    let mut inner = state.lock();
-    inner.state_val = Some(RecState::Copied);
-    inner.copied_gen = inner.copied_gen.wrapping_add(1);
-    let gen = inner.copied_gen;
-    drop(inner);
-    emit_state(app, RecState::Copied);
+/// Puts up a pill notice — dictation's "Copied — ⌘V to paste" or the
+/// Failed error text: flips state, emits it, and spawns the hide timer that
+/// drops back to Idle after `COPIED_NOTICE`/`FAILED_NOTICE` — unless the
+/// state has moved on (a new recording started, or a newer notice replaced
+/// this one; see `Inner::notice_gen`).
+fn show_notice(app: &AppHandle, state: RecState) {
+    let audio = app.state::<AudioState>();
+    let gen = audio.lock().enter_notice(state);
+    start_notice(app, state, gen);
+}
 
+/// Emits a notice state already entered via `Inner::enter_notice` and
+/// spawns its hide timer.
+fn start_notice(app: &AppHandle, state: RecState, gen: u64) {
+    emit_state(app, state);
+    let hold = if state == RecState::Failed {
+        FAILED_NOTICE
+    } else {
+        COPIED_NOTICE
+    };
     let app = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(COPIED_NOTICE);
-        let state = app.state::<AudioState>();
-        let mut inner = state.lock();
-        if inner.state() == RecState::Copied && inner.copied_gen == gen {
+        std::thread::sleep(hold);
+        let audio = app.state::<AudioState>();
+        let mut inner = audio.lock();
+        if inner.state() == state && inner.notice_gen == gen {
             inner.state_val = Some(RecState::Idle);
             drop(inner);
             emit_state(&app, RecState::Idle);
@@ -569,9 +597,15 @@ fn show_copied_notice(app: &AppHandle) {
     });
 }
 
-/// Resets the managed state to Idle and emits the transition — the shared
-/// tail of every `finish_recording` exit path (success, empty transcript,
-/// or any error).
+/// Error tail of `finish_recording`: emits `capture-error` (the popover's
+/// toast) and holds the pill up on the same text via the Failed notice.
+fn fail(app: &AppHandle, msg: String) {
+    let _ = app.emit("capture-error", msg);
+    show_notice(app, RecState::Failed);
+}
+
+/// Resets the managed state to Idle and emits the transition — the tail of
+/// every successful `finish_recording` exit (errors go through `fail`).
 fn reset_idle(app: &AppHandle) {
     let state = app.state::<AudioState>();
     let mut inner = state.lock();
@@ -584,7 +618,8 @@ fn reset_idle(app: &AppHandle) {
 /// thread, resample, transcribe, hand the transcript off per `mode`
 /// (inbox.md for `Note`, clipboard+paste for `Dictate` — see dictate.rs —
 /// the `ask-transcript` event for `Ask`),
-/// and always land back on Idle. Runs inside `spawn_blocking` — never on
+/// and always land back on Idle — directly on success, via the Copied or
+/// Failed pill notice otherwise. Runs inside `spawn_blocking` — never on
 /// the async runtime.
 fn finish_recording(
     app: AppHandle,
@@ -593,30 +628,23 @@ fn finish_recording(
 ) {
     let capture = match result_rx.and_then(|rx| rx.recv().ok()) {
         Some(Ok(c)) => c,
-        Some(Err(e)) => {
-            let _ = app.emit("capture-error", e);
-            reset_idle(&app);
-            return;
-        }
-        None => {
-            let _ = app.emit("capture-error", "recording thread vanished".to_string());
-            reset_idle(&app);
-            return;
-        }
+        Some(Err(e)) => return fail(&app, e),
+        None => return fail(&app, "recording thread vanished".to_string()),
     };
 
     if capture.samples.is_empty() {
-        let _ = app.emit("capture-error", "No audio captured".to_string());
-        reset_idle(&app);
-        return;
+        return fail(&app, "No audio captured".to_string());
     }
 
     let pcm = resample_to_16k(&capture.samples, capture.sample_rate);
 
     if max_window_rms(&pcm) < SPEECH_RMS_FLOOR {
-        let _ = app.emit("capture-error", "No speech detected".to_string());
-        reset_idle(&app);
-        return;
+        // Usually the mic, not the speaker: input gain at zero or a muted
+        // interface records near-silence, so point at the likely fix.
+        return fail(
+            &app,
+            "No speech detected — check mic input level".to_string(),
+        );
     }
 
     match crate::whisper::transcribe(&app, &pcm) {
@@ -625,18 +653,18 @@ fn finish_recording(
         Ok(text) if !text.trim().is_empty() => match mode {
             RecMode::Note => {
                 if let Err(e) = crate::commands::notes::append_inbox_text(&text) {
-                    let _ = app.emit("capture-error", e);
+                    return fail(&app, e);
                 }
             }
             RecMode::Dictate => {
-                if crate::dictate::finish_dictation(&app, &text)
-                    == crate::dictate::DictationOutcome::Copied
-                {
-                    // Transcript is on the clipboard — say so, whether or
-                    // not the auto-paste landed anywhere useful.
-                    show_copied_notice(&app);
-                    return;
-                }
+                // Copied: the transcript is on the clipboard — say so,
+                // whether or not the auto-paste landed anywhere useful.
+                // Failed: dictate.rs already emitted the `capture-error`.
+                let notice = match crate::dictate::finish_dictation(&app, &text) {
+                    crate::dictate::DictationOutcome::Copied => RecState::Copied,
+                    crate::dictate::DictationOutcome::Failed => RecState::Failed,
+                };
+                return show_notice(&app, notice);
             }
             RecMode::Ask => {
                 // The frontend owns everything from here (thread list,
@@ -645,12 +673,8 @@ fn finish_recording(
                 let _ = app.emit("ask-transcript", text.trim().to_string());
             }
         },
-        Ok(_) => {
-            let _ = app.emit("capture-error", "Transcription came back empty".to_string());
-        }
-        Err(e) => {
-            let _ = app.emit("capture-error", e);
-        }
+        Ok(_) => return fail(&app, "Transcription came back empty".to_string()),
+        Err(e) => return fail(&app, e),
     }
 
     reset_idle(&app);
@@ -659,6 +683,29 @@ fn finish_recording(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notices_are_idle_equivalent_but_live_states_are_not() {
+        for s in [RecState::Idle, RecState::Copied, RecState::Failed] {
+            assert!(s.can_start(), "{s:?} should let a hotkey start a session");
+        }
+        for s in [
+            RecState::Recording,
+            RecState::Transcribing,
+            RecState::DownloadingModel,
+        ] {
+            assert!(!s.can_start(), "{s:?} should not start a session");
+        }
+    }
+
+    #[test]
+    fn notice_generation_bumps_on_every_notice() {
+        let mut inner = Inner::default();
+        let first = inner.enter_notice(RecState::Failed);
+        let second = inner.enter_notice(RecState::Copied);
+        assert_ne!(first, second);
+        assert_eq!(inner.state(), RecState::Copied);
+    }
 
     #[test]
     fn resample_empty_input_returns_empty() {

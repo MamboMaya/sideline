@@ -6,6 +6,14 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed recording is no longer silent: the recording pill now shows the
+  error (e.g. "No speech detected — check mic input level") for a few
+  seconds before hiding, even with the popover closed.
+- The recording level bars now swing visibly with normal speech (dB-scaled),
+  so a muted or zero-gain mic is obvious while you're still recording.
+
 ## [0.6.0] - 2026-09-19
 
 ### Added

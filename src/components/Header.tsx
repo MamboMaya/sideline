@@ -89,28 +89,31 @@ export function Header({
         </button>
       </div>
       <div className="header-spacer" />
-      {/* "copied" is dictation's terminal pill notice — idle as far as the
-          popover is concerned (the pill overlay owns that message). */}
-      {recState !== "idle" && recState !== "copied" && (
-        <div className="rec-indicator" title="Voice note recording (r)">
-          {recState === "recording" && (
-            <>
-              <span className="rec-dot" />
-              <span className="rec-elapsed">
-                {Math.floor(recElapsed / 60)}:
-                {String(recElapsed % 60).padStart(2, "0")}
-              </span>
-              <RecBars audioLevel={audioLevel} />
-            </>
-          )}
-          {recState === "transcribing" && (
-            <span className="rec-status">transcribing…</span>
-          )}
-          {recState === "downloading-model" && (
-            <span className="rec-status">downloading model…</span>
-          )}
-        </div>
-      )}
+      {/* "copied"/"failed" are the pill's terminal notices — idle as far
+          as the popover is concerned (the pill overlay owns those messages;
+          a failure also reaches the popover as a toast). */}
+      {recState !== "idle" &&
+        recState !== "copied" &&
+        recState !== "failed" && (
+          <div className="rec-indicator" title="Voice note recording (r)">
+            {recState === "recording" && (
+              <>
+                <span className="rec-dot" />
+                <span className="rec-elapsed">
+                  {Math.floor(recElapsed / 60)}:
+                  {String(recElapsed % 60).padStart(2, "0")}
+                </span>
+                <RecBars audioLevel={audioLevel} />
+              </>
+            )}
+            {recState === "transcribing" && (
+              <span className="rec-status">transcribing…</span>
+            )}
+            {recState === "downloading-model" && (
+              <span className="rec-status">downloading model…</span>
+            )}
+          </div>
+        )}
       {view === "todos" && (
         <button
           type="button"

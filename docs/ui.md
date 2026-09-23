@@ -37,7 +37,8 @@ otherwise pushes the bottom of the popover off the clipped body at any zoom
 the same action as the ⌥⌘R global hotkey, but only while the popover has
 focus (and always a toggle, even in push-to-talk mode — see Settings below;
 only the ⌥⌘R/⌥⌘V global hotkeys themselves hold-to-record). While recording, a small pill HUD (🔴 elapsed m:ss + live level
-bars, then "Transcribing…"/"Downloading model…") floats bottom-center of
+bars — dB-scaled, so normal speech swings them and a dead mic stays
+flat — then "Transcribing…"/"Downloading model…") floats bottom-center of
 the monitor holding the cursor, 20% up the screen — mirroring the popover's
 20%-down spot — always on top, never focused, visible whether
 or not the popover is open — and disappears at idle; the popover header
@@ -54,7 +55,11 @@ dropping away and the pill showing "Copied
 dictation that went nowhere is visibly recoverable instead of silently
 gone. The popover header deliberately does NOT mirror that notice (the
 pill owns it), and pressing either record hotkey during the notice starts
-a fresh session immediately.
+a fresh session immediately. A session that fails in any mode (no speech
+detected, device lost, transcription error) likewise ends with the badge
+dropping away and the pill showing the error in red for ~3s before
+hiding, alongside the popover's toast — so a failed recording is never
+silent.
 
 ## Quick question
 

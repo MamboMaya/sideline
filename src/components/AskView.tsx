@@ -62,7 +62,11 @@ export function AskView({
   // `Ask` alongside `Note`/`Dictate`) is the ⌥⌘A hotkey's speak-the-question
   // path: while it's live, the hint line swaps for a status line instead of
   // stacking both.
-  const listening = recMode === "ask" && recState !== "idle";
+  const listening =
+    recMode === "ask" &&
+    recState !== "idle" &&
+    recState !== "copied" &&
+    recState !== "failed";
 
   return (
     <div className="ask-view">
