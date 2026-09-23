@@ -181,7 +181,8 @@ function nearestAmbiguousOccurrence(
 // Finds the first absolute time expression ("at 3pm", "at 3:30 pm", "at 3
 // p.m.", "at 15:00", "at noon", "at midnight", or a bare "at 3") anywhere in
 // `text`. No trailing `\b` on the main pattern: "p.m." ends on a `.`, and
-// `\b` never matches between two non-word characters.
+// `\b` never matches between two non-word characters — `(?!\w)` is used
+// instead wherever a boundary is actually needed (see below).
 function findAbsoluteTime(text: string): AbsoluteMatch | null {
   const noon = text.match(/\bat\s+noon\b/i);
   if (noon)
@@ -201,12 +202,29 @@ function findAbsoluteTime(text: string): AbsoluteMatch | null {
       compute: (c) => nextOccurrence(c, 0, 0),
     };
 
-  const m = text.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/i);
+  // `(?!\d)` after the hour stops "at 2024" from reading as hour=20 (the
+  // first two digits of a year). `(?!\w)` after the optional meridiem stops
+  // it from matching a prefix of a longer word ("3 amazing" isn't "3 AM") —
+  // it still accepts am/pm/a.m./p.m. followed by punctuation, whitespace, or
+  // end of string.
+  const m = text.match(
+    /\bat\s+(\d{1,2})(?!\d)(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?!\w)/i,
+  );
   if (!m) return null;
   const hour = parseInt(m[1], 10);
   const minute = m[2] ? parseInt(m[2], 10) : 0;
   if (hour > 23 || minute > 59) return null;
   const meridiem = m[3]?.toLowerCase().replace(/\./g, "");
+
+  // A bare hour with neither minutes nor am/pm ("at 5") is too weak a
+  // signal on its own — "look at 2 bugs" and "deploy at 5 failed" have the
+  // exact same shape. Only accept it when what follows is punctuation or
+  // end of string, so a genuinely bare mention ("...check status at 3")
+  // still works.
+  if (!m[2] && !meridiem) {
+    const rest = text.slice((m.index ?? 0) + m[0].length);
+    if (/^\s*[a-zA-Z0-9]/.test(rest)) return null;
+  }
 
   return {
     kind: "absolute",
@@ -226,6 +244,16 @@ function findAbsoluteTime(text: string): AbsoluteMatch | null {
 }
 
 const TRIGGER_RE = /\b(remind me|reminder)\b[:,]?\s*(?:to\s+)?/i;
+
+// Qualifies a leading relative time (no trigger phrase) for finding #2 below:
+// either it's immediately followed by a comma ("In 20 minutes, alert me
+// then"), or by an obligation/intent clause ("I've got to go", "I need to
+// leave", ...). Without this, any sentence that happens to START with a
+// duration — "In 2 hours of debugging I found a bug" — would misfire; the
+// comma/clause requirement is what "in 15 minutes I've got to go" still
+// satisfies while that doesn't.
+const OBLIGATION_RE =
+  /^\s*(?:i(?:'ve| have)?\s+got\s+to\b|i(?:'ll|\s+will)\b|i\s+need\s+to\b|i\s+have\s+to\b|i\s+must\b|gotta\b|let's\b|we\s+need\s+to\b|remember\s+to\b|don't\s+forget\s+to\b)/i;
 
 function stripSpans(
   text: string,
@@ -269,7 +297,12 @@ export function parseReminder(
   const timeExpr: TimeMatch | null = relative ?? absolute;
 
   const hasTriggerWithTime = triggerMatch !== null && timeExpr !== null;
-  const startsWithRelative = relative !== null && relative.index === 0;
+  const relativeTail =
+    relative !== null ? trimmed.slice(relative.index + relative.length) : "";
+  const startsWithRelative =
+    relative !== null &&
+    relative.index === 0 &&
+    (/^\s*,/.test(relativeTail) || OBLIGATION_RE.test(relativeTail));
   if (!hasTriggerWithTime && !startsWithRelative) return null;
 
   // Non-null: timeExpr is set whenever either branch above is true

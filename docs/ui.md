@@ -130,13 +130,18 @@ scanned note (same once-per-note-per-run tracking as auto-tagging, keyed by
 (`src/lib/reminders.ts`) for one of two shapes: the body says "remind me" or
 "reminder" AND names a time anywhere in it ("remind me to call my mom in 15
 minutes"), or the body simply STARTS with a relative time expression ("in
-15 minutes I've got to go — alert me then"), no trigger phrase needed.
-Relative times: "in 15 minutes", "in an hour", "in half an hour", "in a
-minute", "in a couple minutes", digits or number words one through sixty
-("forty-five minutes"). Absolute times: "at 3pm", "at 3:30 pm", "at 15:00",
-"at noon" — rolled to tomorrow if that time already passed today; a bare
-"at 3" with no am/pm picks whichever of the two 12h-apart candidates comes
-next. A hit registers with the backend (`add_reminder`, keyed by
+15 minutes I've got to go — alert me then"), no trigger phrase needed — but
+only when that leading time is immediately followed by a comma or an
+obligation/intent clause ("I've got to", "I need to", "gotta", ...); a
+sentence that merely starts with a duration ("In 2 hours of debugging I
+found a bug") is not a reminder. Relative times: "in 15 minutes", "in an
+hour", "in half an hour", "in a minute", "in a couple minutes", digits or
+number words one through sixty ("forty-five minutes"). Absolute times: "at
+3pm", "at 3:30 pm", "at 15:00", "at noon" — rolled to tomorrow if that time
+already passed today; a bare "at 3" with no am/pm picks whichever of the two
+12h-apart candidates comes next, and only counts as a time at all when
+nothing else immediately follows it ("look at 2 bugs", "deploy at 5 failed",
+"at 2024", "at 50%" are not times). A hit registers with the backend (`add_reminder`, keyed by
 `reminderId` — the note's own timestamp, or timestamp+icon on the rare
 collision of two notes captured in the same minute) — this covers in-app
 voice notes, typed notes, and external Raycast captures alike, since all

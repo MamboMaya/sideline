@@ -125,6 +125,26 @@ describe("parseReminder — body starts with a relative time, no trigger phrase"
     const r = parseReminder("I've got to go in 15 minutes", captured(9, 0));
     expect(r).toBeNull();
   });
+
+  test("leading relative time with no comma and no obligation clause is not a reminder", () => {
+    const r = parseReminder(
+      "In 2 hours of debugging I found a bug",
+      captured(9, 0),
+    );
+    expect(r).toBeNull();
+  });
+
+  test("leading relative time with nothing following is not a reminder", () => {
+    expect(parseReminder("in 15 minutes", captured(9, 0))).toBeNull();
+  });
+
+  test("leading relative time followed by 'I need to' still counts", () => {
+    const r = parseReminder(
+      "in 20 minutes I need to leave for the airport",
+      captured(9, 0),
+    );
+    expect(r?.due).toEqual(captured(9, 20));
+  });
 });
 
 describe("parseReminder — absolute times", () => {
@@ -191,6 +211,47 @@ describe("parseReminder — absolute times", () => {
   test("bare 'at 3' with no am/pm picks the sooner ambiguous occurrence (PM)", () => {
     // captured at 4am — 3am has passed, 3pm is next (11h away).
     const r = parseReminder("remind me to check status at 3", captured(4, 0));
+    expect(r?.due).toEqual(captured(15, 0));
+  });
+
+  test("'at 2024' (a year) is not a bare time", () => {
+    expect(
+      parseReminder("remind me the lease renews at 2024", captured(9, 0)),
+    ).toBeNull();
+  });
+
+  test("'at 50%' (a percentage) is not a bare time", () => {
+    expect(
+      parseReminder("remind me the battery was at 50%", captured(9, 0)),
+    ).toBeNull();
+  });
+
+  test("bare 'at N' immediately followed by another word is not a time ('look at 2 bugs')", () => {
+    expect(
+      parseReminder("remind me to look at 2 bugs before lunch", captured(9, 0)),
+    ).toBeNull();
+  });
+
+  test("bare 'at N' immediately followed by another word is not a time ('deploy at 5 failed')", () => {
+    expect(
+      parseReminder("reminder: deploy at 5 failed last time", captured(9, 0)),
+    ).toBeNull();
+  });
+
+  test("'3 amazing' is not '3 AM'", () => {
+    expect(
+      parseReminder(
+        "remind me the sunset was at 3 amazing colors",
+        captured(9, 0),
+      ),
+    ).toBeNull();
+  });
+
+  test("am/pm still match right up against punctuation", () => {
+    const r = parseReminder(
+      "remind me to call the dentist at 3pm.",
+      captured(9, 0),
+    );
     expect(r?.due).toEqual(captured(15, 0));
   });
 });
