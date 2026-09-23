@@ -27,6 +27,7 @@ Notable, user-visible changes to Sideline. Format follows
   opened, also as a banner at the top ("+10 min" snooze, Dismiss);
   not-yet-fired ones show as a compact "⏰ N" hint in the header.
   Works for in-app voice notes, typed notes, and Raycast captures alike.
+  Deleting the note cancels its reminder; triaging it doesn't.
   No new permissions — just the existing pill, tray title, and popover, no
   system notifications.
 - Auto-classify new notes (captured within the last 24 hours) with a type

@@ -153,9 +153,10 @@ own timestamp, editing a note that already has a reminder UPDATES that same
 reminder (backend upserts by id — see docs/backend.md) rather than
 registering a second one; if the edit removes whatever made it parse as a
 reminder, and it hasn't fired yet, the not-yet-fired reminder is dropped
-(`remove_reminder`). A reminder is NEVER cancelled just because its source
-note leaves the inbox (triaged or deleted) — reminders stand on their own
-once registered. No new keyboard shortcut, no system notification, no
+(`remove_reminder`). Deleting the note (`x`) cancels its reminder, pending
+or already fired — clearing any banner/pill it left up; undo re-registers
+it if the due time is still ahead. Triage does NOT cancel: the note lives
+on in notes/ or todos/, so its reminder stands. No new keyboard shortcut, no system notification, no
 sound — see CLAUDE.md's "no new macOS permission surfaces" convention; this
 feature adds none.
 

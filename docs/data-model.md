@@ -59,9 +59,9 @@
   reminder: an unchanged note is a no-op, an edited one upserts in place
   (`reminders::upsert`, `src-tauri/src/reminders.rs`), and an edit that
   removes whatever made the note parse as a reminder drops the not-yet-fired
-  entry (`remove_reminder`). A reminder is never removed just because its
-  source note leaves the inbox (triaged or deleted) — once registered, it
-  stands on its own. Written atomically, each write to its own uniquely-
+  entry (`remove_reminder`). Deleting the source note from the inbox drops
+  its reminder too, fired or not (undo re-registers it if still ahead);
+  triaging it does not — the note lives on, so the reminder stands. Written atomically, each write to its own uniquely-
   named temp file (pid + a counter, not a shared fixed name — the
   background ticker and a command can write concurrently) and guarded by a
   process-wide lock across every read-modify-write; a dismissed entry is

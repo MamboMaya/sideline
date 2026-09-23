@@ -142,12 +142,14 @@ fn mark_dismissed(mut reminders: Vec<Reminder>, id: &str) -> Vec<Reminder> {
     reminders
 }
 
-/// Drops the entry with `id` UNLESS it has already fired — a note edited
-/// so it no longer parses as a reminder (see useInbox.ts) shouldn't cancel
-/// a reminder the user has already seen fire; they dismiss/snooze that one
-/// from the banner like any other. Pure: returns the new list.
-fn remove_unfired(mut reminders: Vec<Reminder>, id: &str) -> Vec<Reminder> {
-    reminders.retain(|r| r.id != id || r.fired);
+/// Drops the entry with `id`. With `include_fired` false (a note edited so
+/// it no longer parses as a reminder — see useInbox.ts) an entry that has
+/// already fired is kept: the user has seen it and dismisses/snoozes it
+/// from the banner like any other. With `include_fired` true (the source
+/// note was deleted) it goes regardless, so a deleted note leaves no
+/// banner or pill behind. Pure: returns the new list.
+fn remove_by_id(mut reminders: Vec<Reminder>, id: &str, include_fired: bool) -> Vec<Reminder> {
+    reminders.retain(|r| r.id != id || (r.fired && !include_fired));
     reminders
 }
 
@@ -236,18 +238,23 @@ pub(crate) fn add_reminder(
     Ok(())
 }
 
-/// Drops a reminder that hasn't fired yet — useInbox.ts's call when a note
-/// that previously produced a reminder is edited and no longer parses as
-/// one. A reminder that already fired is left alone (see `remove_unfired`);
-/// the user dismisses/snoozes it from the banner like any other. Note: a
-/// reminder is NEVER cancelled just because its source note leaves the
-/// inbox (triaged or deleted) — this command is only called for an edit
-/// that changes what the note parses as, never for triage/delete.
+/// Drops a reminder — useInbox.ts's call in two cases: a note that
+/// previously produced a reminder is edited and no longer parses as one
+/// (`include_fired` false — an already-fired one is left for the banner,
+/// see `remove_by_id`), or the note is deleted from the inbox
+/// (`include_fired` true — nothing of it survives). Triage does NOT cancel:
+/// the note lives on in notes/ or todos/, so its reminder stands.
 #[tauri::command(rename_all = "snake_case")]
-pub(crate) fn remove_reminder(app: AppHandle, id: String) -> Result<(), String> {
+pub(crate) fn remove_reminder(
+    app: AppHandle,
+    id: String,
+    include_fired: bool,
+) -> Result<(), String> {
     let _guard = LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let all = read_all()?;
-    write_all(&remove_unfired(all, &id))?;
+    write_all(&remove_by_id(all, &id, include_fired))?;
+    drop(_guard);
+    crate::audio::refresh_tray_title(&app);
     notify_changed(&app);
     Ok(())
 }
@@ -459,23 +466,35 @@ mod tests {
     }
 
     #[test]
-    fn remove_unfired_drops_the_matching_unfired_entry() {
-        let all = remove_unfired(
+    fn remove_by_id_drops_the_matching_unfired_entry() {
+        let all = remove_by_id(
             vec![
                 reminder("a", 1, false, false),
                 reminder("b", 2, false, false),
             ],
             "a",
+            false,
         );
         let ids: Vec<_> = all.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(ids, vec!["b"]);
     }
 
     #[test]
-    fn remove_unfired_leaves_an_already_fired_entry() {
-        let all = remove_unfired(vec![reminder("a", 1, true, false)], "a");
+    fn remove_by_id_leaves_an_already_fired_entry_on_edit() {
+        let all = remove_by_id(vec![reminder("a", 1, true, false)], "a", false);
         let ids: Vec<_> = all.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(ids, vec!["a"]);
+    }
+
+    #[test]
+    fn remove_by_id_drops_an_already_fired_entry_on_delete() {
+        let all = remove_by_id(
+            vec![reminder("a", 1, true, false), reminder("b", 2, true, false)],
+            "a",
+            true,
+        );
+        let ids: Vec<_> = all.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["b"]);
     }
 
     #[test]

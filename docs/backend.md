@@ -218,11 +218,12 @@ session_id }`: the session id is what `open_ask_session` resumes)
   timestamp, so it's an UPSERT (`reminders::upsert`): an unchanged `id` with
   the same `due_ms`/`text` is a no-op, a changed `text` updates in place, and
   a changed `due_ms` updates AND re-arms — clears `fired`/`dismissed`, so an
-  edited due time actually fires again), `remove_reminder(id)` (drops the
-  entry unless it's already fired — useInbox.ts's call when an edited note
-  no longer parses as a reminder; a reminder is never removed just because
-  its source note left the inbox via triage/delete — reminders stand on
-  their own once registered), `list_reminders` (undismissed, sorted by
+  edited due time actually fires again), `remove_reminder(id, include_fired)`
+  (drops the entry — useInbox.ts's call when an edited note no longer
+  parses as a reminder, `include_fired` false so an already-fired one stays
+  for the banner, or when the note is deleted from the inbox,
+  `include_fired` true so nothing survives; triage never removes — the
+  note lives on), `list_reminders` (undismissed, sorted by
   `due_ms`), `dismiss_reminder(id)`, `snooze_reminder(id, minutes)` (sets a
   new `due_ms` `minutes` from now and clears `fired`; the popover's "+10
   min" button is the one caller). `dismiss_reminder`/`snooze_reminder` also

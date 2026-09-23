@@ -123,6 +123,10 @@ export function useInbox({
   // which is fine — the note it belonged to hasn't changed, so there is
   // nothing to remove.
   const remindersRegisteredRef = useRef<Map<string, boolean>>(new Map());
+  // note.raw → the reminder id registered for it this run, so deleting a
+  // note (see remove) can cancel its reminder with the exact id the scan
+  // used (timestamp, or timestamp+icon on a same-minute collision).
+  const reminderIdByRawRef = useRef<Map<string, string>>(new Map());
   // Notes already scanned for classification this app run, keyed by
   // note.timestamp (NOT raw, unlike autoTaggedRef) — a note's raw changes on
   // every tag edit and on the classifier's own write, and re-scanning either
@@ -344,12 +348,12 @@ export function useInbox({
           n.timestamp,
         ).catch(() => {});
         remindersRegisteredRef.current.set(id, true);
+        reminderIdByRawRef.current.set(n.raw, id);
       } else if (remindersRegisteredRef.current.get(id)) {
         // The note previously parsed as a reminder (this run) and was
-        // edited to no longer — drop the not-yet-fired reminder. Never
-        // called for a note simply leaving the inbox (triage/delete):
-        // reminders stand on their own once registered — see reminders.rs.
-        removeReminder(id).catch(() => {});
+        // edited to no longer — drop the not-yet-fired reminder. Triage
+        // never cancels (the note lives on); delete does — see remove.
+        removeReminder(id, false).catch(() => {});
         remindersRegisteredRef.current.set(id, false);
       }
     }
@@ -478,6 +482,14 @@ export function useInbox({
     // Remove from the CURRENT list, not a render-scoped snapshot: the
     // awaited archive round-trip above is a window for appends to land.
     persist(notesRef.current.filter((n) => n !== note));
+    // A deleted note takes its reminder with it — pending or already
+    // fired (clears a banner/pill it left up), so no alert ever fires for
+    // a note that's gone.
+    const reminderIdForNote = reminderIdByRawRef.current.get(note.raw);
+    if (reminderIdForNote) {
+      removeReminder(reminderIdForNote, true).catch(() => {});
+      remindersRegisteredRef.current.set(reminderIdForNote, false);
+    }
     showToast("Archived", () => {
       // Inverse ops against live state, not snapshot restores: a snapshot
       // would erase anything captured or changed since the archive.
@@ -485,6 +497,25 @@ export function useInbox({
         showToastRef.current("Undo: archive.md could not be rewritten");
       });
       persist(insertNoteAt(notesRef.current, note, idx));
+      // Re-register the reminder only if it's still ahead: one whose due
+      // time passed meanwhile would fire the instant it came back.
+      const capturedAt = new Date(note.timestamp.replace(" ", "T"));
+      const detected = Number.isNaN(capturedAt.getTime())
+        ? null
+        : parseReminder(note.body, capturedAt);
+      if (
+        reminderIdForNote &&
+        detected &&
+        detected.due.getTime() > Date.now()
+      ) {
+        addReminder(
+          reminderIdForNote,
+          detected.text,
+          detected.due.getTime(),
+          note.timestamp,
+        ).catch(() => {});
+        remindersRegisteredRef.current.set(reminderIdForNote, true);
+      }
       dismissToast();
     });
   };

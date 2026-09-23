@@ -229,12 +229,16 @@ export function addReminder(
   });
 }
 
-// Drops a reminder that hasn't fired yet — useInbox.ts calls this when a
-// note that previously produced a reminder is edited and no longer parses
-// as one. Never called for a note leaving the inbox (triage/delete) —
-// reminders stand on their own once registered.
-export function removeReminder(id: string): Promise<void> {
-  return invoke<void>("remove_reminder", { id });
+// Drops a reminder. useInbox.ts calls this when a note that previously
+// produced a reminder is edited and no longer parses as one
+// (`includeFired` false — one that already fired stays for the banner), or
+// when the note is deleted (`includeFired` true — nothing survives). Never
+// called for triage: the note lives on, so its reminder stands.
+export function removeReminder(
+  id: string,
+  includeFired: boolean,
+): Promise<void> {
+  return invoke<void>("remove_reminder", { id, include_fired: includeFired });
 }
 
 // Undismissed reminders, soonest due first — the banner's (fired) and
