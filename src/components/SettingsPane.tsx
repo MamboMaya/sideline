@@ -1001,7 +1001,9 @@ export function SettingsPane({
             }
           >
             <option value="off">Off</option>
-            <option value="claude">Claude</option>
+            <option value="claude" disabled={!claude}>
+              {claude ? "Claude" : "Claude (off)"}
+            </option>
             <option value="local">Local classifier</option>
           </select>
         </div>
@@ -1032,7 +1034,7 @@ export function SettingsPane({
             </button>
           </div>
         )}
-        {classifierUrlError && (
+        {classifier.provider === "local" && classifierUrlError && (
           <div className="settings-row">
             <span className="settings-label" />
             <span className="settings-error">{classifierUrlError}</span>

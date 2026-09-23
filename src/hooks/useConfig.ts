@@ -365,24 +365,31 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     });
   };
 
-  // Settings' "Auto-classify new notes" dropdown (SettingsPane.tsx). "off"
-  // (the default) clears the override entirely — same omit-at-default
-  // convention as setTerminal above; a non-default provider always writes
-  // the url alongside it too, so the merged url on disk stays explicit
-  // rather than depending on DEFAULT_CLASSIFIER never changing.
+  // Settings' "Auto-classify new notes" dropdown (SettingsPane.tsx).
+  // Deliberately NOT the omit-at-default convention setTerminal above uses:
+  // switching to "off" writes `provider: "off"` rather than deleting the
+  // override, so a custom url survives a detour through Off and back to
+  // Local. Spreads the existing raw `classifierOverride` first so an
+  // unknown sub-key a hand-edit added (anything outside the ClassifierConfig
+  // type) survives too, same as every other opaque-override setter.
   const setClassifierProvider = (provider: ClassifierConfig["provider"]) => {
     updateConfig({
-      classifier:
-        provider === "off" ? undefined : { provider, url: classifier.url },
+      classifier: { ...classifierOverride, provider, url: classifier.url },
     });
   };
 
   // Settings' classifier URL text field, only shown/editable when the
   // provider is "local". Blank falls back to DEFAULT_CLASSIFIER.url via
-  // mergeClassifier, same tolerance as every other text override.
+  // mergeClassifier, same tolerance as every other text override. Spreads
+  // classifierOverride first for the same unknown-sub-key reason as
+  // setClassifierProvider above.
   const setClassifierUrl = (url: string) => {
     updateConfig({
-      classifier: { provider: classifier.provider, url: url.trim() },
+      classifier: {
+        ...classifierOverride,
+        provider: classifier.provider,
+        url: url.trim(),
+      },
     });
   };
 
