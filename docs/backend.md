@@ -415,11 +415,14 @@ mode hand-off, gated by `.sideline.json`'s `cleanFillers` key (default
 failure-tolerant shape as `configured_device_name`, opposite default). Purely
 rule-based (regex + word-level passes, no network call, no LLM, so no added
 latency): removes standalone hesitation tokens (um, uh, erm, hmm, ...,
-whole-word only — never touches "umbrella"), comma-delimited or
-sentence-initial discourse fillers ("you know", "I mean", "like", "sort of",
-"kind of" — never a bare mid-sentence "like"), and collapses immediate
-stutter repeats ("I I think" → "I think"), then tidies up leftover
-punctuation and re-capitalizes. If cleanup empties the transcript, that's
+whole-word only — never touches "umbrella" — nor an ALL-CAPS one, kept as an
+acronym ("ER"), nor one directly after a number, kept as a unit ("5 mm")),
+comma-delimited or sentence-initial discourse fillers ("you know", "I mean",
+"like", "sort of", "kind of" — never a bare mid-sentence "like"), and
+collapses immediate stutter repeats ("I I think" → "I think" — never across
+a `. ! ? , ; :` boundary, never two repeated numbers, never a word on
+`STUTTER_ALLOWLIST`), then tidies up leftover punctuation and
+re-capitalizes. If cleanup empties the transcript, that's
 treated the same as an empty whisper result — the existing "Transcription
 came back empty" `capture-error`. Disabled via Settings → Voice → "Remove
 filler words (um, uh, repeats)". `capture/voice-note.sh` (external Raycast

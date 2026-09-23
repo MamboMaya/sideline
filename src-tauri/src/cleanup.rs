@@ -14,10 +14,48 @@ use regex::Regex;
 /// `\b`...`\b` means "umbrella", "uhaul", and "err" (not in this list at
 /// all) are never touched — with an attached trailing comma or ellipsis
 /// swallowed along with the word ("Um, I think" -> "I think", "so... um...
-/// ok" -> "so... ok").
+/// ok" -> "so... ok"). The word itself is capture group 1 — `strip_hesitations`
+/// below inspects it to skip two cases that aren't actually hesitations: an
+/// ALL-CAPS token (an acronym — "ER", "MM" — not a stretched-out "er"/"mm"),
+/// and a token directly following a number (a unit — "5 mm" — not a filler).
+/// Title-case ("Um,") isn't ALL-CAPS, so a sentence-initial hesitation is
+/// still stripped either way.
 static HESITATION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:um|umm|uh|uhh|uhm|erm|er|hmm|mm|ah)\b(?:\.\.\.|,)?").unwrap()
+    Regex::new(r"(?i)\b(um|umm|uh|uhh|uhm|erm|er|hmm|mm|ah)\b(?:\.\.\.|,)?").unwrap()
 });
+
+/// True if the token is an ALL-CAPS acronym rather than a stretched-out
+/// hesitation — every letter must be uppercase (title-case "Um" has a
+/// lowercase "m" and fails this, so it's still stripped).
+fn is_acronym(word: &str) -> bool {
+    word.chars().all(|c| c.is_uppercase())
+}
+
+/// True if `before` (the text immediately preceding a hesitation-token
+/// match) ends — ignoring whitespace — in a digit, meaning the token is a
+/// unit directly after a number ("5 mm") rather than a hesitation.
+fn preceded_by_number(before: &str) -> bool {
+    before
+        .trim_end()
+        .chars()
+        .last()
+        .is_some_and(|c| c.is_ascii_digit())
+}
+
+/// Removes `HESITATION_RE` matches, except the two real-word cases
+/// documented on it above, which are left untouched.
+fn strip_hesitations(line: &str) -> String {
+    HESITATION_RE
+        .replace_all(line, |caps: &regex::Captures| {
+            let m = caps.get(0).unwrap();
+            if is_acronym(&caps[1]) || preceded_by_number(&line[..m.start()]) {
+                m.as_str().to_string()
+            } else {
+                String::new()
+            }
+        })
+        .into_owned()
+}
 
 /// A hesitation token delimited by commas on both sides (", uh,") drops
 /// both commas, like the discourse fillers below, so the clauses rejoin
@@ -62,9 +100,10 @@ static SENTENCE_START_RE: LazyLock<Regex> =
 
 /// Words that legitimately repeat back-to-back — never collapsed by
 /// `collapse_stutters` below. "is is", "had had", "that that" are all real
-/// English ("the thing that that book describes"); "I I", "the the", "to to
-/// to" are not.
-const STUTTER_ALLOWLIST: &[&str] = &["that", "had", "is"];
+/// English ("the thing that that book describes"); so are "no, no" (as an
+/// emphatic double, not a stutter), "very very", "really really", "bye bye",
+/// and "ha ha"; "I I", "the the", "to to to" are not.
+const STUTTER_ALLOWLIST: &[&str] = &["that", "had", "is", "very", "really", "no", "bye", "ha"];
 
 /// Strips filler words, hesitations, and stutters from one voice
 /// transcript. Pure and rule-based — no network, no LLM — so it adds no
@@ -82,7 +121,7 @@ fn strip_fillers_line(line: &str) -> String {
     let s = DISCOURSE_START_RE.replace_all(line, "$1");
     let s = DISCOURSE_MID_RE.replace_all(&s, "");
     let s = HESITATION_MID_RE.replace_all(&s, "");
-    let s = HESITATION_RE.replace_all(&s, "");
+    let s = strip_hesitations(&s);
     let s = collapse_stutters(&s);
     let s = SPACE_BEFORE_PUNCT_RE.replace_all(&s, "$1");
     let s = MULTI_COMMA_RE.replace_all(&s, ",");
@@ -102,12 +141,24 @@ fn word_core(w: &str) -> String {
         .to_lowercase()
 }
 
+/// True if `word` ends in one of `. ! ? , ; :` — a sentence/clause boundary
+/// that stops a stutter run from extending past it: "Wait. Wait, I got
+/// confused." repeats "Wait" across a full stop, which is two separate
+/// exclamations, not a stutter, so the run must not cross it.
+fn ends_at_boundary(word: &str) -> bool {
+    word.ends_with(['.', '!', '?', ',', ';', ':'])
+}
+
 /// Collapses immediate case-insensitive repeats of the same word down to
 /// one, keeping the LAST occurrence in the run (so any trailing punctuation
-/// on it — "well, well, that's odd" — survives). Also collapses runs of
-/// three or more ("to to to" -> "to"). Doubles up in `STUTTER_ALLOWLIST`
-/// are left alone. Splitting on whitespace and rejoining with single spaces
-/// is also what collapses any doubled/stranded spacing left by the earlier
+/// on it — "to to to!" -> "to!" — survives). Also collapses runs of three
+/// or more. Doubles up in `STUTTER_ALLOWLIST` are left alone, as are
+/// numeric doubles ("5 5" might be a deliberate recitation, not a stutter)
+/// and any run that would cross a `. ! ? , ; :` boundary (see
+/// `ends_at_boundary`) — "Well, well, that's odd." is two separate
+/// utterances (comma boundary), not a stutter, so it's left untouched.
+/// Splitting on whitespace and rejoining with single spaces is also what
+/// collapses any doubled/stranded spacing left by the earlier
 /// filler-removal passes.
 fn collapse_stutters(text: &str) -> String {
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -115,13 +166,14 @@ fn collapse_stutters(text: &str) -> String {
     let mut i = 0;
     while i < words.len() {
         let core = word_core(words[i]);
-        if core.is_empty() || STUTTER_ALLOWLIST.contains(&core.as_str()) {
+        let is_numeric = !core.is_empty() && core.chars().all(|c| c.is_ascii_digit());
+        if core.is_empty() || is_numeric || STUTTER_ALLOWLIST.contains(&core.as_str()) {
             out.push(words[i]);
             i += 1;
             continue;
         }
         let mut j = i + 1;
-        while j < words.len() && word_core(words[j]) == core {
+        while j < words.len() && !ends_at_boundary(words[j - 1]) && word_core(words[j]) == core {
             j += 1;
         }
         out.push(words[j - 1]);
@@ -150,12 +202,15 @@ mod tests {
 
     #[test]
     fn removes_every_listed_hesitation_token_case_insensitively() {
+        // Title-case, not ALL-CAPS: an ALL-CAPS token is treated as an
+        // acronym and kept (see `keeps_all_caps_hesitation_shaped_tokens_as_acronyms`
+        // below) — this test is about case-insensitive matching, not that.
         for tok in [
             "um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm", "mm", "ah",
         ] {
-            let upper = tok.to_uppercase();
+            let title = format!("{}{}", tok[..1].to_uppercase(), &tok[1..]);
             assert_eq!(
-                strip_fillers(&format!("Okay {upper} let's go.")),
+                strip_fillers(&format!("Okay {title} let's go.")),
                 "Okay let's go.",
                 "token {tok} was not stripped"
             );
@@ -179,6 +234,34 @@ mod tests {
         assert_eq!(
             strip_fillers("Please err on the side of caution."),
             "Please err on the side of caution."
+        );
+    }
+
+    #[test]
+    fn never_strips_a_token_directly_following_a_number() {
+        assert_eq!(
+            strip_fillers("The board is 5 mm thick."),
+            "The board is 5 mm thick."
+        );
+    }
+
+    #[test]
+    fn keeps_all_caps_hesitation_shaped_tokens_as_acronyms() {
+        assert_eq!(
+            strip_fillers("Take them to the ER now."),
+            "Take them to the ER now."
+        );
+    }
+
+    #[test]
+    fn still_strips_title_case_hesitation_at_sentence_start() {
+        assert_eq!(
+            strip_fillers("Um, I think this works."),
+            "I think this works."
+        );
+        assert_eq!(
+            strip_fillers("Good point. Er, we should ship it."),
+            "Good point. We should ship it."
         );
     }
 
@@ -264,6 +347,45 @@ mod tests {
     #[test]
     fn stutter_collapse_is_case_insensitive() {
         assert_eq!(strip_fillers("the The dog barked."), "The dog barked.");
+    }
+
+    #[test]
+    fn does_not_collapse_a_repeat_across_a_sentence_boundary() {
+        assert_eq!(
+            strip_fillers("Wait. Wait, I got confused."),
+            "Wait. Wait, I got confused."
+        );
+    }
+
+    #[test]
+    fn does_not_collapse_a_repeat_across_a_comma() {
+        assert_eq!(
+            strip_fillers("Well, well, that's odd."),
+            "Well, well, that's odd."
+        );
+    }
+
+    #[test]
+    fn does_not_collapse_repeated_numbers() {
+        assert_eq!(
+            strip_fillers("The count is 5 5 by my reckoning."),
+            "The count is 5 5 by my reckoning."
+        );
+    }
+
+    #[test]
+    fn keeps_newly_allowlisted_legitimate_doubles() {
+        assert_eq!(strip_fillers("No, no, I'm fine."), "No, no, I'm fine.");
+        assert_eq!(
+            strip_fillers("That was very very good."),
+            "That was very very good."
+        );
+        assert_eq!(
+            strip_fillers("That was really really good."),
+            "That was really really good."
+        );
+        assert_eq!(strip_fillers("Bye bye for now."), "Bye bye for now.");
+        assert_eq!(strip_fillers("Ha ha, very funny."), "Ha ha, very funny.");
     }
 
     // ---- tidy-up ----
