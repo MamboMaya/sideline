@@ -410,23 +410,33 @@ so the auto-tagger never re-adds it that session, even though removal changes
 
 **Classifier** — when `classifier.provider` isn't `off` (Settings → Claude,
 see above), a second pass runs after the keyword auto-tagger, once per note
-per app run (same `note.raw`-keyed bookkeeping, its own `useRef` Set), and
-only for notes still missing a type tag (bug/todo/idea) and/or a project
-tag. `"claude"` sends one `send_to_claude` call per note (`models.triage`;
-a no-op if `claude` is off); `"local"` POSTs to `classifier.url`'s
-`/decide` (`classify_local`, docs/backend.md) and only accepts an answer at
-or above a 0.6 confidence — the claude provider has no confidence score, so
-any non-"none" answer is accepted. Either provider's tag is only added if
-the note doesn't already carry one of that kind and the user hasn't
-removed that exact tag this session (same `removedTagsRef` as the keyword
-auto-tagger); all classifier tag additions for a reload batch into one
-write. Runs with at most 2 notes in flight at once, never blocks the
-initial notes render, and fails quietly: a local classifier that's
-unreachable or errors shows one toast ("Classifier unreachable — using
-keyword tags only") for the whole app run, then classification is skipped
-silently from then on; a claude-provider error is always silent (already
-covered by Claude's existing triage-failure handling elsewhere). See
-`src/lib/classify.ts` for the pure decision logic and `src/hooks/
+timestamp per app run (`classifiedRef`, its own `useRef` Set — keyed by
+`note.timestamp`, not `note.raw`, so an edit or the classifier's own write
+never re-triggers it), for notes captured within the last 24 hours that are
+still missing a type tag (bug/todo/idea) and/or a project tag (the project
+question, and the "missing a project tag" eligibility check, are both
+skipped entirely when no projects are configured). `"claude"` sends one
+`send_to_claude` call per note (`models.triage`; a no-op if `claude` is
+off); `"local"` POSTs to `classifier.url`'s `/decide` (`classify_local`,
+docs/backend.md). Either provider's answer is only accepted if it's an
+exact (case-insensitive) match for one of the offered choices — for
+`"local"`, additionally at or above a 0.6 confidence; the claude provider
+has no confidence score, so any matching non-"none" answer is accepted.
+A matched tag is only added if the note doesn't already carry one of that
+kind, it isn't in `hiddenTags`, and the user hasn't removed ANY tag of that
+kind (type or project) from the note this session — removing one type tag
+blocks every future type addition to that note, and likewise for project
+tags (same `removedTagsRef` as the keyword auto-tagger, checked per
+category rather than per exact tag). Every eligible note is classified with
+at most 2 requests in flight at once (one limiter shared across every
+reload, not 2 per reload), and each note's tag is written back on its own
+as soon as its answer arrives, not batched until the whole pass finishes;
+never blocks the initial notes render. Fails quietly: a local classifier
+that's unreachable or errors shows one toast ("Classifier unreachable —
+using keyword tags only") for the whole app run, then keeps trying every
+new eligible note silently; a claude-provider error is always silent
+(already covered by Claude's existing triage-failure handling elsewhere).
+See `src/lib/classify.ts` for the pure decision logic and `src/hooks/
 useInbox.ts`'s `runClassifier` for the orchestration.
 
 `a` opens the tag editor in BOTH views (Todos: on the selected row of either

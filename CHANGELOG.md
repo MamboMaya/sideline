@@ -29,12 +29,13 @@ Notable, user-visible changes to Sideline. Format follows
   Works for in-app voice notes, typed notes, and Raycast captures alike.
   No new permissions — just the existing pill, tray title, and popover, no
   system notifications.
-- Auto-classify new notes with a type (bug/todo/idea) and project tag on top
-  of keyword auto-tagging: Settings → Claude → "Auto-classify new notes" —
-  Off (default), Claude (one triage-model call per note), or Local
-  classifier (a loopback-only HTTP call to a URL you configure, with a Test
-  button). A note's existing tags are never overridden, and a tag you
-  remove is never re-added that session.
+- Auto-classify new notes (captured within the last 24 hours) with a type
+  (bug/todo/idea) and project tag on top of keyword auto-tagging: Settings →
+  Claude → "Auto-classify new notes" — Off (default), Claude (one
+  triage-model call per note), or Local classifier (a loopback-only HTTP
+  call to a URL you configure, with a Test button). A note's existing tags
+  are never overridden, and a tag you remove is never re-added that
+  session.
 
 ### Fixed
 
