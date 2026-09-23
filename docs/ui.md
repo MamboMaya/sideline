@@ -152,9 +152,9 @@ SAVE MODEL: there is no Save button. Every control writes the full config
 file on change/commit — same read-modify-write path pinned-tag toggles and
 every other existing config write already use (`useConfig`'s `updateConfig`
 in `src/hooks/useConfig.ts`, feeding `writeConfig`). A pane write always
-round-trips the 10 opaque overrides (`prompts`, `models`, `projects`,
+round-trips the 12 opaque overrides (`prompts`, `models`, `projects`,
 `claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`,
-`staleDays`) it isn't touching, so a key the pane doesn't render — or an
+`terminal`, `staleDays`, `cleanFillers`) it isn't touching, so a key the pane doesn't render — or an
 unknown key hand-edited into one it does — survives untouched. Six sections,
 one scrollable pane:
 
@@ -229,6 +229,15 @@ one scrollable pane:
    record/dictate items always toggle either way. lib.rs's global-shortcut
    handler reads the key fresh on every keypress, so toggling it takes
    effect on the very next press, no restart (see
+   docs/data-model.md, docs/backend.md). Below that, a **Remove filler
+   words (um, uh, repeats)** on/off switch for `cleanFillers` (On is
+   default): On strips hesitation words, discourse fillers ("you know", "I
+   mean", "like", ...), and stutter repeats from in-app voice transcripts,
+   purely rule-based, no added latency (see `src-tauri/src/cleanup.rs`); Off
+   leaves the raw (dictionary-corrected) transcript untouched.
+   audio.rs reads the key fresh on every recording, so toggling it applies
+   to the next recording, no restart; `capture/voice-note.sh` (external
+   Raycast capture) is unaffected either way (see
    docs/data-model.md, docs/backend.md).
 3. **Claude** — an on/off switch for `claude` (default on; off is
    no-Claude mode, see the Triage section below), plus dropdowns for `models.triage`/`models.batch`/`models.ask`

@@ -226,6 +226,25 @@ fn configured_device_name() -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Reads `cleanFillers` from `~/notes/.sideline.json` — same
+/// failure-tolerant shape as `configured_device_name` above, but the
+/// opposite default: a missing file, a missing key, or a non-boolean value
+/// all mean the default (enabled), so `cleanFillers: false` is the only way
+/// to turn this off. See cleanup.rs.
+fn clean_fillers_enabled() -> bool {
+    let p = crate::paths::notes_dir().join(".sideline.json");
+    let Ok(raw) = std::fs::read_to_string(p) else {
+        return true;
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return true;
+    };
+    parsed
+        .get("cleanFillers")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
 /// Linear-interpolation resample to 16 kHz mono — whisper.cpp's required
 /// input rate. Good enough for speech; avoids pulling in a full resampling
 /// crate for what's a short voice note.
@@ -650,29 +669,42 @@ fn finish_recording(
     match crate::whisper::transcribe(&app, &pcm) {
         // `transcribe` already runs the Claude mis-hear correction pass for
         // every caller, so `text` here is corrected regardless of mode.
-        Ok(text) if !text.trim().is_empty() => match mode {
-            RecMode::Note => {
-                if let Err(e) = crate::commands::notes::append_inbox_text(&text) {
-                    return fail(&app, e);
+        // Filler-word cleanup (cleanup.rs) runs next, before the mode
+        // hand-off, so Note/Dictate/Ask all see the cleaned transcript —
+        // opt out via Settings → Voice, `.sideline.json`'s `cleanFillers`.
+        Ok(text) if !text.trim().is_empty() => {
+            let text = if clean_fillers_enabled() {
+                crate::cleanup::strip_fillers(&text)
+            } else {
+                text
+            };
+            if text.trim().is_empty() {
+                return fail(&app, "Transcription came back empty".to_string());
+            }
+            match mode {
+                RecMode::Note => {
+                    if let Err(e) = crate::commands::notes::append_inbox_text(&text) {
+                        return fail(&app, e);
+                    }
+                }
+                RecMode::Dictate => {
+                    // Copied: the transcript is on the clipboard — say so,
+                    // whether or not the auto-paste landed anywhere useful.
+                    // Failed: dictate.rs already emitted the `capture-error`.
+                    let notice = match crate::dictate::finish_dictation(&app, &text) {
+                        crate::dictate::DictationOutcome::Copied => RecState::Copied,
+                        crate::dictate::DictationOutcome::Failed => RecState::Failed,
+                    };
+                    return show_notice(&app, notice);
+                }
+                RecMode::Ask => {
+                    // The frontend owns everything from here (thread list,
+                    // `ask_claude` call); Tauri events aren't visibility-gated,
+                    // so this lands even if the popover was hidden meanwhile.
+                    let _ = app.emit("ask-transcript", text.trim().to_string());
                 }
             }
-            RecMode::Dictate => {
-                // Copied: the transcript is on the clipboard — say so,
-                // whether or not the auto-paste landed anywhere useful.
-                // Failed: dictate.rs already emitted the `capture-error`.
-                let notice = match crate::dictate::finish_dictation(&app, &text) {
-                    crate::dictate::DictationOutcome::Copied => RecState::Copied,
-                    crate::dictate::DictationOutcome::Failed => RecState::Failed,
-                };
-                return show_notice(&app, notice);
-            }
-            RecMode::Ask => {
-                // The frontend owns everything from here (thread list,
-                // `ask_claude` call); Tauri events aren't visibility-gated,
-                // so this lands even if the popover was hidden meanwhile.
-                let _ = app.emit("ask-transcript", text.trim().to_string());
-            }
-        },
+        }
         Ok(_) => return fail(&app, "Transcription came back empty".to_string()),
         Err(e) => return fail(&app, e),
     }

@@ -6,6 +6,7 @@ mod archive;
 mod audio;
 mod autostart;
 mod claude;
+mod cleanup;
 mod commands;
 mod dictate;
 mod hotkeys;

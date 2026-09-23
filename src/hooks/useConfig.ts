@@ -121,11 +121,21 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [staleDaysOverride, setStaleDaysOverride] = useState<
     number | undefined
   >(undefined);
+  // Filler-word cleanup switch: `.sideline.json`'s `cleanFillers` key, merged
+  // against the default of `true`. `false` leaves the raw whisper transcript
+  // untouched; read Rust-side fresh per recording (audio.rs) — see
+  // src-tauri/src/cleanup.rs and docs/data-model.md.
+  const [cleanFillers, setCleanFillers] = useState(true);
+  // Raw `cleanFillers` value as read from the file (undefined = key absent) —
+  // kept only so a pin/zoom/hide write doesn't clobber a hand-edited `false`.
+  const [cleanFillersOverride, setCleanFillersOverride] = useState<
+    boolean | undefined
+  >(undefined);
 
-  // The 11 opaque `.sideline.json` overrides, read from current state —
+  // The 12 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // overlay/pushToTalk/dictionary/terminal/staleDays value.
+  // overlay/pushToTalk/dictionary/terminal/staleDays/cleanFillers value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -138,6 +148,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     terminal: terminalOverride,
     dictionary: dictionaryOverride,
     staleDays: staleDaysOverride,
+    cleanFillers: cleanFillersOverride,
   });
 
   const persistZoom = (next: number) => {
@@ -174,6 +185,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     dictionary?: DictionaryConfig | undefined;
     terminal?: string | undefined;
     staleDays?: number | undefined;
+    cleanFillers?: boolean | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
     const nextHidden = patch.hiddenTags ?? hiddenTags;
@@ -199,6 +211,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "terminal" in patch ? patch.terminal : terminalOverride;
     const nextStaleDaysOverride =
       "staleDays" in patch ? patch.staleDays : staleDaysOverride;
+    const nextCleanFillersOverride =
+      "cleanFillers" in patch ? patch.cleanFillers : cleanFillersOverride;
 
     setPinnedTags(nextPinned);
     setHiddenTags(nextHidden);
@@ -220,6 +234,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setTerminalOverride(nextTerminalOverride);
     setStaleDaysOverride(nextStaleDaysOverride);
     setStaleDaysState(nextStaleDaysOverride ?? DEFAULT_STALE_DAYS);
+    setCleanFillersOverride(nextCleanFillersOverride);
+    setCleanFillers(nextCleanFillersOverride ?? true);
 
     await writeConfig({
       pinnedTags: nextPinned,
@@ -237,6 +253,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         terminal: nextTerminalOverride,
         dictionary: nextDictionaryOverride,
         staleDays: nextStaleDaysOverride,
+        cleanFillers: nextCleanFillersOverride,
       },
     });
   };
@@ -283,6 +300,14 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   // omit-at-default convention zoom/hiddenTags already follow.
   const setClaudeEnabled = (enabled: boolean) => {
     updateConfig({ claude: enabled ? undefined : false });
+  };
+
+  // The Voice section's "Remove filler words" toggle. Same omit-at-default
+  // convention as `setClaudeEnabled` above (default `true`): `enabled`
+  // clears the override entirely rather than writing an explicit
+  // `"cleanFillers": true`.
+  const setCleanFillersEnabled = (enabled: boolean) => {
+    updateConfig({ cleanFillers: enabled ? undefined : false });
   };
 
   // The Voice section's "Hold to record" toggle. `enabled` writes an
@@ -412,6 +437,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setTerminalOverride(config.terminalOverride);
     setStaleDaysState(config.staleDays);
     setStaleDaysOverride(config.staleDaysOverride);
+    setCleanFillers(config.cleanFillers);
+    setCleanFillersOverride(config.cleanFillersOverride);
   };
 
   const persistPinnedTags = async (next: string[]) => {
@@ -478,6 +505,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     hotkeysOverride,
     pushToTalk,
     staleDays,
+    cleanFillers,
     applyConfig,
     togglePin,
     hideTag,
@@ -496,6 +524,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     dictionaryOverride,
     terminalOverride,
     staleDaysOverride,
+    cleanFillersOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -506,6 +535,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setDictionary,
     setTerminal,
     setStaleDays,
+    setCleanFillersEnabled,
     addProject,
     removeProject,
     updateConfig,

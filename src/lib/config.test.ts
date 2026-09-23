@@ -44,6 +44,8 @@ const DEFAULTS: SidelineConfig = {
   terminalOverride: undefined,
   staleDays: DEFAULT_STALE_DAYS,
   staleDaysOverride: undefined,
+  cleanFillers: true,
+  cleanFillersOverride: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -89,6 +91,7 @@ describe("parseConfig — full valid config", () => {
       terminal: "iTerm",
       dictionary: { Tauri: ["towery"], Whisper: [] },
       staleDays: 5,
+      cleanFillers: false,
     });
     const cfg = parseConfig(raw);
     expect(cfg.pinnedTags).toEqual(["bug", "idea"]);
@@ -121,6 +124,8 @@ describe("parseConfig — full valid config", () => {
     expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
     expect(cfg.staleDays).toBe(5);
     expect(cfg.staleDaysOverride).toBe(5);
+    expect(cfg.cleanFillers).toBe(false);
+    expect(cfg.cleanFillersOverride).toBe(false);
   });
 });
 
@@ -220,6 +225,7 @@ describe("parseConfig — terminal", () => {
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
         staleDays: undefined,
+        cleanFillers: undefined,
       },
     });
     expect(Object.keys(JSON.parse(withTerminal))).toEqual([
@@ -245,6 +251,7 @@ describe("parseConfig — terminal", () => {
         terminal: undefined,
         dictionary: undefined,
         staleDays: undefined,
+        cleanFillers: undefined,
       },
     });
     expect(JSON.parse(absent)).not.toHaveProperty("terminal");
@@ -340,6 +347,7 @@ describe("parseConfig — dictionary", () => {
         terminal: undefined,
         dictionary: undefined,
         staleDays: undefined,
+        cleanFillers: undefined,
       },
     };
     expect(JSON.parse(serializeConfig(base))).toEqual({
@@ -547,6 +555,36 @@ describe("parseConfig — claude", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseConfig — cleanFillers (voice transcript filler-word cleanup)
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — cleanFillers", () => {
+  test("absent cleanFillers key defaults to true, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.cleanFillers).toBe(true);
+    expect(cfg.cleanFillersOverride).toBeUndefined();
+  });
+
+  test("cleanFillers: false is honored and recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ cleanFillers: false }));
+    expect(cfg.cleanFillers).toBe(false);
+    expect(cfg.cleanFillersOverride).toBe(false);
+  });
+
+  test("cleanFillers: true is honored explicitly and still recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ cleanFillers: true }));
+    expect(cfg.cleanFillers).toBe(true);
+    expect(cfg.cleanFillersOverride).toBe(true);
+  });
+
+  test("a non-boolean cleanFillers value is ignored (treated as absent, defaults to true)", () => {
+    const cfg = parseConfig(JSON.stringify({ cleanFillers: "false" }));
+    expect(cfg.cleanFillers).toBe(true);
+    expect(cfg.cleanFillersOverride).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // parseConfig — unknown keys preserved in the right override
 // ---------------------------------------------------------------------------
 
@@ -646,6 +684,7 @@ const noOverrides = {
   terminal: undefined,
   dictionary: undefined,
   staleDays: undefined,
+  cleanFillers: undefined,
 };
 
 describe("serializeConfig", () => {
@@ -696,7 +735,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -713,6 +752,7 @@ describe("serializeConfig", () => {
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
         staleDays: 5,
+        cleanFillers: false,
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -730,6 +770,7 @@ describe("serializeConfig", () => {
       "terminal",
       "dictionary",
       "staleDays",
+      "cleanFillers",
     ]);
   });
 
@@ -845,6 +886,36 @@ describe("serializeConfig", () => {
     expect(JSON.parse(out)).toHaveProperty("staleDays", 7);
   });
 
+  test("cleanFillers override is omitted when undefined (key absent, not forced to true)", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: noOverrides,
+    });
+    expect(JSON.parse(out)).not.toHaveProperty("cleanFillers");
+  });
+
+  test("cleanFillers: false round-trips as false, not omitted as falsy", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, cleanFillers: false },
+    });
+    expect(JSON.parse(out)).toHaveProperty("cleanFillers", false);
+  });
+
+  test("cleanFillers: true round-trips as true", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, cleanFillers: true },
+    });
+    expect(JSON.parse(out)).toHaveProperty("cleanFillers", true);
+  });
+
   test("is pretty-printed with a 2-space indent, matching the original writeConfigFile output", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
@@ -875,6 +946,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       pushToTalk: true,
       terminal: "iTerm",
       staleDays: 5,
+      cleanFillers: false,
     };
     const cfg = parseConfig(JSON.stringify(original));
     const rewritten = JSON.parse(
@@ -894,6 +966,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           terminal: cfg.terminalOverride,
           dictionary: undefined,
           staleDays: cfg.staleDaysOverride,
+          cleanFillers: cfg.cleanFillersOverride,
         },
       }),
     );
@@ -909,6 +982,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.pushToTalk).toBe(original.pushToTalk);
     expect(rewritten.terminal).toBe(original.terminal);
     expect(rewritten.staleDays).toBe(original.staleDays);
+    expect(rewritten.cleanFillers).toBe(original.cleanFillers);
   });
 });
 

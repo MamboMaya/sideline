@@ -13,6 +13,12 @@ Notable, user-visible changes to Sideline. Format follows
   its card, and the header shows an amber "N stale" count from any view —
   click it to jump to the Inbox. Both recompute on reload and at least
   hourly.
+- Filler-word cleanup for in-app voice transcripts: strips hesitation words
+  (um, uh, erm, ...), discourse fillers ("you know", "I mean", "like", ...),
+  and stutter repeats before a Note/Dictate/Ask recording is handed off.
+  Purely rule-based (no network call, no added latency). On by default;
+  toggle in Settings → Voice → "Remove filler words (um, uh, repeats)". The
+  external Raycast capture script is unaffected.
 
 ### Fixed
 

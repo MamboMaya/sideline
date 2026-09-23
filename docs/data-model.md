@@ -132,7 +132,18 @@
   its card and counts toward the header's "N stale" badge (Settings → Inbox
   — see docs/ui.md's Views & navigation and Settings sections,
   `src/lib/stale.ts`). Frontend-only — no Rust command reads or writes it;
-  recomputed on inbox reload and at least hourly, never from a file watch.
+  recomputed on inbox reload and at least hourly, never from a file watch. Also optional
+  `"cleanFillers": false` (default `true`) — filler-word cleanup for in-app
+  voice transcripts (Settings → Voice → "Remove filler words (um, uh,
+  repeats)"): strips hesitation words (um, uh, erm, hmm, ...), comma-delimited
+  discourse fillers ("you know", "I mean", "like", "sort of", "kind of"), and
+  immediate stutter repeats, purely rule-based (no network call, no LLM — see
+  `src-tauri/src/cleanup.rs`). Runs in `finish_recording` (audio.rs) after the
+  dictionary corrections above and before the Note/Dictate/Ask hand-off; read
+  Rust-side fresh on every recording, same as `dictionary`. Absent or a
+  non-boolean value both mean enabled — `false` is the only way to keep the
+  raw (dictionary-corrected) transcript. `capture/voice-note.sh` does NOT
+  read this key, so external Raycast captures are never cleaned up.
   Frontend-owned
   schema (the `audio` key is read/written Rust-side by audio.rs, `hotkeys`
   is read-only Rust-side at startup by lib.rs — the Settings pane's
@@ -140,8 +151,9 @@
   already-loaded config state, never re-reading the file itself; `overlay`
   is read-only Rust-side by window.rs, on every sync rather than once at
   startup; `pushToTalk` is read-only Rust-side by lib.rs's global-shortcut
-  handler, fresh on every keypress; `dictionary` is read-only Rust-side by
-  whisper.rs — everything
+  handler, fresh on every keypress; `dictionary` and `cleanFillers` are
+  read-only Rust-side by whisper.rs and audio.rs respectively, fresh on every
+  transcription/recording — everything
   else by src/App.tsx); the ONLY key a capture/ script reads is
   `dictionary` (voice-note.sh, read-only) — none writes the file.
 

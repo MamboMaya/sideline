@@ -30,6 +30,8 @@ export interface SettingsPaneProps {
   setOverlayHidden: (hidden: boolean) => void;
   pushToTalk: boolean;
   setPushToTalk: (enabled: boolean) => void;
+  cleanFillers: boolean;
+  setCleanFillersEnabled: (enabled: boolean) => void;
   dictionaryOverride: DictionaryConfig | undefined;
   setDictionary: (dict: DictionaryConfig | undefined) => void;
   // Claude
@@ -552,6 +554,8 @@ export function SettingsPane({
   setOverlayHidden,
   pushToTalk,
   setPushToTalk,
+  cleanFillers,
+  setCleanFillersEnabled,
   dictionaryOverride,
   setDictionary,
   claude,
@@ -812,6 +816,21 @@ export function SettingsPane({
           On: hold the record or dictate hotkey to record, release to
           transcribe. Off: press once to start, again to stop. The tray menu
           always toggles.
+        </div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="clean-fillers-toggle">
+            Remove filler words (um, uh, repeats)
+          </label>
+          <Switch
+            id="clean-fillers-toggle"
+            checked={cleanFillers}
+            onChange={setCleanFillersEnabled}
+          />
+        </div>
+        <div className="settings-hint">
+          Strips hesitation words, discourse fillers, and stutter repeats from
+          in-app transcripts before they're handed off. Applies to the next
+          recording; the external Raycast capture script is unaffected.
         </div>
       </section>
 

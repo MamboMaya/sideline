@@ -233,6 +233,14 @@ export interface HotkeysConfig {
 // below.
 export type DictionaryConfig = Record<string, string[]>;
 
+// `.sideline.json`'s top-level `cleanFillers` boolean — Settings → Voice →
+// "Remove filler words (um, uh, repeats)". Default `true`: audio.rs strips
+// hesitation words, discourse fillers, and stutter repeats from every
+// in-app transcript (see src-tauri/src/cleanup.rs) before the Note/Dictate/
+// Ask hand-off. Read Rust-side fresh on every recording, same
+// failure-tolerant shape as `audio`; `capture/voice-note.sh` does NOT read
+// this key, so external Raycast captures are never cleaned up.
+
 // One Settings-pane dictionary row: the term plus its mis-hearings as the
 // comma-separated text the row's second input holds.
 export interface DictionaryRow {
@@ -304,7 +312,7 @@ export function addToDictionary(
 }
 
 // Everything loadConfig produces from `.sideline.json` — one field per
-// App.tsx config state slice, including the 10 opaque per-key overrides
+// App.tsx config state slice, including the 12 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
 // audioOverride, hotkeysOverride, overlayOverride, pushToTalkOverride,
 // dictionaryOverride, terminalOverride) kept around purely so a pin/zoom/hide
@@ -350,6 +358,15 @@ export interface SidelineConfig {
   // is absent) — kept only so a pin/zoom/hide write doesn't clobber a
   // hand-edited value, same as `claudeOverride`.
   staleDaysOverride: number | undefined;
+  // Resolved filler-word cleanup switch: `.sideline.json`'s `cleanFillers`
+  // key, merged against the default of `true` (absent/invalid = cleanup
+  // enabled). `false` leaves the raw whisper transcript untouched — see
+  // src-tauri/src/cleanup.rs and docs/data-model.md.
+  cleanFillers: boolean;
+  // Raw `cleanFillers` value as it appeared in the file (undefined when the
+  // key is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited `false` back to the default `true`, same as `claudeOverride`.
+  cleanFillersOverride: boolean | undefined;
 }
 
 const EMPTY_CONFIG: SidelineConfig = {
@@ -373,6 +390,8 @@ const EMPTY_CONFIG: SidelineConfig = {
   terminalOverride: undefined,
   staleDays: DEFAULT_STALE_DAYS,
   staleDaysOverride: undefined,
+  cleanFillers: true,
+  cleanFillersOverride: undefined,
 };
 
 // Validates a raw `dictionary` value into DictionaryConfig: an object whose
@@ -465,6 +484,10 @@ export function parseConfig(raw: string): SidelineConfig {
       parsed.staleDays >= 0
         ? parsed.staleDays
         : undefined;
+    const cleanFillersOverride =
+      typeof parsed?.cleanFillers === "boolean"
+        ? parsed.cleanFillers
+        : undefined;
     return {
       pinnedTags: sanitized.slice(0, 6),
       hiddenTags: hidden,
@@ -486,6 +509,8 @@ export function parseConfig(raw: string): SidelineConfig {
       zoom,
       staleDays: staleDaysOverride ?? DEFAULT_STALE_DAYS,
       staleDaysOverride,
+      cleanFillers: cleanFillersOverride ?? true,
+      cleanFillersOverride,
     };
   } catch {
     return EMPTY_CONFIG;
@@ -506,7 +531,7 @@ export async function loadConfig(): Promise<SidelineConfig> {
   }
 }
 
-// The 10 opaque per-key overrides from `.sideline.json` — round-tripped
+// The 12 opaque per-key overrides from `.sideline.json` — round-tripped
 // verbatim (whatever the user hand-edited, including unknown keys within
 // each) so a pin/zoom/hide write never clobbers a value it didn't touch.
 export interface ConfigOverrides {
@@ -532,6 +557,10 @@ export interface ConfigOverrides {
   // Unlike `pushToTalk`, `0` IS a meaningful value here (feature off), so
   // serializeConfig checks `!== undefined`, same as `claude`.
   staleDays: number | undefined;
+  // Raw `cleanFillers` boolean as read from the file — `undefined` means the
+  // key is absent (so it stays omitted on write, not forced to `true`),
+  // same convention as `claude` above.
+  cleanFillers: boolean | undefined;
 }
 
 export interface ConfigWrite {
@@ -544,7 +573,8 @@ export interface ConfigWrite {
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
 // projects?, claude?, zoom?, audio?, hotkeys?, overlay?, pushToTalk?,
-// terminal?, dictionary?, staleDays? (omitted when falsy/empty/default) —
+// terminal?, dictionary?, staleDays?, cleanFillers? (omitted when
+// falsy/empty/default) —
 // .sideline.json is read by capture/ tooling too, so this order is contract
 // (see docs/data-model.md). Object spread preserves insertion order for
 // these string keys, so the order below is exactly the emitted order.
@@ -578,6 +608,11 @@ export function serializeConfig(cfg: ConfigWrite): string {
       // is meaningful, so this checks `!== undefined` rather than truthiness.
       ...(cfg.overrides.staleDays !== undefined
         ? { staleDays: cfg.overrides.staleDays }
+        : {}),
+      // Boolean override — like `claude` above (default `true`), so this
+      // checks `!== undefined` rather than truthiness.
+      ...(cfg.overrides.cleanFillers !== undefined
+        ? { cleanFillers: cfg.overrides.cleanFillers }
         : {}),
     },
     null,

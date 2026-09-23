@@ -12,9 +12,9 @@ watcher), and `autostart.rs` (one-time launch-at-login consent: a native
 dialog on first run — "Launch at Login" enables, "Not Now" disables, either
 answer writes an `autostart-prompted` sentinel to Application Support so the
 question never returns, and System Settings > Login Items is authoritative
-from then on) — plus `audio.rs`, `whisper.rs`, and `dictate.rs` for in-app
-voice recording (note capture and dictation-to-clipboard), documented
-separately below.
+from then on) — plus `audio.rs`, `whisper.rs`, `cleanup.rs` (rule-based
+filler-word stripping), and `dictate.rs` for in-app voice recording (note
+capture and dictation-to-clipboard), documented separately below.
 
 Quit path: the run-loop callback in lib.rs handles `RunEvent::Exit` with
 `libc::_exit(0)`, skipping C-runtime exit finalizers — ggml (whisper's Metal
@@ -339,10 +339,29 @@ regexes as capture/voice-note.sh's perl pass (`clod`/`claw(ed)`/`clawd`/
 (`build_corrections`: per term, one `(?i)\b(?:…)\b` alternation of its
 regex-escaped mis-hearings, interior whitespace → `\s+`; a term with no
 mis-hearings only biases the prompt) before `whisper::transcribe` returns —
-this runs for BOTH modes, so `audio::finish_recording` branches
-purely on destination: `RecMode::Note` appends via `append_inbox_text` as
-before; `RecMode::Dictate` hands the corrected text to
-`dictate::finish_dictation` and never touches inbox.md.
+this runs for BOTH modes.
+
+Filler-word cleanup (`cleanup.rs`'s `strip_fillers`): the next step in
+`audio::finish_recording`, after `whisper::transcribe` returns and before the
+mode hand-off, gated by `.sideline.json`'s `cleanFillers` key (default
+`true`, read fresh per recording by `clean_fillers_enabled()` — same
+failure-tolerant shape as `configured_device_name`, opposite default). Purely
+rule-based (regex + word-level passes, no network call, no LLM, so no added
+latency): removes standalone hesitation tokens (um, uh, erm, hmm, ...,
+whole-word only — never touches "umbrella"), comma-delimited or
+sentence-initial discourse fillers ("you know", "I mean", "like", "sort of",
+"kind of" — never a bare mid-sentence "like"), and collapses immediate
+stutter repeats ("I I think" → "I think"), then tidies up leftover
+punctuation and re-capitalizes. If cleanup empties the transcript, that's
+treated the same as an empty whisper result — the existing "Transcription
+came back empty" `capture-error`. Disabled via Settings → Voice → "Remove
+filler words (um, uh, repeats)". `capture/voice-note.sh` (external Raycast
+capture) does NOT call this — untouched.
+
+`audio::finish_recording` then branches purely on destination:
+`RecMode::Note` appends via `append_inbox_text` as before; `RecMode::Dictate`
+hands the cleaned text to `dictate::finish_dictation` and never touches
+inbox.md; `RecMode::Ask` emits it as `ask-transcript`.
 
 Dictation mode (`dictate.rs`): the clipboard write happens first and
 unconditionally (`app.clipboard().write_text(...)` via the

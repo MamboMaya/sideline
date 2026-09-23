@@ -98,6 +98,7 @@ export default function App() {
     audioOverride,
     overlayOverride,
     pushToTalk,
+    cleanFillers,
     dictionaryOverride,
     terminalOverride,
     staleDays,
@@ -108,6 +109,7 @@ export default function App() {
     setAudioDevice,
     setOverlayHidden,
     setPushToTalk,
+    setCleanFillersEnabled,
     setDictionary,
     setTerminal,
     setStaleDays,
@@ -607,6 +609,8 @@ export default function App() {
           setOverlayHidden={setOverlayHidden}
           pushToTalk={pushToTalk}
           setPushToTalk={setPushToTalk}
+          cleanFillers={cleanFillers}
+          setCleanFillersEnabled={setCleanFillersEnabled}
           dictionaryOverride={dictionaryOverride}
           setDictionary={setDictionary}
           claude={claude}
