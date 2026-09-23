@@ -7,7 +7,8 @@ delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`)
 commands below, grouped by concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning + the recording-pill overlay window),
 `hotkeys.rs` (config + registration), `reminders.rs` (reminder storage,
-background ticker, firing),
+background ticker, firing), `classifier.rs` (the optional local
+auto-classifier's HTTP call + host/scheme validation — see below),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
 watcher), and `autostart.rs` (one-time launch-at-login consent: a native
 dialog on first run — "Launch at Login" enables, "Not Now" disables, either
@@ -277,6 +278,18 @@ equivalence checks in Header.tsx/AskView.tsx/Overlay.tsx), held for
 counter guard (`Inner::notice_gen`) as the other notices, so a newer state
 change (a fresh recording, or a second reminder firing) isn't clobbered by
 an older notice's stale hide timer.
+- `classify_local` (`classifier.rs`; `url` + `payload` args — POSTs `payload`
+  as JSON to `<url>/decide` with a 5s timeout via `reqwest::blocking`, and
+  returns the parsed JSON response; the frontend's `src/lib/classify.ts`
+  builds `payload` and parses the response) and `classifier_health` (same
+  file; `url` arg — `GET <url>/healthz`, used by the Settings pane's
+  "Local classifier" Test button). Both call `validate_url` first and
+  reject any URL whose scheme isn't `http`/`https` or whose host isn't
+  `127.0.0.1`/`localhost`/`::1` (bracketed IPv6 handled defensively) — the
+  real enforcement of the classifier's loopback-only contract; the
+  frontend's own `validateClassifierUrl` (src/lib/classify.ts) applies the
+  same rule only as an earlier, non-authoritative check so a bad Settings
+  URL toasts immediately instead of only failing at the next classify call.
 
 `append_inbox_text` (`commands/notes.rs`) is an O_APPEND write of one
 voice-note block — not an IPC command, just a plain fn the native recording

@@ -163,8 +163,23 @@
   Rust-side fresh on every recording, same as `dictionary`. Absent or a
   non-boolean value both mean enabled — `false` is the only way to keep the
   raw (dictionary-corrected) transcript. `capture/voice-note.sh` does NOT
-  read this key, so external Raycast captures are never cleaned up.
-  Frontend-owned
+  read this key, so external Raycast captures are never cleaned up. Also optional
+  `"classifier": { "provider": "off"|"claude"|"local", "url":
+"http://127.0.0.1:4410" }` (default `provider: "off"`, `url:
+"http://127.0.0.1:4410"`; missing or invalid = off = today's keyword-only
+  auto-tagging, unchanged) — auto-tags inbox notes with a type
+  (bug/todo/idea) and, if any projects are configured, a project, on top of
+  the existing keyword auto-tagger (src/lib/autotag.ts): `"claude"` sends
+  one `send_to_claude` call per note (`models.triage`, respects `"claude":
+false`); `"local"` POSTs to `<url>/decide` on a local classifier (a
+  loopback-only HTTP decision service — see `classify_local` in
+  docs/backend.md) and only accepts an answer at/above a confidence
+  threshold. Either way, a tag is only added if the note doesn't already
+  carry one of that kind, and a tag the user removed this session is never
+  re-added (src/lib/classify.ts). `url` must be `http`/`https` and resolve to
+  127.0.0.1/localhost/::1 — enforced both in the Settings pane and by
+  `classify_local`/`classifier_health` Rust-side, so a note's text never
+  leaves the machine. Frontend-owned
   schema (the `audio` key is read/written Rust-side by audio.rs, `hotkeys`
   is read-only Rust-side at startup by lib.rs — the Settings pane's
   live-apply path is the one exception, reading it only via the frontend's

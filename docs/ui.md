@@ -212,11 +212,11 @@ SAVE MODEL: there is no Save button. Every control writes the full config
 file on change/commit — same read-modify-write path pinned-tag toggles and
 every other existing config write already use (`useConfig`'s `updateConfig`
 in `src/hooks/useConfig.ts`, feeding `writeConfig`). A pane write always
-round-trips the 12 opaque overrides (`prompts`, `models`, `projects`,
+round-trips the 13 opaque overrides (`prompts`, `models`, `projects`,
 `claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`,
-`terminal`, `staleDays`, `cleanFillers`) it isn't touching, so a key the pane doesn't render — or an
-unknown key hand-edited into one it does — survives untouched. Six sections,
-one scrollable pane:
+`terminal`, `staleDays`, `cleanFillers`, `classifier`) it isn't touching, so
+a key the pane doesn't render — or an unknown key hand-edited into one it
+does — survives untouched. Six sections, one scrollable pane:
 
 1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
    `record`/`dictate`/`ask` (`HotkeyCaptureField` in
@@ -318,6 +318,15 @@ one scrollable pane:
    in a model dropdown — removes that key from the override entirely so
    the built-in default applies again — the one write path in the app that
    can put a key back to "unset" rather than just changing its value.
+   Below the prompts, an **Auto-classify new notes** dropdown for
+   `classifier.provider` (Off/Claude/Local classifier; default Off — see
+   the Tags section's Classifier paragraph below for what each does).
+   Choosing "Local classifier" reveals a `classifier.url` text field
+   (default `http://127.0.0.1:4410`, committed on blur/Enter after the same
+   loopback-only http/https validation the Rust side enforces — an invalid
+   URL shows an inline error and is not written) and a **Test** button that
+   calls `classifier_health` (`GET <url>/healthz`) and toasts reachable/
+   unreachable.
 4. **Tags** — three chip lists, each with a trailing add-input: pinned tags
    (max 6, same `togglePin` used everywhere a pinned-tag chip is clicked),
    hidden tags (excluded from autocomplete — adding here is `hideTag`,
@@ -398,6 +407,27 @@ note per app run (tracked by `note.raw` in a `useRef` Set) — and a tag the
 user manually removes is remembered (`removedTagsRef`, keyed timestamp::tag)
 so the auto-tagger never re-adds it that session, even though removal changes
 `note.raw`.
+
+**Classifier** — when `classifier.provider` isn't `off` (Settings → Claude,
+see above), a second pass runs after the keyword auto-tagger, once per note
+per app run (same `note.raw`-keyed bookkeeping, its own `useRef` Set), and
+only for notes still missing a type tag (bug/todo/idea) and/or a project
+tag. `"claude"` sends one `send_to_claude` call per note (`models.triage`;
+a no-op if `claude` is off); `"local"` POSTs to `classifier.url`'s
+`/decide` (`classify_local`, docs/backend.md) and only accepts an answer at
+or above a 0.6 confidence — the claude provider has no confidence score, so
+any non-"none" answer is accepted. Either provider's tag is only added if
+the note doesn't already carry one of that kind and the user hasn't
+removed that exact tag this session (same `removedTagsRef` as the keyword
+auto-tagger); all classifier tag additions for a reload batch into one
+write. Runs with at most 2 notes in flight at once, never blocks the
+initial notes render, and fails quietly: a local classifier that's
+unreachable or errors shows one toast ("Classifier unreachable — using
+keyword tags only") for the whole app run, then classification is skipped
+silently from then on; a claude-provider error is always silent (already
+covered by Claude's existing triage-failure handling elsewhere). See
+`src/lib/classify.ts` for the pure decision logic and `src/hooks/
+useInbox.ts`'s `runClassifier` for the orchestration.
 
 `a` opens the tag editor in BOTH views (Todos: on the selected row of either
 kind; chips on Todos cards are click-to-remove) — the shared autocomplete

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import {
+  type ClassifierConfig,
   type DictionaryConfig,
   type DictionaryRow,
   type HotkeysConfig,
@@ -10,7 +11,13 @@ import {
   dictionaryFromRows,
   dictionaryRows,
 } from "../lib/config";
-import { applyHotkeys, listAudioDevices, listTerminals } from "../lib/commands";
+import {
+  applyHotkeys,
+  classifierHealth,
+  listAudioDevices,
+  listTerminals,
+} from "../lib/commands";
+import { validateClassifierUrl } from "../lib/classify";
 import {
   HOTKEY_MOD_SYMBOLS,
   comboFromKeyEvent,
@@ -39,6 +46,12 @@ export interface SettingsPaneProps {
   setClaudeEnabled: (enabled: boolean) => void;
   modelsOverride: Partial<Models> | undefined;
   setModelOverride: (key: keyof Models, value: string) => void;
+  // Auto-classify: "off" leaves today's keyword-only auto-tagging alone —
+  // see src/lib/classify.ts.
+  classifier: ClassifierConfig;
+  classifierOverride: Partial<ClassifierConfig> | undefined;
+  setClassifierProvider: (provider: ClassifierConfig["provider"]) => void;
+  setClassifierUrl: (url: string) => void;
   // "Continue in" dropdown (Ask's `o` — see useAsk.ts's continueThread):
   // the app name `.sideline.json`'s `terminal` key holds, undefined = auto.
   terminalOverride: string | undefined;
@@ -562,6 +575,10 @@ export function SettingsPane({
   setClaudeEnabled,
   modelsOverride,
   setModelOverride,
+  classifier,
+  classifierOverride,
+  setClassifierProvider,
+  setClassifierUrl,
   terminalOverride,
   setTerminal,
   prompts,
@@ -622,6 +639,42 @@ export function SettingsPane({
       setStaleDays(parsed);
     } else {
       setStaleDaysDraft(String(staleDays));
+    }
+  };
+
+  // Classifier URL: same commit-on-blur/Enter draft shape as promptDraft
+  // above, but validated on commit with validateClassifierUrl (the same
+  // loopback-only rule classifier.rs's validate_url enforces server-side) —
+  // an invalid URL toasts the reason and is not written to the file.
+  const [classifierUrlDraft, setClassifierUrlDraft] = useState(
+    classifierOverride?.url ?? classifier.url,
+  );
+  const [classifierUrlError, setClassifierUrlError] = useState<string | null>(
+    null,
+  );
+  const [classifierTesting, setClassifierTesting] = useState(false);
+
+  const commitClassifierUrl = () => {
+    const trimmed = classifierUrlDraft.trim();
+    const err = validateClassifierUrl(trimmed);
+    setClassifierUrlError(err);
+    if (err) return;
+    setClassifierUrl(trimmed);
+  };
+
+  const testClassifier = async () => {
+    const trimmed = classifierUrlDraft.trim();
+    const err = validateClassifierUrl(trimmed);
+    setClassifierUrlError(err);
+    if (err) return;
+    setClassifierTesting(true);
+    try {
+      await classifierHealth(trimmed);
+      showToast("Classifier reachable");
+    } catch (e) {
+      showToast(`Classifier unreachable: ${e}`);
+    } finally {
+      setClassifierTesting(false);
     }
   };
 
@@ -933,6 +986,58 @@ export function SettingsPane({
             />
           </div>
         ))}
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="classifier-provider">
+            Auto-classify new notes
+          </label>
+          <select
+            id="classifier-provider"
+            className="settings-input"
+            value={classifier.provider}
+            onChange={(e) =>
+              setClassifierProvider(
+                e.target.value as ClassifierConfig["provider"],
+              )
+            }
+          >
+            <option value="off">Off</option>
+            <option value="claude">Claude</option>
+            <option value="local">Local classifier</option>
+          </select>
+        </div>
+        {classifier.provider === "local" && (
+          <div className="settings-row">
+            <label className="settings-label" htmlFor="classifier-url">
+              Classifier URL
+            </label>
+            <input
+              id="classifier-url"
+              type="text"
+              className="settings-input"
+              value={classifierUrlDraft}
+              onChange={(e) => setClassifierUrlDraft(e.target.value)}
+              onBlur={commitClassifierUrl}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") e.currentTarget.blur();
+              }}
+            />
+            <button
+              type="button"
+              className="ghost"
+              onClick={testClassifier}
+              disabled={classifierTesting}
+            >
+              {classifierTesting ? "Testing…" : "Test"}
+            </button>
+          </div>
+        )}
+        {classifierUrlError && (
+          <div className="settings-row">
+            <span className="settings-label" />
+            <span className="settings-error">{classifierUrlError}</span>
+          </div>
+        )}
         <div className="settings-hint">
           Model changes apply immediately. Prompts save when you click away from
           the field; blank restores the built-in default.

@@ -110,6 +110,8 @@ export default function App() {
     dictionaryOverride,
     terminalOverride,
     staleDays,
+    classifier,
+    classifierOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -121,6 +123,8 @@ export default function App() {
     setDictionary,
     setTerminal,
     setStaleDays,
+    setClassifierProvider,
+    setClassifierUrl,
     addProject,
     removeProject,
     updateConfig,
@@ -631,6 +635,10 @@ export default function App() {
           setClaudeEnabled={setClaudeEnabled}
           modelsOverride={modelsOverride}
           setModelOverride={setModelOverride}
+          classifier={classifier}
+          classifierOverride={classifierOverride}
+          setClassifierProvider={setClassifierProvider}
+          setClassifierUrl={setClassifierUrl}
           terminalOverride={terminalOverride}
           setTerminal={setTerminal}
           prompts={prompts}
