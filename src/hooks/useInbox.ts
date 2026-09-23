@@ -4,11 +4,13 @@ import { type Note, parseInbox, serializeInbox } from "../inbox";
 import { autoTag } from "../lib/autotag";
 import {
   type ClassifyPick,
-  applyClassifierPicks,
+  Limiter,
+  applyClassifierPicksToFreshNotes,
   buildClassifyRequest,
   buildClaudePrompt,
   parseClaudeReply,
   parseLocalResponse,
+  runClassifyBatch,
   selectForClassification,
 } from "../lib/classify";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
@@ -25,6 +27,13 @@ import {
 } from "../lib/commands";
 import { insertNoteAt } from "../lib/undo";
 import { loadConfig, type SidelineConfig } from "../lib/config";
+
+// Module-level (not per-hook-instance, though there's only ever one
+// useInbox call site) so that two overlapping runClassifier calls — e.g.
+// two `inbox-changed` events firing in quick succession, each starting its
+// own reload()/runClassifier() — still share one cap of 2 concurrent
+// classify calls total, rather than 2 each.
+const classifierLimiter = new Limiter(2);
 
 export interface UseInboxParams {
   // Current config state App.tsx owns — read here only for the `knownTags`
@@ -114,11 +123,11 @@ export function useInbox({
   // which is fine — the note it belonged to hasn't changed, so there is
   // nothing to remove.
   const remindersRegisteredRef = useRef<Map<string, boolean>>(new Map());
-  // Notes already scanned for classification this app run, same raw-keyed,
-  // reset-on-restart contract as autoTaggedRef — kept separate so a note
-  // that the keyword auto-tagger already fully tagged (and therefore isn't
-  // eligible for classification at all, see classify.ts's
-  // eligibleForClassification) is still recorded as scanned exactly once.
+  // Notes already scanned for classification this app run, keyed by
+  // note.timestamp (NOT raw, unlike autoTaggedRef) — a note's raw changes on
+  // every tag edit and on the classifier's own write, and re-scanning either
+  // would break the "classified at most once per session" contract; the
+  // timestamp is stable across both. Reset only on app restart.
   const classifiedRef = useRef<Set<string>>(new Set());
   // True once the local-classifier-unreachable toast has fired this app
   // run — see runClassifier below: one toast per app run, not one per note.
@@ -136,16 +145,58 @@ export function useInbox({
     }
   };
 
+  // Persists one note's classifier pick: freshly reads inbox.md (never the
+  // component's own notes state, which can be stale relative to disk by the
+  // time a classify network call resolves), matches the pick against that
+  // fresh read by timestamp+body (see applyClassifierPicksToFreshNotes), and
+  // writes back only if that produced a change. Resolves normally (never
+  // rejects) on every outcome including an INBOX_CONFLICT — a conflict here
+  // means something else wrote to inbox.md between this read and this
+  // write, so the write is silently dropped (no toast: this is a background
+  // pass, not a user action to redo) rather than risk clobbering that other
+  // change; other errors are logged, not thrown, so a run of concurrent
+  // per-note write-backs can never produce an unhandled rejection.
+  const writeBackClassifierPick = async (
+    note: Note,
+    pick: ClassifyPick,
+    config: SidelineConfig,
+  ): Promise<void> => {
+    try {
+      const [text, version] = await readInbox();
+      const { preamble: freshPreamble, notes: freshNotes } = parseInbox(text);
+      const { changed, nextNotes } = applyClassifierPicksToFreshNotes(
+        freshNotes,
+        [{ timestamp: note.timestamp, body: note.body, pick }],
+        {
+          removedTags: removedTagsRef.current,
+          projectTags: config.projectTags,
+          hiddenTags: new Set(config.hiddenTags),
+        },
+      );
+      if (!changed) return;
+      versionRef.current = await writeInbox(
+        serializeInbox(freshPreamble, nextNotes),
+        version,
+      );
+      setPreamble(freshPreamble);
+      setNotes(nextNotes);
+    } catch (e) {
+      if (String(e).includes(INBOX_CONFLICT)) return;
+      console.error("classifier write-back failed:", e);
+    }
+  };
+
   // Classifier pass: kicked off (not awaited) by reload() below, after
   // notes/preamble already went into state, so a slow or unreachable
-  // classifier never delays the notes list from showing. Limited to 2
-  // concurrent calls; every eligible note is marked processed regardless of
-  // outcome (see selectForClassification) so a persistently unreachable
-  // local classifier is tried once per note per app run, not retried every
-  // reload. Applies against `notesRef.current` (not the `currentNotes`
-  // snapshot passed in) and writes through `persist`, so it batches
-  // cleanly with anything else that changed notes while the calls were in
-  // flight, in one write.
+  // classifier never delays the notes list from showing. Every eligible
+  // note is marked processed regardless of outcome (see
+  // selectForClassification) so a persistently unreachable local classifier
+  // is tried once per note per app run, not retried every reload. Each
+  // note's result is written back as soon as it's ready
+  // (writeBackClassifierPick above), not batched into one write after the
+  // whole pass — see runClassifyBatch. Concurrency is capped by the
+  // module-level classifierLimiter, shared across every runClassifier call
+  // this session, not just this one.
   const runClassifier = async (
     currentNotes: Note[],
     config: SidelineConfig,
@@ -159,49 +210,41 @@ export function useInbox({
     const { eligible, processedKeys } = selectForClassification(currentNotes, {
       alreadyProcessed: classifiedRef.current,
       projectTags: config.projectTags,
+      now: new Date(),
     });
     for (const key of processedKeys) classifiedRef.current.add(key);
     if (eligible.length === 0) return;
 
-    const picks = new Map<string, ClassifyPick>();
     let localUnreachable = false;
-    const queue = [...eligible];
-    const worker = async () => {
-      while (queue.length > 0) {
-        const note = queue.shift();
-        if (!note) return;
-        try {
-          if (provider === "local") {
-            const payload = buildClassifyRequest(note, config.projectTags);
-            const resp = await classifyLocal(config.classifier.url, payload);
-            picks.set(note.raw, parseLocalResponse(resp));
-          } else {
+    await runClassifyBatch(
+      eligible,
+      {
+        classify: async (note) => {
+          try {
+            if (provider === "local") {
+              const payload = buildClassifyRequest(note, config.projectTags);
+              const resp = await classifyLocal(config.classifier.url, payload);
+              return parseLocalResponse(resp, config.projectTags);
+            }
             const prompt = buildClaudePrompt(note, config.projectTags);
             const reply = await sendToClaude(prompt, config.models.triage);
-            picks.set(note.raw, parseClaudeReply(reply, config.projectTags));
+            return parseClaudeReply(reply, config.projectTags);
+          } catch (e) {
+            // claude errors are silent per-note; a local error also stays
+            // silent per-note, but flags the one-time toast below.
+            if (provider === "local") localUnreachable = true;
+            throw e;
           }
-        } catch {
-          // claude errors are silent per-note; a local error also stays
-          // silent per-note, but flags the one-time toast below.
-          if (provider === "local") localUnreachable = true;
-        }
-      }
-    };
-    // ≤2 in flight at once.
-    await Promise.all([worker(), worker()]);
+        },
+        writeBack: (note, pick) => writeBackClassifierPick(note, pick, config),
+      },
+      classifierLimiter,
+    );
 
     if (localUnreachable && !classifierToastedRef.current) {
       classifierToastedRef.current = true;
       showToastRef.current("Classifier unreachable — using keyword tags only");
     }
-
-    if (picks.size === 0) return;
-    const { changed, nextNotes } = applyClassifierPicks(
-      notesRef.current,
-      picks,
-      { removedTags: removedTagsRef.current, projectTags: config.projectTags },
-    );
-    if (changed) persist(nextNotes);
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data

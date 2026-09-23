@@ -11,9 +11,15 @@
 //! response bodies are built/parsed by hand with `serde_json` instead of the
 //! `.json()` convenience methods, to avoid adding a dependency for this.
 
+use std::io::Read;
 use std::time::Duration;
 
 use reqwest::Url;
+
+/// Response bodies larger than this are rejected before parsing — a
+/// malicious/misbehaving classifier can't make this call allocate an
+/// unbounded amount of memory.
+const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
 /// Parses `url` and rejects anything that isn't a plain http/https request
 /// to a loopback host (127.0.0.1, localhost, or the IPv6 loopback `::1`,
@@ -46,8 +52,26 @@ fn client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(5))
         .connect_timeout(Duration::from_secs(5))
+        // The URL is already confirmed loopback-only by validate_url — a
+        // redirect or a proxy are the two ways a request could still end up
+        // leaving the machine, so both are disabled outright.
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
         .build()
         .map_err(|e| e.to_string())
+}
+
+/// Reads `resp`'s body, rejecting anything over `MAX_RESPONSE_BYTES` instead
+/// of buffering an unbounded amount of memory.
+fn read_capped_body(resp: reqwest::blocking::Response) -> Result<String, String> {
+    let mut buf = Vec::new();
+    resp.take(MAX_RESPONSE_BYTES as u64 + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
+    if buf.len() > MAX_RESPONSE_BYTES {
+        return Err("classifier response too large".to_string());
+    }
+    String::from_utf8(buf).map_err(|e| e.to_string())
 }
 
 /// Posts `payload` as JSON to `<url>/decide` and returns the parsed JSON
@@ -75,7 +99,7 @@ pub(crate) async fn classify_local(
         if !resp.status().is_success() {
             return Err(format!("classifier returned HTTP {}", resp.status()));
         }
-        let text = resp.text().map_err(|e| e.to_string())?;
+        let text = read_capped_body(resp)?;
         serde_json::from_str(&text).map_err(|e| format!("bad classifier response: {e}"))
     })
     .await
@@ -107,7 +131,49 @@ pub(crate) async fn classifier_health(url: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_url;
+    use super::{read_capped_body, validate_url, MAX_RESPONSE_BYTES};
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    /// Spawns a one-shot HTTP server on an ephemeral loopback port that
+    /// replies with a body of exactly `body_len` `b'x'` bytes, then returns
+    /// that port. Used to exercise `read_capped_body` against a real
+    /// `reqwest::blocking::Response` rather than a hand-built one (the type
+    /// has no public constructor).
+    fn serve_body_of_len(body_len: usize) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut discard = [0u8; 1024];
+                let _ = std::io::Read::read(&mut stream, &mut discard);
+                let body = vec![b'x'; body_len];
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(&body);
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn read_capped_body_accepts_a_body_at_the_cap() {
+        let port = serve_body_of_len(MAX_RESPONSE_BYTES);
+        let resp = reqwest::blocking::get(format!("http://127.0.0.1:{port}")).expect("request");
+        let text = read_capped_body(resp).expect("body within cap should be accepted");
+        assert_eq!(text.len(), MAX_RESPONSE_BYTES);
+    }
+
+    #[test]
+    fn read_capped_body_rejects_a_body_over_the_cap() {
+        let port = serve_body_of_len(MAX_RESPONSE_BYTES + 1);
+        let resp = reqwest::blocking::get(format!("http://127.0.0.1:{port}")).expect("request");
+        let err = read_capped_body(resp).expect_err("oversized body should be rejected");
+        assert!(err.contains("too large"));
+    }
 
     #[test]
     fn accepts_127_0_0_1() {

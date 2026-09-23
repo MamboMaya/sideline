@@ -22,6 +22,13 @@ export interface ClassifyPick {
 // any valid, non-"none" value is accepted.
 export const CONFIDENCE_THRESHOLD = 0.6;
 
+// A note is only ever sent to the classifier within this many hours of its
+// own timestamp — see eligibleForClassification below. Keeps a long-idle
+// inbox from re-sending old notes on every launch once they've aged past
+// the point classification is useful.
+export const CLASSIFY_WINDOW_HOURS = 24;
+const MS_PER_HOUR = 60 * 60 * 1000;
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -63,32 +70,48 @@ export function buildClassifyRequest(
   };
 }
 
-// One question's answer, at/above CONFIDENCE_THRESHOLD, non-"none" choice —
-// anything else (missing, malformed, low-confidence, or explicitly "none")
-// comes back undefined so the caller just skips that tag.
-function pickAnswer(answer: unknown): string | undefined {
+// One question's answer, at/above CONFIDENCE_THRESHOLD, matching (case-
+// insensitively) one of `allowed`'s choices — anything else (missing,
+// malformed, low-confidence, "none", or a value that isn't one of the
+// choices actually offered) comes back undefined so the caller just skips
+// that tag. Returning `allowed`'s own casing (not the classifier's) means a
+// reply like "Bug" resolves to the canonical "bug", never gets written to
+// the note as a tag that isn't in QUICK_TAGS/projectTags, and so never
+// leaves the note stuck looking eligible forever (see
+// eligibleForClassification). It also means the added tag can never contain
+// spaces/newlines/etc. — it's always exactly one of `allowed`'s entries.
+function pickAnswer(
+  answer: unknown,
+  allowed: readonly string[],
+): string | undefined {
   if (!isRecord(answer)) return undefined;
   const choice = answer.choice;
   const confidence = answer.confidence;
   if (typeof choice !== "string") return undefined;
-  const trimmed = choice.trim();
+  const trimmed = choice.trim().toLowerCase();
   if (!trimmed || trimmed === "none") return undefined;
   if (typeof confidence !== "number" || confidence < CONFIDENCE_THRESHOLD) {
     return undefined;
   }
-  return trimmed;
+  return allowed.find((a) => a.toLowerCase() === trimmed);
 }
 
 // Parses the local provider's /decide response (`{"answers": {"type":
 // {"choice", "confidence", "probabilities"}, "project": {...}}}`) into a
-// ClassifyPick. Tolerant of a missing `project` answer (no projects
-// configured) and of any malformed/unexpected shape (treated as no pick).
-export function parseLocalResponse(json: unknown): ClassifyPick {
+// ClassifyPick. The project answer is only looked at when `projectTags` is
+// non-empty — same reasoning as buildClassifyRequest not asking the
+// question at all in that case. Tolerant of any malformed/unexpected shape
+// (treated as no pick).
+export function parseLocalResponse(
+  json: unknown,
+  projectTags: readonly string[],
+): ClassifyPick {
   const answers = isRecord(json) && isRecord(json.answers) ? json.answers : {};
-  return {
-    type: pickAnswer(answers.type),
-    project: pickAnswer(answers.project),
-  };
+  const pick: ClassifyPick = { type: pickAnswer(answers.type, QUICK_TAGS) };
+  if (projectTags.length > 0) {
+    pick.project = pickAnswer(answers.project, projectTags);
+  }
+  return pick;
 }
 
 // The claude provider's fixed prompt: asks for exactly two lines so the
@@ -165,78 +188,124 @@ export function validateClassifierUrl(url: string): string | null {
   return null;
 }
 
-// A note is worth classifying iff it's missing a type tag OR missing a
-// project tag — a note that already has both is left alone even if it
-// hasn't been scanned yet.
+// Inbox timestamps look like "2026-09-23 09:14" (local time, see
+// docs/data-model.md) — same `.replace(" ", "T")` local-time parse as
+// stale.ts's ageDays. Unparseable reads as "not within the window" (never
+// eligible), the safe default.
+function withinClassifyWindow(timestamp: string, now: Date): boolean {
+  const then = new Date(timestamp.replace(" ", "T")).getTime();
+  if (Number.isNaN(then)) return false;
+  return now.getTime() - then <= CLASSIFY_WINDOW_HOURS * MS_PER_HOUR;
+}
+
+// A note is worth classifying iff: it was captured within the last
+// CLASSIFY_WINDOW_HOURS, AND it's missing a type tag, or missing a project
+// tag while projects are configured. A note with a type tag already, in a
+// config with no projects configured, is NOT eligible — there's no second
+// question to ask it, so treating a merely-absent project tag as "missing"
+// in that case (as an earlier version of this function did) left every
+// already-typed note looking eligible forever, wastefully re-sent on every
+// launch.
 export function eligibleForClassification(
   note: Note,
   projectTags: readonly string[],
+  now: Date,
 ): boolean {
+  if (!withinClassifyWindow(note.timestamp, now)) return false;
   const hasType = note.tags.some((t) => (QUICK_TAGS as string[]).includes(t));
+  if (!hasType) return true;
+  if (projectTags.length === 0) return false;
   const hasProject = note.tags.some((t) => projectTags.includes(t));
-  return !hasType || !hasProject;
+  return !hasProject;
 }
 
 export interface SelectForClassificationOptions {
-  // Note.raw values already scanned for classification this app run — same
-  // raw-keyed, reset-on-restart bookkeeping as autotag.ts's
-  // `alreadyProcessed`.
+  // note.timestamp values already scanned for classification this app run.
+  // Keyed by timestamp (not raw, unlike autotag.ts's alreadyProcessed): a
+  // note's raw changes on every tag edit and on the classifier's own write,
+  // and re-scanning either would defeat the "classified at most once per
+  // session" contract this is meant to enforce — timestamp is stable across
+  // both.
   alreadyProcessed: ReadonlySet<string>;
   projectTags: readonly string[];
+  now: Date;
 }
 
 export interface SelectForClassificationResult {
   // Not-yet-processed notes that are missing a type and/or project tag —
   // the ones worth spending a classify call on.
   eligible: Note[];
-  // Every note.raw newly scanned this call (eligible or not) — the caller
-  // folds these into its own tracking set, same contract as autotag.ts's
-  // `processedKeys`.
+  // Every note.timestamp newly scanned this call (eligible or not) — the
+  // caller folds these into its own tracking set, same contract as
+  // autotag.ts's `processedKeys`.
   processedKeys: string[];
 }
 
 // Scans every not-yet-processed note and splits out the ones eligible for
 // classification, marking ALL of them (eligible or not) as processed —
-// mirrors autoTag's `seen`/`processedKeys` loop exactly, so a note is never
-// asked twice in one app run regardless of whether the first ask changed it.
+// mirrors autoTag's `seen`/`processedKeys` loop, so a note is never asked
+// twice in one app run regardless of whether the first ask changed it (and,
+// per eligibleForClassification, regardless of whether it later ages out of
+// the classify window or gets edited).
 export function selectForClassification(
   notes: Note[],
-  { alreadyProcessed, projectTags }: SelectForClassificationOptions,
+  { alreadyProcessed, projectTags, now }: SelectForClassificationOptions,
 ): SelectForClassificationResult {
   const seen = new Set(alreadyProcessed);
   const eligible: Note[] = [];
   const processedKeys: string[] = [];
   for (const n of notes) {
-    if (seen.has(n.raw)) continue;
-    seen.add(n.raw);
-    processedKeys.push(n.raw);
-    if (eligibleForClassification(n, projectTags)) eligible.push(n);
+    if (seen.has(n.timestamp)) continue;
+    seen.add(n.timestamp);
+    processedKeys.push(n.timestamp);
+    if (eligibleForClassification(n, projectTags, now)) eligible.push(n);
   }
   return { eligible, processedKeys };
 }
 
 export interface DecideTagsOptions {
   // `${note.timestamp}::${tag}` keys the tags the user manually removed this
-  // app run — same contract as autotag.ts's `removedTags`: never re-added.
+  // app run — same contract as autotag.ts's `removedTags`. Checked at the
+  // CATEGORY level (see categoryRemoved below): once the user has removed
+  // any type tag from a note, no type tag is ever added back to it this
+  // session, even a different one than was removed — same for project tags.
   removedTags: ReadonlySet<string>;
   projectTags: readonly string[];
+  // Tags the user has deleted outright (`.sideline.json`'s hiddenTags) — a
+  // classifier pick naming one of these is dropped, same as any other
+  // deleted-tag site in the app.
+  hiddenTags: ReadonlySet<string>;
+}
+
+// True iff the user removed any of `candidates` from `note` this app run —
+// used to block the whole type/project category, not just the one exact
+// tag a pick names.
+function categoryRemoved(
+  note: Note,
+  removedTags: ReadonlySet<string>,
+  candidates: readonly string[],
+): boolean {
+  return candidates.some((t) => removedTags.has(`${note.timestamp}::${t}`));
 }
 
 // Decides which of a pick's tags (0, 1, or 2) should actually be added to
 // `note`: a tag is only added when the note doesn't already carry a tag of
-// that kind, the pick named one, and the user hasn't removed that exact
-// tag from this note already this run.
+// that kind, the pick named one, that tag isn't hidden, the note doesn't
+// already literally have it, and the user hasn't removed a tag of that
+// category from this note already this run.
 export function decideTags(
   note: Note,
   pick: ClassifyPick,
-  { removedTags, projectTags }: DecideTagsOptions,
+  { removedTags, projectTags, hiddenTags }: DecideTagsOptions,
 ): string[] {
   const added: string[] = [];
   const hasType = note.tags.some((t) => (QUICK_TAGS as string[]).includes(t));
   if (
     !hasType &&
     pick.type &&
-    !removedTags.has(`${note.timestamp}::${pick.type}`)
+    !note.tags.includes(pick.type) &&
+    !hiddenTags.has(pick.type) &&
+    !categoryRemoved(note, removedTags, QUICK_TAGS)
   ) {
     added.push(pick.type);
   }
@@ -244,7 +313,9 @@ export function decideTags(
   if (
     !hasProject &&
     pick.project &&
-    !removedTags.has(`${note.timestamp}::${pick.project}`)
+    !note.tags.includes(pick.project) &&
+    !hiddenTags.has(pick.project) &&
+    !categoryRemoved(note, removedTags, projectTags)
   ) {
     added.push(pick.project);
   }
@@ -260,22 +331,115 @@ export interface ApplyClassifierPicksResult {
   nextNotes: Note[];
 }
 
-// Applies every collected pick (keyed by note.raw) in one pass, so the
-// caller can batch all classifier tag additions into a single write —
-// notes with no pick, or whose pick decides to add nothing, are untouched.
-export function applyClassifierPicks(
+// One classify call's result, plus enough of the note it was computed
+// against to re-identify it later — see applyClassifierPicksToFreshNotes.
+export interface ClassifierPickSource {
+  timestamp: string;
+  body: string;
+  pick: ClassifyPick;
+}
+
+// Matches each pick against a freshly re-read note list (e.g. from a fresh
+// readInbox() done right before writing back) and applies it — the fix for
+// the race where a classify call's result gets applied against a stale
+// notes snapshot: `notes` passed in here should always come from a read
+// done AFTER the classify call resolved, not from a ref that may predate
+// it. A pick is matched by `timestamp` (stable across tag edits) and only
+// applied if that note's `body` is unchanged from what was actually sent to
+// the classifier — if the body changed (edited while the call was in
+// flight) or the note is gone entirely (archived/triaged/deleted), the pick
+// is dropped as stale rather than risk misclassifying or resurrecting a
+// removed note. A note whose tags changed (but not body) in the meantime
+// still gets its pick applied — decideTags re-checks the note's CURRENT
+// tags, so a tag added by some other path in the meantime is respected.
+export function applyClassifierPicksToFreshNotes(
   notes: Note[],
-  picks: ReadonlyMap<string, ClassifyPick>,
+  sources: readonly ClassifierPickSource[],
   options: DecideTagsOptions,
 ): ApplyClassifierPicksResult {
+  const byTimestamp = new Map<string, ClassifierPickSource>();
+  for (const s of sources) byTimestamp.set(s.timestamp, s);
   let changed = false;
   const nextNotes = notes.map((n) => {
-    const pick = picks.get(n.raw);
-    if (!pick) return n;
-    const added = decideTags(n, pick, options);
+    const source = byTimestamp.get(n.timestamp);
+    if (!source || source.body !== n.body) return n;
+    const added = decideTags(n, source.pick, options);
     if (added.length === 0) return n;
     changed = true;
     return { ...n, tags: [...n.tags, ...added] };
   });
   return { changed, nextNotes };
+}
+
+// A tiny counting semaphore: at most `max` callbacks passed to `run` are
+// ever executing at once, across every call site sharing one Limiter
+// instance. useInbox.ts keeps ONE module-level Limiter(2) for the
+// classifier, so that two `runClassifier` calls started by overlapping
+// reloads (e.g. two `inbox-changed` events firing in quick succession)
+// still add up to at most 2 concurrent classify calls total, not 2 each.
+export class Limiter {
+  private active = 0;
+  private readonly queue: (() => void)[] = [];
+
+  constructor(private readonly max: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.max) {
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+    this.active++;
+    try {
+      return await fn();
+    } finally {
+      this.active--;
+      const next = this.queue.shift();
+      if (next) next();
+    }
+  }
+}
+
+export interface ClassifyBatchIO {
+  // Runs one note through the configured provider and returns its pick —
+  // rejecting (network error, bad response, etc.) is treated as "no pick
+  // for this note", not a batch failure. Any provider-unreachable toast is
+  // the caller's responsibility (e.g. a flag set inside this callback).
+  classify: (note: Note) => Promise<ClassifyPick>;
+  // Persists one note's pick — expected to do its own fresh read/match/
+  // write and to resolve normally (not reject) on a benign, safely-ignored
+  // outcome such as an inbox write conflict; a rejection here is logged by
+  // runClassifyBatch, not thrown further, so one note's write-back failure
+  // can never surface as an unhandled promise rejection.
+  writeBack: (note: Note, pick: ClassifyPick) => Promise<void>;
+}
+
+// Drives `eligible` through classify+writeBack, at most `limiter`'s cap
+// concurrently, writing each note's result back as soon as it's ready
+// rather than batching every note's result into one write at the end —
+// this is the loop useInbox.ts's runClassifier wraps with the real Tauri
+// IO; kept here, decoupled from any IO, so the concurrency cap and the
+// per-note (not per-batch) write-back timing are unit-testable without
+// mocking Tauri.
+export async function runClassifyBatch(
+  eligible: readonly Note[],
+  io: ClassifyBatchIO,
+  limiter: Limiter,
+): Promise<void> {
+  await Promise.all(
+    eligible.map((note) =>
+      limiter.run(async () => {
+        let pick: ClassifyPick;
+        try {
+          pick = await io.classify(note);
+        } catch {
+          return;
+        }
+        if (!pick.type && !pick.project) return;
+        try {
+          await io.writeBack(note, pick);
+        } catch (e) {
+          console.error("classifier write-back failed:", e);
+        }
+      }),
+    ),
+  );
 }
