@@ -311,13 +311,57 @@ export function addToDictionary(
   };
 }
 
+// `.sideline.json`'s `classifier` field — the optional auto-tagger that
+// picks a type (bug/todo/idea) and a project tag for new inbox notes on
+// reload (see src/lib/classify.ts). `provider: "off"` (the default, also
+// what an absent/invalid key means) leaves today's behavior exactly alone:
+// only the keyword auto-tagger (autotag.ts) runs. `"claude"` reuses the
+// existing `send_to_claude` CLI path (models.triage), so it's off whenever
+// no-Claude-mode (`claude: false`) is; `"local"` calls an HTTP classifier at
+// `url` (see classify.rs / docs/backend.md) — loopback-only, enforced both
+// here and Rust-side, so a note never leaves the machine.
+export interface ClassifierConfig {
+  provider: "off" | "claude" | "local";
+  url: string;
+}
+
+const CLASSIFIER_PROVIDERS: ReadonlySet<string> = new Set([
+  "off",
+  "claude",
+  "local",
+]);
+
+export const DEFAULT_CLASSIFIER: ClassifierConfig = {
+  provider: "off",
+  url: "http://127.0.0.1:4410",
+};
+
+// Merges a raw `classifier` override against the defaults — same
+// tolerance/shape as mergePrompts/mergeModels above: an invalid provider or
+// blank url falls back rather than erroring.
+export function mergeClassifier(
+  raw: Partial<ClassifierConfig> | undefined,
+): ClassifierConfig {
+  return {
+    provider:
+      typeof raw?.provider === "string" &&
+      CLASSIFIER_PROVIDERS.has(raw.provider)
+        ? (raw.provider as ClassifierConfig["provider"])
+        : DEFAULT_CLASSIFIER.provider,
+    url:
+      typeof raw?.url === "string" && raw.url.trim()
+        ? raw.url
+        : DEFAULT_CLASSIFIER.url,
+  };
+}
+
 // Everything loadConfig produces from `.sideline.json` — one field per
-// App.tsx config state slice, including the 12 opaque per-key overrides
+// App.tsx config state slice, including the 13 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
 // audioOverride, hotkeysOverride, overlayOverride, pushToTalkOverride,
 // dictionaryOverride, terminalOverride, staleDaysOverride,
-// cleanFillersOverride) kept around purely so a pin/zoom/hide write doesn't
-// clobber hand-edited config it didn't touch.
+// cleanFillersOverride, classifierOverride) kept around purely so a
+// pin/zoom/hide write doesn't clobber hand-edited config it didn't touch.
 export interface SidelineConfig {
   pinnedTags: string[];
   hiddenTags: string[];
@@ -368,6 +412,13 @@ export interface SidelineConfig {
   // key is absent) — kept only so a pin/zoom/hide write doesn't clobber a
   // hand-edited `false` back to the default `true`, same as `claudeOverride`.
   cleanFillersOverride: boolean | undefined;
+  // Resolved classifier config, merged against DEFAULT_CLASSIFIER (absent/
+  // invalid = provider "off") — see ClassifierConfig's declaration above.
+  classifier: ClassifierConfig;
+  // Raw `classifier` object as it appeared in the file (undefined when the
+  // key is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited value, same as the other overrides above.
+  classifierOverride: Partial<ClassifierConfig> | undefined;
 }
 
 const EMPTY_CONFIG: SidelineConfig = {
@@ -393,6 +444,8 @@ const EMPTY_CONFIG: SidelineConfig = {
   staleDaysOverride: undefined,
   cleanFillers: true,
   cleanFillersOverride: undefined,
+  classifier: DEFAULT_CLASSIFIER,
+  classifierOverride: undefined,
 };
 
 // Validates a raw `dictionary` value into DictionaryConfig: an object whose
@@ -489,6 +542,11 @@ export function parseConfig(raw: string): SidelineConfig {
       typeof parsed?.cleanFillers === "boolean"
         ? parsed.cleanFillers
         : undefined;
+    const classifierOverride =
+      parsed?.classifier && typeof parsed.classifier === "object"
+        ? (parsed.classifier as Partial<ClassifierConfig>)
+        : undefined;
+    const classifier = mergeClassifier(classifierOverride);
     return {
       pinnedTags: sanitized.slice(0, 6),
       hiddenTags: hidden,
@@ -512,6 +570,8 @@ export function parseConfig(raw: string): SidelineConfig {
       staleDaysOverride,
       cleanFillers: cleanFillersOverride ?? true,
       cleanFillersOverride,
+      classifier,
+      classifierOverride,
     };
   } catch {
     return EMPTY_CONFIG;
@@ -532,7 +592,7 @@ export async function loadConfig(): Promise<SidelineConfig> {
   }
 }
 
-// The 12 opaque per-key overrides from `.sideline.json` — round-tripped
+// The 13 opaque per-key overrides from `.sideline.json` — round-tripped
 // verbatim (whatever the user hand-edited, including unknown keys within
 // each) so a pin/zoom/hide write never clobbers a value it didn't touch.
 export interface ConfigOverrides {
@@ -562,6 +622,9 @@ export interface ConfigOverrides {
   // key is absent (so it stays omitted on write, not forced to `true`),
   // same convention as `claude` above.
   cleanFillers: boolean | undefined;
+  // Raw `classifier` object as read from the file — see
+  // SidelineConfig.classifierOverride above.
+  classifier: Partial<ClassifierConfig> | undefined;
 }
 
 export interface ConfigWrite {
@@ -574,8 +637,8 @@ export interface ConfigWrite {
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
 // projects?, claude?, zoom?, audio?, hotkeys?, overlay?, pushToTalk?,
-// terminal?, dictionary?, staleDays?, cleanFillers? (omitted when
-// falsy/empty/default) —
+// terminal?, dictionary?, staleDays?, cleanFillers?, classifier? (omitted
+// when falsy/empty/default) —
 // .sideline.json is read by capture/ tooling too, so this order is contract
 // (see docs/data-model.md). Object spread preserves insertion order for
 // these string keys, so the order below is exactly the emitted order.
@@ -614,6 +677,9 @@ export function serializeConfig(cfg: ConfigWrite): string {
       // checks `!== undefined` rather than truthiness.
       ...(cfg.overrides.cleanFillers !== undefined
         ? { cleanFillers: cfg.overrides.cleanFillers }
+        : {}),
+      ...(cfg.overrides.classifier
+        ? { classifier: cfg.overrides.classifier }
         : {}),
     },
     null,

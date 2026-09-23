@@ -251,3 +251,16 @@ export function dismissReminder(id: string): Promise<void> {
 export function snoozeReminder(id: string, minutes: number): Promise<void> {
   return invoke<void>("snooze_reminder", { id, minutes });
 }
+
+// Posts `payload` to the local classifier's `POST /decide` (see
+// src/lib/classify.ts) — Rust does the actual HTTP call and rejects any
+// non-loopback `url` (see docs/backend.md).
+export function classifyLocal(url: string, payload: unknown): Promise<unknown> {
+  return invoke<unknown>("classify_local", { url, payload });
+}
+
+// Settings pane's classifier "Test" button: `GET <url>/healthz`, rejects on
+// any non-2xx response or non-loopback `url`.
+export function classifierHealth(url: string): Promise<void> {
+  return invoke<void>("classifier_health", { url });
+}

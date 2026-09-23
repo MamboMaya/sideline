@@ -5,6 +5,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
 mod archive;
 mod audio;
 mod autostart;
+mod classifier;
 mod claude;
 mod cleanup;
 mod commands;
@@ -207,7 +208,9 @@ pub fn run() {
             reminders::remove_reminder,
             reminders::list_reminders,
             reminders::dismiss_reminder,
-            reminders::snooze_reminder
+            reminders::snooze_reminder,
+            classifier::classify_local,
+            classifier::classifier_health
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,

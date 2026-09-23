@@ -8,10 +8,13 @@ import {
   type ProjectsConfig,
   type HotkeysConfig,
   type DictionaryConfig,
+  type ClassifierConfig,
+  DEFAULT_CLASSIFIER,
   type SidelineConfig,
   type ConfigOverrides,
   mergeModels,
   mergePrompts,
+  mergeClassifier,
   projectTagsFrom,
   projectsAdd,
   projectsRemove,
@@ -131,11 +134,23 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [cleanFillersOverride, setCleanFillersOverride] = useState<
     boolean | undefined
   >(undefined);
+  // Resolved classifier config (Settings' "Auto-classify new notes"
+  // dropdown + URL field): `.sideline.json`'s `classifier` key, merged
+  // against DEFAULT_CLASSIFIER (absent/invalid = provider "off", today's
+  // exact behavior — see src/lib/classify.ts).
+  const [classifier, setClassifier] =
+    useState<ClassifierConfig>(DEFAULT_CLASSIFIER);
+  // Raw `classifier` value as read from the file (undefined = key absent) —
+  // kept only so a pin/zoom/hide write doesn't clobber a hand-edited value.
+  const [classifierOverride, setClassifierOverride] = useState<
+    Partial<ClassifierConfig> | undefined
+  >(undefined);
 
-  // The 12 opaque `.sideline.json` overrides, read from current state —
+  // The 13 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // overlay/pushToTalk/dictionary/terminal/staleDays/cleanFillers value.
+  // overlay/pushToTalk/dictionary/terminal/staleDays/cleanFillers/classifier
+  // value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -149,6 +164,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     dictionary: dictionaryOverride,
     staleDays: staleDaysOverride,
     cleanFillers: cleanFillersOverride,
+    classifier: classifierOverride,
   });
 
   const persistZoom = (next: number) => {
@@ -186,6 +202,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     terminal?: string | undefined;
     staleDays?: number | undefined;
     cleanFillers?: boolean | undefined;
+    classifier?: Partial<ClassifierConfig> | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
     const nextHidden = patch.hiddenTags ?? hiddenTags;
@@ -213,6 +230,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "staleDays" in patch ? patch.staleDays : staleDaysOverride;
     const nextCleanFillersOverride =
       "cleanFillers" in patch ? patch.cleanFillers : cleanFillersOverride;
+    const nextClassifierOverride =
+      "classifier" in patch ? patch.classifier : classifierOverride;
 
     setPinnedTags(nextPinned);
     setHiddenTags(nextHidden);
@@ -236,6 +255,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setStaleDaysState(nextStaleDaysOverride ?? DEFAULT_STALE_DAYS);
     setCleanFillersOverride(nextCleanFillersOverride);
     setCleanFillers(nextCleanFillersOverride ?? true);
+    setClassifierOverride(nextClassifierOverride);
+    setClassifier(mergeClassifier(nextClassifierOverride));
 
     await writeConfig({
       pinnedTags: nextPinned,
@@ -254,6 +275,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         dictionary: nextDictionaryOverride,
         staleDays: nextStaleDaysOverride,
         cleanFillers: nextCleanFillersOverride,
+        classifier: nextClassifierOverride,
       },
     });
   };
@@ -340,6 +362,27 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     const clamped = Math.max(0, Math.floor(days) || 0);
     updateConfig({
       staleDays: clamped === DEFAULT_STALE_DAYS ? undefined : clamped,
+    });
+  };
+
+  // Settings' "Auto-classify new notes" dropdown (SettingsPane.tsx). "off"
+  // (the default) clears the override entirely — same omit-at-default
+  // convention as setTerminal above; a non-default provider always writes
+  // the url alongside it too, so the merged url on disk stays explicit
+  // rather than depending on DEFAULT_CLASSIFIER never changing.
+  const setClassifierProvider = (provider: ClassifierConfig["provider"]) => {
+    updateConfig({
+      classifier:
+        provider === "off" ? undefined : { provider, url: classifier.url },
+    });
+  };
+
+  // Settings' classifier URL text field, only shown/editable when the
+  // provider is "local". Blank falls back to DEFAULT_CLASSIFIER.url via
+  // mergeClassifier, same tolerance as every other text override.
+  const setClassifierUrl = (url: string) => {
+    updateConfig({
+      classifier: { provider: classifier.provider, url: url.trim() },
     });
   };
 
@@ -439,6 +482,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setStaleDaysOverride(config.staleDaysOverride);
     setCleanFillers(config.cleanFillers);
     setCleanFillersOverride(config.cleanFillersOverride);
+    setClassifier(config.classifier);
+    setClassifierOverride(config.classifierOverride);
   };
 
   const persistPinnedTags = async (next: string[]) => {
@@ -506,6 +551,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     pushToTalk,
     staleDays,
     cleanFillers,
+    classifier,
     applyConfig,
     togglePin,
     hideTag,
@@ -525,6 +571,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     terminalOverride,
     staleDaysOverride,
     cleanFillersOverride,
+    classifierOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -536,6 +583,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setTerminal,
     setStaleDays,
     setCleanFillersEnabled,
+    setClassifierProvider,
+    setClassifierUrl,
     addProject,
     removeProject,
     updateConfig,

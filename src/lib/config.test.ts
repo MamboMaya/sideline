@@ -10,8 +10,10 @@ import {
   DEFAULT_PROMPTS,
   DEFAULT_MODELS,
   DEFAULT_STALE_DAYS,
+  DEFAULT_CLASSIFIER,
   mergeModels,
   mergePrompts,
+  mergeClassifier,
   projectTagsFrom,
   projectsAdd,
   tagFromFolder,
@@ -46,6 +48,8 @@ const DEFAULTS: SidelineConfig = {
   staleDaysOverride: undefined,
   cleanFillers: true,
   cleanFillersOverride: undefined,
+  classifier: DEFAULT_CLASSIFIER,
+  classifierOverride: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -92,6 +96,7 @@ describe("parseConfig — full valid config", () => {
       dictionary: { Tauri: ["towery"], Whisper: [] },
       staleDays: 5,
       cleanFillers: false,
+      classifier: { provider: "local", url: "http://127.0.0.1:9999" },
     });
     const cfg = parseConfig(raw);
     expect(cfg.pinnedTags).toEqual(["bug", "idea"]);
@@ -126,6 +131,14 @@ describe("parseConfig — full valid config", () => {
     expect(cfg.staleDaysOverride).toBe(5);
     expect(cfg.cleanFillers).toBe(false);
     expect(cfg.cleanFillersOverride).toBe(false);
+    expect(cfg.classifier).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
+    expect(cfg.classifierOverride).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
   });
 });
 
@@ -226,6 +239,7 @@ describe("parseConfig — terminal", () => {
         dictionary: { Tauri: ["towery"] },
         staleDays: undefined,
         cleanFillers: undefined,
+        classifier: undefined,
       },
     });
     expect(Object.keys(JSON.parse(withTerminal))).toEqual([
@@ -252,6 +266,7 @@ describe("parseConfig — terminal", () => {
         dictionary: undefined,
         staleDays: undefined,
         cleanFillers: undefined,
+        classifier: undefined,
       },
     });
     expect(JSON.parse(absent)).not.toHaveProperty("terminal");
@@ -348,6 +363,7 @@ describe("parseConfig — dictionary", () => {
         dictionary: undefined,
         staleDays: undefined,
         cleanFillers: undefined,
+        classifier: undefined,
       },
     };
     expect(JSON.parse(serializeConfig(base))).toEqual({
@@ -363,6 +379,74 @@ describe("parseConfig — dictionary", () => {
       "hotkeys",
       "dictionary",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — classifier
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — classifier", () => {
+  test("absent classifier key resolves to provider off and the default url", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.classifier).toEqual(DEFAULT_CLASSIFIER);
+    expect(cfg.classifierOverride).toBeUndefined();
+  });
+
+  test("a valid provider and url are read through", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        classifier: { provider: "local", url: "http://127.0.0.1:9999" },
+      }),
+    );
+    expect(cfg.classifier).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
+    expect(cfg.classifierOverride).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
+  });
+
+  test("an invalid provider falls back to off; a blank url falls back to the default", () => {
+    const cfg = parseConfig(
+      JSON.stringify({ classifier: { provider: "bogus", url: "   " } }),
+    );
+    expect(cfg.classifier).toEqual(DEFAULT_CLASSIFIER);
+    // The raw override still round-trips the on-disk value verbatim, even
+    // though it's invalid — same tolerance as claudeOverride/pushToTalk.
+    expect(cfg.classifierOverride).toEqual({ provider: "bogus", url: "   " });
+  });
+
+  test("a non-object classifier value is treated as absent", () => {
+    const cfg = parseConfig(JSON.stringify({ classifier: "local" }));
+    expect(cfg.classifier).toEqual(DEFAULT_CLASSIFIER);
+    expect(cfg.classifierOverride).toBeUndefined();
+  });
+});
+
+describe("mergeClassifier", () => {
+  test("undefined override falls back to the defaults entirely", () => {
+    expect(mergeClassifier(undefined)).toEqual(DEFAULT_CLASSIFIER);
+  });
+
+  test("a partial override keeps the other field at its default", () => {
+    expect(mergeClassifier({ provider: "claude" })).toEqual({
+      provider: "claude",
+      url: DEFAULT_CLASSIFIER.url,
+    });
+    expect(mergeClassifier({ url: "http://localhost:5000" })).toEqual({
+      provider: DEFAULT_CLASSIFIER.provider,
+      url: "http://localhost:5000",
+    });
+  });
+
+  test("an invalid provider or blank url falls back to its default", () => {
+    expect(mergeClassifier({ provider: "bogus" as never }).provider).toBe(
+      DEFAULT_CLASSIFIER.provider,
+    );
+    expect(mergeClassifier({ url: "  " }).url).toBe(DEFAULT_CLASSIFIER.url);
   });
 });
 
@@ -685,6 +769,7 @@ const noOverrides = {
   dictionary: undefined,
   staleDays: undefined,
   cleanFillers: undefined,
+  classifier: undefined,
 };
 
 describe("serializeConfig", () => {
@@ -735,7 +820,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers, classifier when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -753,6 +838,7 @@ describe("serializeConfig", () => {
         dictionary: { Tauri: ["towery"] },
         staleDays: 5,
         cleanFillers: false,
+        classifier: { provider: "local", url: "http://127.0.0.1:4410" },
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -771,10 +857,11 @@ describe("serializeConfig", () => {
       "dictionary",
       "staleDays",
       "cleanFillers",
+      "classifier",
     ]);
   });
 
-  test("overlay, pushToTalk, and terminal land between hotkeys and dictionary; staleDays lands after dictionary", () => {
+  test("overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers, and classifier land after hotkeys, in that order, when all seven are present", () => {
     const out = serializeConfig({
       pinnedTags: [],
       hiddenTags: [],
@@ -787,6 +874,8 @@ describe("serializeConfig", () => {
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
         staleDays: 5,
+        cleanFillers: false,
+        classifier: { provider: "claude", url: "http://127.0.0.1:4410" },
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -797,6 +886,8 @@ describe("serializeConfig", () => {
       "terminal",
       "dictionary",
       "staleDays",
+      "cleanFillers",
+      "classifier",
     ]);
   });
 
@@ -947,6 +1038,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       terminal: "iTerm",
       staleDays: 5,
       cleanFillers: false,
+      classifier: { provider: "local", url: "http://127.0.0.1:4410" },
     };
     const cfg = parseConfig(JSON.stringify(original));
     const rewritten = JSON.parse(
@@ -967,6 +1059,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           dictionary: undefined,
           staleDays: cfg.staleDaysOverride,
           cleanFillers: cfg.cleanFillersOverride,
+          classifier: cfg.classifierOverride,
         },
       }),
     );
@@ -983,6 +1076,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.terminal).toBe(original.terminal);
     expect(rewritten.staleDays).toBe(original.staleDays);
     expect(rewritten.cleanFillers).toBe(original.cleanFillers);
+    expect(rewritten.classifier).toEqual(original.classifier);
   });
 });
 
