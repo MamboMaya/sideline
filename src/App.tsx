@@ -25,6 +25,7 @@ import {
 } from "./lib/commands";
 import { useToast } from "./hooks/useToast";
 import { useRecorder } from "./hooks/useRecorder";
+import { useReminders } from "./hooks/useReminders";
 import { useAsk } from "./hooks/useAsk";
 import { useConfig } from "./hooks/useConfig";
 import { useSearch } from "./hooks/useSearch";
@@ -36,6 +37,7 @@ import { useTodosActions } from "./hooks/useTodosActions";
 import { useEditRow } from "./hooks/useEditRow";
 import { useKeyboard } from "./keys/useKeyboard";
 import { Toast } from "./components/Toast";
+import { ReminderBanner } from "./components/ReminderBanner";
 import { ShortcutsModal } from "./components/ShortcutsModal";
 import { AddProjectModal } from "./components/AddProjectModal";
 import { SettingsPane } from "./components/SettingsPane";
@@ -51,6 +53,12 @@ export default function App() {
   const { toast, showToast, dismissToast, runUndo } = useToast();
   const { recState, recMode, audioLevel, recElapsed, toggleRecording } =
     useRecorder(showToast);
+  const {
+    fired: firedReminders,
+    upcoming: upcomingReminders,
+    dismiss: dismissReminder,
+    snooze: snoozeReminder,
+  } = useReminders();
   // Three views — Inbox/Todos/Ask (header tabs, or ⌘1/⌘2/⌘3 — see
   // src/keys/types.ts's `View`). The Todos view is refetched fresh on every
   // switch into it — the fs watcher only covers ~/notes NonRecursive, so
@@ -556,6 +564,11 @@ export default function App() {
 
   return (
     <div className="app">
+      <ReminderBanner
+        fired={firedReminders}
+        onDismiss={dismissReminder}
+        onSnooze={snoozeReminder}
+      />
       <Header
         view={view}
         onChangeView={setView}
@@ -566,6 +579,7 @@ export default function App() {
         recState={recState}
         audioLevel={audioLevel}
         recElapsed={recElapsed}
+        upcomingReminders={upcomingReminders}
         showDone={showDone}
         onToggleShowDone={() => setShowDone((s) => !s)}
         searchOpen={searchOpen}

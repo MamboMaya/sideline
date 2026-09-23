@@ -196,3 +196,49 @@ export function readAsset(rel: string): Promise<ArrayBuffer> {
 export function openAsset(rel: string): Promise<void> {
   return invoke<void>("open_asset", { rel });
 }
+
+// Wire shape of src-tauri/src/reminders.rs's `Reminder` — one entry in
+// ~/notes/.sideline-reminders.json (field names as Rust/serde emit them,
+// same convention as AskReply's `session_id` above). `fired` flips true on
+// the background tick once `due_ms` has passed, `dismissed` once the
+// banner's Dismiss is clicked.
+export interface Reminder {
+  id: string;
+  text: string;
+  due_ms: number;
+  note_timestamp: string;
+  fired: boolean;
+  dismissed: boolean;
+}
+
+// Registers a reminder detected in a note (see src/lib/reminders.ts). `id`
+// must be stable across re-scans of the same note (backend dedupes by it —
+// see docs/backend.md), so a rescan of an unchanged note is a no-op.
+export function addReminder(
+  id: string,
+  text: string,
+  dueMs: number,
+  noteTimestamp: string,
+): Promise<void> {
+  return invoke<void>("add_reminder", {
+    id,
+    text,
+    due_ms: dueMs,
+    note_timestamp: noteTimestamp,
+  });
+}
+
+// Undismissed reminders, soonest due first — the banner's (fired) and
+// header hint's (upcoming) one source of truth.
+export function listReminders(): Promise<Reminder[]> {
+  return invoke<Reminder[]>("list_reminders");
+}
+
+export function dismissReminder(id: string): Promise<void> {
+  return invoke<void>("dismiss_reminder", { id });
+}
+
+// The banner's "+10 min" button: re-fires `minutes` from now.
+export function snoozeReminder(id: string, minutes: number): Promise<void> {
+  return invoke<void>("snooze_reminder", { id, minutes });
+}

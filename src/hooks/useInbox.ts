@@ -3,11 +3,13 @@ import { listen } from "@tauri-apps/api/event";
 import { type Note, parseInbox, serializeInbox } from "../inbox";
 import { autoTag } from "../lib/autotag";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
+import { parseReminder, reminderId } from "../lib/reminders";
 import {
   INBOX_CONFLICT,
   readInbox,
   writeInbox,
   readArchive,
+  addReminder,
 } from "../lib/commands";
 import { insertNoteAt } from "../lib/undo";
 import { loadConfig, type SidelineConfig } from "../lib/config";
@@ -87,6 +89,11 @@ export function useInbox({
   // edit causes) — the auto-tagger skips these so a removed tag never
   // comes back just because the body still mentions it.
   const removedTagsRef = useRef<Set<string>>(new Set());
+  // Notes already scanned for a reminder this app run, keyed by `note.raw`
+  // — same once-per-note-per-run shape as autoTaggedRef above, and for the
+  // same reason: a note that keeps its raw unchanged across reloads (the
+  // common case) must not be re-registered every time inbox.md is re-read.
+  const remindersScannedRef = useRef<Set<string>>(new Set());
 
   const loadArchiveTags = async (): Promise<string[]> => {
     try {
@@ -151,6 +158,33 @@ export function useInbox({
     // Ref bookkeeping stays here (in the caller): autoTag itself is pure and
     // never mutates alreadyProcessed — it only reports what it newly saw.
     for (const key of processedKeys) autoTaggedRef.current.add(key);
+
+    // Reminders: scan each not-yet-scanned note for a detected reminder
+    // (same once-per-note-per-run shape as auto-tagging, keyed by raw) and
+    // register hits with the backend — covers in-app voice, typed notes,
+    // and external Raycast captures alike, since they all land in
+    // inbox.md and this scans whatever read_inbox just returned.
+    // Fire-and-forget: a failed add_reminder call just means that note's
+    // reminder is missed for now — no toast, since it would otherwise fire
+    // on every offline reload.
+    for (const n of taggedNotes) {
+      if (remindersScannedRef.current.has(n.raw)) continue;
+      remindersScannedRef.current.add(n.raw);
+      const capturedAt = new Date(n.timestamp.replace(" ", "T"));
+      if (Number.isNaN(capturedAt.getTime())) continue;
+      const detected = parseReminder(n.body, capturedAt);
+      if (!detected) continue;
+      // An old note seen for the first time whose due time is already
+      // more than 12h in the past — skip it rather than firing it
+      // immediately looking wrong.
+      if (Date.now() - detected.due.getTime() > 12 * 60 * 60 * 1000) continue;
+      addReminder(
+        reminderId(n.timestamp, n.body),
+        detected.text,
+        detected.due.getTime(),
+        n.timestamp,
+      ).catch(() => {});
+    }
 
     if (changed) {
       try {

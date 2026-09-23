@@ -1162,6 +1162,57 @@ header .ghost.gear {
   font-size: 13px;
 }
 
+/* Reminder banner: same "strip under/over the header" look as .toast, but
+   stacked (one .reminder-row per fired-and-undismissed reminder) and at
+   the TOP of the popover — visible from every view, unlike .toast which
+   is scoped to the action that triggered it. */
+.reminder-banner {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-bottom: 2px solid var(--accent);
+}
+.reminder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+.reminder-row + .reminder-row {
+  border-top: 1px solid var(--border);
+}
+.reminder-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reminder-snooze {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.reminder-snooze:hover {
+  text-decoration: underline;
+}
+.reminder-dismiss {
+  font-size: 13px;
+}
+
+/* Header's compact "N upcoming" hint — a not-yet-fired reminder count,
+   title tooltip lists them (see Header.tsx). Kept plain-text (no chip
+   background) so it doesn't compete with the rec indicator in the same
+   narrow strip. */
+.reminder-hint {
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 /* "Add project" panel (AddProjectModal): a strip under the header like
    .shortcuts, but a form — no click-anywhere-to-close. */
 .add-project {

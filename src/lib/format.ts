@@ -251,6 +251,14 @@ export const tagChipClass = (
     .filter(Boolean)
     .join(" ");
 
+// "2:45 PM" for a reminder's due_ms — shared by ReminderBanner (fired
+// reminders) and Header's "N upcoming" tooltip (not-yet-fired ones).
+export const formatReminderTime = (dueMs: number): string =>
+  new Date(dueMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
 // Groups notes for batch triage: consecutive-by-tag units where every note
 // sharing a first tag merges into one unit (untagged notes are always
 // solo). See `BatchUnit` (./batch) for the merge-vs-solo contract.

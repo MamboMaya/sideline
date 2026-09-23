@@ -1,6 +1,8 @@
 import type { KeyboardEvent } from "react";
 import type { useRecorder } from "../hooks/useRecorder";
 import type { useSearch } from "../hooks/useSearch";
+import type { Reminder } from "../lib/commands";
+import { formatReminderTime } from "../lib/format";
 import { RecBars } from "./RecBars";
 
 interface HeaderProps {
@@ -21,6 +23,10 @@ interface HeaderProps {
   recState: ReturnType<typeof useRecorder>["recState"];
   audioLevel: number;
   recElapsed: number;
+  // Not-yet-fired reminders — a compact "⏰ N upcoming" hint, title tooltip
+  // listing them (see useReminders.ts). Fired ones show in ReminderBanner
+  // instead, above this header.
+  upcomingReminders: Reminder[];
   showDone: boolean;
   onToggleShowDone: () => void;
   searchOpen: boolean;
@@ -52,6 +58,7 @@ export function Header({
   recState,
   audioLevel,
   recElapsed,
+  upcomingReminders,
   showDone,
   onToggleShowDone,
   searchOpen,
@@ -102,6 +109,16 @@ export function Header({
         >
           {staleCount} stale
         </button>
+      )}
+      {upcomingReminders.length > 0 && (
+        <span
+          className="reminder-hint"
+          title={upcomingReminders
+            .map((r) => `${r.text} · ${formatReminderTime(r.due_ms)}`)
+            .join("\n")}
+        >
+          ⏰ {upcomingReminders.length} upcoming
+        </span>
       )}
       <div className="header-spacer" />
       {/* "copied"/"failed" are the pill's terminal notices — idle as far
