@@ -11,6 +11,7 @@ mod commands;
 mod dictate;
 mod hotkeys;
 mod paths;
+mod reminders;
 mod tray;
 mod watcher;
 mod whisper;
@@ -201,7 +202,11 @@ pub fn run() {
             commands::projects::setup_project_repo,
             commands::assets::paste_clipboard_image,
             commands::assets::read_asset,
-            commands::assets::open_asset
+            commands::assets::open_asset,
+            reminders::add_reminder,
+            reminders::list_reminders,
+            reminders::dismiss_reminder,
+            reminders::snooze_reminder
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,
@@ -241,6 +246,7 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             window::hide_on_focus_loss(app.handle());
             watcher::spawn_inbox_watcher(app.handle().clone());
+            reminders::spawn_ticker(app.handle().clone());
 
             // Menu-bar app: no Dock icon.
             #[cfg(target_os = "macos")]

@@ -165,6 +165,12 @@ pub(crate) fn emit_state(app: &AppHandle, state: RecState) {
 /// Tray title: `🔴 m:ss` while recording, `…` while transcribing or
 /// downloading the model, cleared (`None`) otherwise. No icon swap — title
 /// only, per CLAUDE.md's "no new macOS permission surfaces" constraint.
+///
+/// Idle/Copied/Failed also shows `⏰` while a fired reminder is undismissed
+/// — but recording/transcribing always wins, so a reminder firing
+/// mid-recording never clobbers the live "🔴 m:ss" title (see
+/// `refresh_tray_title` below for how the indicator gets applied OUTSIDE a
+/// recorder state change).
 fn set_tray_title(app: &AppHandle, state: RecState, elapsed: Option<Duration>) {
     let Some(tray) = app.tray_by_id("main") else {
         return;
@@ -175,9 +181,25 @@ fn set_tray_title(app: &AppHandle, state: RecState, elapsed: Option<Duration>) {
             Some(format!("🔴 {}:{:02}", secs / 60, secs % 60))
         }
         RecState::Transcribing | RecState::DownloadingModel => Some("…".to_string()),
-        RecState::Idle | RecState::Copied | RecState::Failed => None,
+        RecState::Idle | RecState::Copied | RecState::Failed => {
+            crate::reminders::any_fired_pending().then(|| "⏰".to_string())
+        }
     };
     let _ = tray.set_title(title.as_deref());
+}
+
+/// Re-applies the tray title for the CURRENT recorder state — reminders.rs's
+/// hook for updating the `⏰` indicator outside of any recorder state change
+/// (a reminder firing, or its banner being dismissed/snoozed, while the
+/// recorder just sits at Idle). Only touches the title when the recorder
+/// can start a session (`can_start`: Idle/Copied/Failed) — if a recording
+/// is in progress, its own ticker (see `toggle_recording_mode`) owns the
+/// title and must not be clobbered with a stale "elapsed: None".
+pub(crate) fn refresh_tray_title(app: &AppHandle) {
+    let state = app.state::<AudioState>().lock().state();
+    if state.can_start() {
+        set_tray_title(app, state, None);
+    }
 }
 
 #[tauri::command]
