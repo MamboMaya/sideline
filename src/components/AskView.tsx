@@ -66,7 +66,8 @@ export function AskView({
     recMode === "ask" &&
     recState !== "idle" &&
     recState !== "copied" &&
-    recState !== "failed";
+    recState !== "failed" &&
+    recState !== "reminder";
 
   return (
     <div className="ask-view">

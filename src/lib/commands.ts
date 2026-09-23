@@ -212,8 +212,9 @@ export interface Reminder {
 }
 
 // Registers a reminder detected in a note (see src/lib/reminders.ts). `id`
-// must be stable across re-scans of the same note (backend dedupes by it —
-// see docs/backend.md), so a rescan of an unchanged note is a no-op.
+// must be stable across re-scans of the same note (backend upserts by it —
+// see docs/backend.md), so a rescan of an unchanged note is a no-op and a
+// rescan of an EDITED note updates that same reminder in place.
 export function addReminder(
   id: string,
   text: string,
@@ -226,6 +227,14 @@ export function addReminder(
     due_ms: dueMs,
     note_timestamp: noteTimestamp,
   });
+}
+
+// Drops a reminder that hasn't fired yet — useInbox.ts calls this when a
+// note that previously produced a reminder is edited and no longer parses
+// as one. Never called for a note leaving the inbox (triage/delete) —
+// reminders stand on their own once registered.
+export function removeReminder(id: string): Promise<void> {
+  return invoke<void>("remove_reminder", { id });
 }
 
 // Undismissed reminders, soonest due first — the banner's (fired) and

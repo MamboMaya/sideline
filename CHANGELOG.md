@@ -21,13 +21,14 @@ Notable, user-visible changes to Sideline. Format follows
   external Raycast capture script is unaffected.
 - Reminders, auto-detected in note bodies: write "remind me to call my mom
   in 15 minutes" or "in 15 minutes I've got to go — alert me then" and
-  Sideline picks it up on the next reload, no new tag or button needed.
-  A fired reminder shows as a banner at the top of the popover ("+10 min"
-  snooze, Dismiss) and the tray title shows ⏰ while the popover is closed;
+  Sideline picks it up on the next reload, no new tag or button needed. A
+  fired reminder shows as "⏰ <text>" on the recording pill and in the tray
+  title — never opens or focuses the popover — and, once the popover is
+  opened, also as a banner at the top ("+10 min" snooze, Dismiss);
   not-yet-fired ones show as a compact "⏰ N upcoming" hint in the header.
   Works for in-app voice notes, typed notes, and Raycast captures alike.
-  No new permissions — just the existing popover and tray title, no system
-  notifications.
+  No new permissions — just the existing pill, tray title, and popover, no
+  system notifications.
 
 ### Fixed
 

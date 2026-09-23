@@ -121,12 +121,14 @@ export function Header({
         </span>
       )}
       <div className="header-spacer" />
-      {/* "copied"/"failed" are the pill's terminal notices — idle as far
-          as the popover is concerned (the pill overlay owns those messages;
-          a failure also reaches the popover as a toast). */}
+      {/* "copied"/"failed"/"reminder" are the pill's terminal notices — idle
+          as far as the popover is concerned (the pill overlay owns those
+          messages; a failure also reaches the popover as a toast, and a
+          fired reminder reaches it via the banner once opened). */}
       {recState !== "idle" &&
         recState !== "copied" &&
-        recState !== "failed" && (
+        recState !== "failed" &&
+        recState !== "reminder" && (
           <div className="rec-indicator" title="Voice note recording (r)">
             {recState === "recording" && (
               <>

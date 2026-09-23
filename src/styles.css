@@ -247,6 +247,15 @@ header .ghost.gear {
   text-overflow: ellipsis;
   padding-right: 2px;
 }
+/* The pill's Reminder notice: same ellipsis handling as Failed, but stays
+   the normal/accent color (inherited from .rec-status) rather than danger —
+   a fired reminder isn't an error. */
+.rec-status-reminder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2px;
+}
 /* flex: 1 keeps the toast bar pinned to the window bottom even when the
    card list is short. */
 .cards {

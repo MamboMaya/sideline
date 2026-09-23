@@ -53,14 +53,22 @@
 - **`~/notes/.sideline-reminders.json`** — reminders auto-detected in note
   bodies (see docs/ui.md's Reminders section): a JSON array of
   `{ id, text, due_ms, note_timestamp, fired, dismissed }`. `id` is the
-  source note's timestamp plus a short hash of its body, so re-scanning the
-  same note on a later reload never registers a duplicate. Written
-  atomically (the same `write_file` temp+rename helper as every other notes
-  file) by `src-tauri/src/reminders.rs`; a dismissed entry is pruned once
-  its `due_ms` is more than 24h in the past, on every write. Never read or
-  written by `capture/` scripts — detection runs frontend-side against
-  whatever `read_inbox` just returned, so it covers in-app voice, typed
-  notes, and external Raycast captures alike without any capture-side
+  source note's own timestamp (or timestamp+icon on the rare collision of
+  two notes captured in the same minute), so re-scanning the SAME note on a
+  later reload — even after it's been edited — resolves to the same
+  reminder: an unchanged note is a no-op, an edited one upserts in place
+  (`reminders::upsert`, `src-tauri/src/reminders.rs`), and an edit that
+  removes whatever made the note parse as a reminder drops the not-yet-fired
+  entry (`remove_reminder`). A reminder is never removed just because its
+  source note leaves the inbox (triaged or deleted) — once registered, it
+  stands on its own. Written atomically, each write to its own uniquely-
+  named temp file (pid + a counter, not a shared fixed name — the
+  background ticker and a command can write concurrently) and guarded by a
+  process-wide lock across every read-modify-write; a dismissed entry is
+  pruned once its `due_ms` is more than 24h in the past, on every write.
+  Never read or written by `capture/` scripts — detection runs frontend-side
+  against whatever `read_inbox` just returned, so it covers in-app voice,
+  typed notes, and external Raycast captures alike without any capture-side
   changes.
 - **`~/notes/.sideline.json`** — app config: `{ "pinnedTags": [...] }` (up to 6
   pinned tags), optional `"hiddenTags": [...]` (tags deleted from

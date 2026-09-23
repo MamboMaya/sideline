@@ -10,9 +10,10 @@ import {
 // Undismissed reminders (backend-sorted, soonest due first — see
 // list_reminders in src-tauri/src/reminders.rs), split into fired (shown by
 // the banner) and upcoming (the header's compact hint) for callers. Loads
-// on mount and re-loads on every `reminder-fired` the background tick
-// emits, so the banner/hint pick up a newly-fired reminder without a
-// manual refresh.
+// on mount and re-loads on every backend `reminders-changed` — emitted on
+// every mutation (add/remove/dismiss/snooze, and the background tick firing
+// one) — so the banner/hint never go stale, including after useInbox.ts
+// registers or drops a reminder outside any action this hook itself took.
 export function useReminders() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
 
@@ -24,7 +25,7 @@ export function useReminders() {
 
   useEffect(() => {
     reload();
-    const un = listen("reminder-fired", reload);
+    const un = listen("reminders-changed", reload);
     return () => {
       un.then((f) => f());
     };

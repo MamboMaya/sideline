@@ -18,7 +18,12 @@ export type RecState =
   // The session ended in an error (no speech detected, device died,
   // transcription failed…) — the pill shows the `capture-error` text until
   // Rust's hide timer drops back to idle (~3s).
-  | "failed";
+  | "failed"
+  // A reminder fired while idle (or already showing Copied/Failed) — the
+  // pill shows "⏰ <text>" until Rust's hide timer drops back to idle
+  // (~8s). Idle-equivalent everywhere Copied/Failed are (see audio.rs's
+  // can_start) — never entered while a recording session is live.
+  | "reminder";
 
 // Mirrors audio.rs's `RecMode` — which pipeline a recording session feeds:
 // `note` appends the transcript to inbox.md, `dictate` copies it to the
@@ -53,7 +58,8 @@ export function useRecorderStatus() {
         s === "transcribing" ||
         s === "downloading-model" ||
         s === "copied" ||
-        s === "failed"
+        s === "failed" ||
+        s === "reminder"
       ) {
         setRecState(s);
         if (s !== "recording") setAudioLevel(0);

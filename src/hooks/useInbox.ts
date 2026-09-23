@@ -10,6 +10,7 @@ import {
   writeInbox,
   readArchive,
   addReminder,
+  removeReminder,
 } from "../lib/commands";
 import { insertNoteAt } from "../lib/undo";
 import { loadConfig, type SidelineConfig } from "../lib/config";
@@ -94,6 +95,14 @@ export function useInbox({
   // same reason: a note that keeps its raw unchanged across reloads (the
   // common case) must not be re-registered every time inbox.md is re-read.
   const remindersScannedRef = useRef<Set<string>>(new Set());
+  // Whether the last scan of a given reminder id (see reminderId) actually
+  // registered a reminder — so a later scan that finds the SAME note edited
+  // to no longer parse as a reminder knows to call removeReminder instead
+  // of silently doing nothing. Only meaningful for ids this run has scanned
+  // at least once; an id never seen this run is assumed not registered,
+  // which is fine — the note it belonged to hasn't changed, so there is
+  // nothing to remove.
+  const remindersRegisteredRef = useRef<Map<string, boolean>>(new Map());
 
   const loadArchiveTags = async (): Promise<string[]> => {
     try {
@@ -164,26 +173,54 @@ export function useInbox({
     // register hits with the backend — covers in-app voice, typed notes,
     // and external Raycast captures alike, since they all land in
     // inbox.md and this scans whatever read_inbox just returned.
-    // Fire-and-forget: a failed add_reminder call just means that note's
-    // reminder is missed for now — no toast, since it would otherwise fire
-    // on every offline reload.
+    // Fire-and-forget: a failed add_reminder/removeReminder call just means
+    // that note's reminder is missed (or not removed) for now — no toast,
+    // since a failed add would otherwise fire on every offline reload.
+    //
+    // A note's reminder id is its timestamp alone, unless another note in
+    // THIS batch shares that timestamp (two notes captured in the same
+    // minute) — then both fall back to timestamp+icon so they don't
+    // collide. See reminderId.
+    const timestampCounts = new Map<string, number>();
+    for (const n of taggedNotes) {
+      timestampCounts.set(
+        n.timestamp,
+        (timestampCounts.get(n.timestamp) ?? 0) + 1,
+      );
+    }
     for (const n of taggedNotes) {
       if (remindersScannedRef.current.has(n.raw)) continue;
       remindersScannedRef.current.add(n.raw);
+      const id =
+        (timestampCounts.get(n.timestamp) ?? 0) > 1
+          ? reminderId(n.timestamp, n.icon)
+          : reminderId(n.timestamp);
       const capturedAt = new Date(n.timestamp.replace(" ", "T"));
-      if (Number.isNaN(capturedAt.getTime())) continue;
-      const detected = parseReminder(n.body, capturedAt);
-      if (!detected) continue;
-      // An old note seen for the first time whose due time is already
-      // more than 12h in the past — skip it rather than firing it
-      // immediately looking wrong.
-      if (Date.now() - detected.due.getTime() > 12 * 60 * 60 * 1000) continue;
-      addReminder(
-        reminderId(n.timestamp, n.body),
-        detected.text,
-        detected.due.getTime(),
-        n.timestamp,
-      ).catch(() => {});
+      const detected = Number.isNaN(capturedAt.getTime())
+        ? null
+        : parseReminder(n.body, capturedAt);
+      // An old note seen for the first time whose due time is already more
+      // than 12h in the past — treat it as undetected rather than firing
+      // it immediately looking wrong.
+      const stale =
+        detected !== null &&
+        Date.now() - detected.due.getTime() > 12 * 60 * 60 * 1000;
+      if (detected && !stale) {
+        addReminder(
+          id,
+          detected.text,
+          detected.due.getTime(),
+          n.timestamp,
+        ).catch(() => {});
+        remindersRegisteredRef.current.set(id, true);
+      } else if (remindersRegisteredRef.current.get(id)) {
+        // The note previously parsed as a reminder (this run) and was
+        // edited to no longer — drop the not-yet-fired reminder. Never
+        // called for a note simply leaving the inbox (triage/delete):
+        // reminders stand on their own once registered — see reminders.rs.
+        removeReminder(id).catch(() => {});
+        remindersRegisteredRef.current.set(id, false);
+      }
     }
 
     if (changed) {

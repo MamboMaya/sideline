@@ -31,6 +31,13 @@ pub enum RecState {
     /// invisible whenever the popover is closed. Idle-equivalent for the
     /// hotkeys, same as Copied.
     Failed,
+    /// A background-tick reminder fired while the recorder could otherwise
+    /// start a session — the pill shows "⏰ <text>" for `REMINDER_NOTICE`,
+    /// then drops to Idle. Entered only via `show_reminder_notice`
+    /// (reminders.rs's `tick` calls it instead of ever focusing the
+    /// popover — see that function's doc comment). Idle-equivalent for the
+    /// hotkeys, same as Copied/Failed.
+    Reminder,
 }
 
 impl RecState {
@@ -42,14 +49,18 @@ impl RecState {
             RecState::DownloadingModel => "downloading-model",
             RecState::Copied => "copied",
             RecState::Failed => "failed",
+            RecState::Reminder => "reminder",
         }
     }
 
     /// True for the states where no recording session is live and a hotkey
-    /// press should start one — Idle, plus the transient Copied/Failed
-    /// notices.
-    fn can_start(self) -> bool {
-        matches!(self, RecState::Idle | RecState::Copied | RecState::Failed)
+    /// press should start one — Idle, plus the transient Copied/Failed/
+    /// Reminder notices.
+    pub(crate) fn can_start(self) -> bool {
+        matches!(
+            self,
+            RecState::Idle | RecState::Copied | RecState::Failed | RecState::Reminder
+        )
     }
 }
 
@@ -58,6 +69,9 @@ const COPIED_NOTICE: Duration = Duration::from_millis(1500);
 /// How long the pill's failure notice stays up — longer than
 /// `COPIED_NOTICE` since it's a sentence to read, not a glance.
 const FAILED_NOTICE: Duration = Duration::from_millis(3000);
+/// How long the pill's reminder notice stays up — long enough to read a
+/// short line without needing to reopen the popover.
+const REMINDER_NOTICE: Duration = Duration::from_millis(8000);
 
 /// What a recording session is for: `Note` appends the transcript to
 /// inbox.md (⌥⌘R, "Record voice note"), `Dictate` copies it to the
@@ -166,9 +180,9 @@ pub(crate) fn emit_state(app: &AppHandle, state: RecState) {
 /// downloading the model, cleared (`None`) otherwise. No icon swap — title
 /// only, per CLAUDE.md's "no new macOS permission surfaces" constraint.
 ///
-/// Idle/Copied/Failed also shows `⏰` while a fired reminder is undismissed
-/// — but recording/transcribing always wins, so a reminder firing
-/// mid-recording never clobbers the live "🔴 m:ss" title (see
+/// Idle/Copied/Failed/Reminder also shows `⏰` while a fired reminder is
+/// undismissed — but recording/transcribing always wins, so a reminder
+/// firing mid-recording never clobbers the live "🔴 m:ss" title (see
 /// `refresh_tray_title` below for how the indicator gets applied OUTSIDE a
 /// recorder state change).
 fn set_tray_title(app: &AppHandle, state: RecState, elapsed: Option<Duration>) {
@@ -181,7 +195,7 @@ fn set_tray_title(app: &AppHandle, state: RecState, elapsed: Option<Duration>) {
             Some(format!("🔴 {}:{:02}", secs / 60, secs % 60))
         }
         RecState::Transcribing | RecState::DownloadingModel => Some("…".to_string()),
-        RecState::Idle | RecState::Copied | RecState::Failed => {
+        RecState::Idle | RecState::Copied | RecState::Failed | RecState::Reminder => {
             crate::reminders::any_fired_pending().then(|| "⏰".to_string())
         }
     };
@@ -605,25 +619,41 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
     }
 }
 
-/// Puts up a pill notice — dictation's "Copied — ⌘V to paste" or the
-/// Failed error text: flips state, emits it, and spawns the hide timer that
-/// drops back to Idle after `COPIED_NOTICE`/`FAILED_NOTICE` — unless the
-/// state has moved on (a new recording started, or a newer notice replaced
-/// this one; see `Inner::notice_gen`).
+/// Puts up a pill notice — dictation's "Copied — ⌘V to paste", the Failed
+/// error text, or a fired reminder's text: flips state, emits it, and
+/// spawns the hide timer that drops back to Idle after
+/// `COPIED_NOTICE`/`FAILED_NOTICE`/`REMINDER_NOTICE` — unless the state has
+/// moved on (a new recording started, or a newer notice replaced this one;
+/// see `Inner::notice_gen`).
 fn show_notice(app: &AppHandle, state: RecState) {
     let audio = app.state::<AudioState>();
     let gen = audio.lock().enter_notice(state);
     start_notice(app, state, gen);
 }
 
+/// reminders.rs's `tick` calls this instead of `show_notice` directly: only
+/// puts the reminder notice up when the recorder `can_start()` (Idle/
+/// Copied/Failed/Reminder) — a live recording/transcription/model-download
+/// keeps the pill showing its own state, and the tray `⏰` plus the
+/// popover's banner (once opened) still cover the reminder. NEVER shows or
+/// focuses the popover itself — see this crate's `window::show_or_focus_window`,
+/// which is deliberately not called from here (a reminder firing must not
+/// steal keyboard focus from whatever the user is typing into).
+pub(crate) fn show_reminder_notice(app: &AppHandle) {
+    let can_show = app.state::<AudioState>().lock().state().can_start();
+    if can_show {
+        show_notice(app, RecState::Reminder);
+    }
+}
+
 /// Emits a notice state already entered via `Inner::enter_notice` and
 /// spawns its hide timer.
 fn start_notice(app: &AppHandle, state: RecState, gen: u64) {
     emit_state(app, state);
-    let hold = if state == RecState::Failed {
-        FAILED_NOTICE
-    } else {
-        COPIED_NOTICE
+    let hold = match state {
+        RecState::Failed => FAILED_NOTICE,
+        RecState::Reminder => REMINDER_NOTICE,
+        _ => COPIED_NOTICE,
     };
     let app = app.clone();
     std::thread::spawn(move || {
@@ -740,7 +770,12 @@ mod tests {
 
     #[test]
     fn notices_are_idle_equivalent_but_live_states_are_not() {
-        for s in [RecState::Idle, RecState::Copied, RecState::Failed] {
+        for s in [
+            RecState::Idle,
+            RecState::Copied,
+            RecState::Failed,
+            RecState::Reminder,
+        ] {
             assert!(s.can_start(), "{s:?} should let a hotkey start a session");
         }
         for s in [

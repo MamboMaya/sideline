@@ -288,16 +288,14 @@ export function parseReminder(
   return { text: stripped || fallbackText(trimmed), due };
 }
 
-// Stable id for a note's detected reminder: note timestamp + a short hash
-// of the body, so re-scanning the SAME note (every inbox reload) produces
-// the same id — the backend dedupes by it (see reminders.rs's add_dedup) —
-// while an edited body gets treated as a new reminder. djb2, truncated to
-// base36; collision-worthy in theory, but the timestamp prefix already
-// scopes it to one note.
-export function reminderId(noteTimestamp: string, body: string): string {
-  let hash = 5381;
-  for (let i = 0; i < body.length; i++) {
-    hash = (hash * 33 + body.charCodeAt(i)) & 0xffffffff;
-  }
-  return `${noteTimestamp}-${(hash >>> 0).toString(36)}`;
+// Stable id for a note's detected reminder: the note's own timestamp, which
+// is what makes re-scanning the SAME note (every inbox reload) — even after
+// it's been EDITED — resolve to the same reminder, so an edit updates that
+// reminder in place (see reminders.rs's upsert) instead of registering a
+// second one. `icon` disambiguates the rare case of two notes sharing a
+// timestamp (multiple notes captured in the same minute) — pass it only
+// when the caller has found that collision; omit it otherwise so the
+// common case's id is just the timestamp.
+export function reminderId(noteTimestamp: string, icon?: string): string {
+  return icon ? `${noteTimestamp}-${icon}` : noteTimestamp;
 }

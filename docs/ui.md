@@ -136,29 +136,45 @@ minute", "in a couple minutes", digits or number words one through sixty
 ("forty-five minutes"). Absolute times: "at 3pm", "at 3:30 pm", "at 15:00",
 "at noon" — rolled to tomorrow if that time already passed today; a bare
 "at 3" with no am/pm picks whichever of the two 12h-apart candidates comes
-next. A hit registers with the backend (`add_reminder`) — this covers
-in-app voice notes, typed notes, and external Raycast captures alike, since
-all three land in inbox.md and the scan runs over whatever `read_inbox` just
+next. A hit registers with the backend (`add_reminder`, keyed by
+`reminderId` — the note's own timestamp, or timestamp+icon on the rare
+collision of two notes captured in the same minute) — this covers in-app
+voice notes, typed notes, and external Raycast captures alike, since all
+three land in inbox.md and the scan runs over whatever `read_inbox` just
 returned. A note whose detected time is already more than 12h in the past
 the first time it's seen is skipped, so an old note scanned for the first
-time never fires immediately looking wrong. No new keyboard shortcut, no
-system notification, no sound — see CLAUDE.md's "no new macOS permission
-surfaces" convention; this feature adds none.
+time never fires immediately looking wrong. Because the id is the note's
+own timestamp, editing a note that already has a reminder UPDATES that same
+reminder (backend upserts by id — see docs/backend.md) rather than
+registering a second one; if the edit removes whatever made it parse as a
+reminder, and it hasn't fired yet, the not-yet-fired reminder is dropped
+(`remove_reminder`). A reminder is NEVER cancelled just because its source
+note leaves the inbox (triaged or deleted) — reminders stand on their own
+once registered. No new keyboard shortcut, no system notification, no
+sound — see CLAUDE.md's "no new macOS permission surfaces" convention; this
+feature adds none.
 
-A fired-and-undismissed reminder shows as a banner strip at the very top of
-the popover, above the header, visible from every view: "⏰ <text> ·
-<time>" plus a "+10 min" snooze button and a Dismiss button
+Firing a reminder never steals focus or opens the popover. Instead, the
+always-on-top recording-pill overlay (the same non-focusable HUD the
+recorder uses — see Settings' "Show recording pill" switch below and
+docs/backend.md) shows "⏰ <text>" for about 8 seconds — the same
+non-focusable, non-stealing notice mechanism as the pill's Copied/Failed
+notices — and the tray title shows ⏰, both regardless of whether the
+popover is open. Once the popover IS opened (or
+already was), a fired-and-undismissed reminder also shows as a banner strip
+at the very top of the popover, above the header, visible from every view:
+"⏰ <text> · <time>" plus a "+10 min" snooze button and a Dismiss button
 (`ReminderBanner`, `src/hooks/useReminders.ts`). Not-yet-fired reminders
 show as a compact "⏰ N upcoming" hint in the header, its tooltip listing
 each one's text and due time. The banner and hint both load on mount
-(`list_reminders`) and refresh on the backend's `reminder-fired` event, so a
-reminder that fires while the popover is open (or a reminder that was
-overdue at launch, which fires on the app's first background tick) appears
-without needing to reopen the popover. While the popover is closed, the
-tray title shows ⏰ for any fired-and-undismissed reminder — unless a
-recording/transcribing session is active, whose own title always takes
-priority; the ⏰ re-applies the moment the recorder returns to idle (see
-docs/backend.md).
+(`list_reminders`) and refresh on the backend's `reminders-changed` event
+(emitted on every add/remove/dismiss/snooze, and by the background tick
+firing one), so the list never goes stale — including reminders registered
+by a plain inbox reload, with no fire involved. While the popover is
+closed, the tray title shows ⏰ for any fired-and-undismissed reminder —
+unless a recording/transcribing session is active, whose own title always
+takes priority; the ⏰ re-applies the moment the recorder returns to idle
+(see docs/backend.md).
 
 ## Settings
 

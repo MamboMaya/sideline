@@ -235,21 +235,31 @@ describe("parseReminder — text fallback", () => {
 });
 
 describe("reminderId", () => {
-  test("is stable for the same timestamp and body", () => {
-    const id1 = reminderId("2026-01-15 09:00", "remind me in 15 minutes");
-    const id2 = reminderId("2026-01-15 09:00", "remind me in 15 minutes");
+  test("is the timestamp alone with no icon given", () => {
+    expect(reminderId("2026-01-15 09:00")).toBe("2026-01-15 09:00");
+  });
+
+  test("is stable across an edited body — same timestamp, same id", () => {
+    // An edit to the note's body must resolve to the SAME reminder (so the
+    // backend upserts it in place) rather than registering a new one — the
+    // id must not depend on the body at all.
+    const id1 = reminderId("2026-01-15 09:00");
+    const id2 = reminderId("2026-01-15 09:00");
     expect(id1).toBe(id2);
   });
 
-  test("differs when the body changes", () => {
-    const id1 = reminderId("2026-01-15 09:00", "remind me in 15 minutes");
-    const id2 = reminderId("2026-01-15 09:00", "remind me in 20 minutes");
+  test("differs when the timestamp changes", () => {
+    const id1 = reminderId("2026-01-15 09:00");
+    const id2 = reminderId("2026-01-15 09:05");
     expect(id1).not.toBe(id2);
   });
 
-  test("differs when the timestamp changes", () => {
-    const id1 = reminderId("2026-01-15 09:00", "remind me in 15 minutes");
-    const id2 = reminderId("2026-01-15 09:05", "remind me in 15 minutes");
-    expect(id1).not.toBe(id2);
+  test("appends the icon only when given, disambiguating same-timestamp notes", () => {
+    const withoutIcon = reminderId("2026-01-15 09:00");
+    const withIcon = reminderId("2026-01-15 09:00", "🎙️");
+    expect(withIcon).not.toBe(withoutIcon);
+    expect(reminderId("2026-01-15 09:00", "🎙️")).toBe(
+      reminderId("2026-01-15 09:00", "🎙️"),
+    );
   });
 });

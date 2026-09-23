@@ -232,9 +232,9 @@ fn overlay_hidden() -> bool {
 ///
 /// Only repositions on entering Recording: a fresh ⌥⌘R press might be on a
 /// different monitor than last time, but Transcribing/DownloadingModel —
-/// and the terminal Copied/Failed notices — always follow a Recording on
-/// the same monitor, so they just keep the pill visible where it already
-/// is (no jitter).
+/// and the terminal Copied/Failed/Reminder notices — always follow a
+/// Recording on the same monitor, so they just keep the pill visible where
+/// it already is (no jitter).
 ///
 /// Never steals focus: `show()` alone (never `set_focus()`) on a window
 /// created with `focus: false` — see tauri.conf.json — leaves keyboard
@@ -243,7 +243,9 @@ fn overlay_hidden() -> bool {
 /// `overlay.hidden` (Settings → Voice → "Show recording pill") suppresses
 /// every show below, falling through to `hide()` instead — so switching it
 /// off mid-recording hides an already-visible pill on the very next state
-/// change, not just future recordings.
+/// change, not just future recordings. Same for a fired reminder's notice:
+/// with the pill hidden, a reminder only surfaces via the tray `⏰` and the
+/// popover's banner once opened.
 pub(crate) fn sync_overlay(app: &tauri::AppHandle, state: RecState) {
     let Some(win) = app.get_webview_window("overlay") else {
         return;
@@ -265,7 +267,8 @@ pub(crate) fn sync_overlay(app: &tauri::AppHandle, state: RecState) {
         RecState::Transcribing
         | RecState::DownloadingModel
         | RecState::Copied
-        | RecState::Failed => {
+        | RecState::Failed
+        | RecState::Reminder => {
             let _ = win.show();
         }
     }

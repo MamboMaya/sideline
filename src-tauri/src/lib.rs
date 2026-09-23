@@ -127,8 +127,8 @@ pub fn run() {
                         return;
                     }
 
-                    // Push-to-talk: a Pressed on an idle (or Copied/Failed-notice)
-                    // recorder starts a session and remembers THIS shortcut
+                    // Push-to-talk: a Pressed on an idle (or Copied/Failed/
+                    // Reminder-notice) recorder starts a session and remembers THIS shortcut
                     // as the one holding it open. A Pressed while a session
                     // is already running — started from the tray, or
                     // started in toggle mode before the setting flipped —
@@ -148,7 +148,7 @@ pub fn run() {
                         ShortcutState::Pressed => {
                             let can_start = matches!(
                                 audio::get_recording_state(app.clone()).as_str(),
-                                "idle" | "copied" | "failed"
+                                "idle" | "copied" | "failed" | "reminder"
                             );
                             if can_start {
                                 *handler_held.lock().unwrap() = Some(held_variant);
@@ -204,6 +204,7 @@ pub fn run() {
             commands::assets::read_asset,
             commands::assets::open_asset,
             reminders::add_reminder,
+            reminders::remove_reminder,
             reminders::list_reminders,
             reminders::dismiss_reminder,
             reminders::snooze_reminder
