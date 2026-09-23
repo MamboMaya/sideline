@@ -278,6 +278,7 @@ equivalence checks in Header.tsx/AskView.tsx/Overlay.tsx), held for
 counter guard (`Inner::notice_gen`) as the other notices, so a newer state
 change (a fresh recording, or a second reminder firing) isn't clobbered by
 an older notice's stale hide timer.
+
 - `classify_local` (`classifier.rs`; `url` + `payload` args — POSTs `payload`
   as JSON to `<url>/decide` with a 5s timeout via `reqwest::blocking`, and
   returns the parsed JSON response; the frontend's `src/lib/classify.ts`
