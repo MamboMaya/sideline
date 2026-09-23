@@ -121,6 +121,45 @@ docs/data-model.md) — and is a no-op on a thread with no answer yet
 first, same convention as the header search input; a second `Esc` then
 hides the popover as usual.
 
+## Reminders
+
+Reminders auto-detected in note bodies — no explicit reminder feature, no
+new tag, nothing to trigger by hand. On every inbox reload, each not-yet-
+scanned note (same once-per-note-per-run tracking as auto-tagging, keyed by
+`note.raw` — see Tags above) is checked by `parseReminder`
+(`src/lib/reminders.ts`) for one of two shapes: the body says "remind me" or
+"reminder" AND names a time anywhere in it ("remind me to call my mom in 15
+minutes"), or the body simply STARTS with a relative time expression ("in
+15 minutes I've got to go — alert me then"), no trigger phrase needed.
+Relative times: "in 15 minutes", "in an hour", "in half an hour", "in a
+minute", "in a couple minutes", digits or number words one through sixty
+("forty-five minutes"). Absolute times: "at 3pm", "at 3:30 pm", "at 15:00",
+"at noon" — rolled to tomorrow if that time already passed today; a bare
+"at 3" with no am/pm picks whichever of the two 12h-apart candidates comes
+next. A hit registers with the backend (`add_reminder`) — this covers
+in-app voice notes, typed notes, and external Raycast captures alike, since
+all three land in inbox.md and the scan runs over whatever `read_inbox` just
+returned. A note whose detected time is already more than 12h in the past
+the first time it's seen is skipped, so an old note scanned for the first
+time never fires immediately looking wrong. No new keyboard shortcut, no
+system notification, no sound — see CLAUDE.md's "no new macOS permission
+surfaces" convention; this feature adds none.
+
+A fired-and-undismissed reminder shows as a banner strip at the very top of
+the popover, above the header, visible from every view: "⏰ <text> ·
+<time>" plus a "+10 min" snooze button and a Dismiss button
+(`ReminderBanner`, `src/hooks/useReminders.ts`). Not-yet-fired reminders
+show as a compact "⏰ N upcoming" hint in the header, its tooltip listing
+each one's text and due time. The banner and hint both load on mount
+(`list_reminders`) and refresh on the backend's `reminder-fired` event, so a
+reminder that fires while the popover is open (or a reminder that was
+overdue at launch, which fires on the app's first background tick) appears
+without needing to reopen the popover. While the popover is closed, the
+tray title shows ⏰ for any fired-and-undismissed reminder — unless a
+recording/transcribing session is active, whose own title always takes
+priority; the ⏰ re-applies the moment the recorder returns to idle (see
+docs/backend.md).
+
 ## Settings
 
 The header's ⚙ button (`src/components/Header.tsx`) or `⌘,` (the standard

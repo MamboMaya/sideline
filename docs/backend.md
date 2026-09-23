@@ -6,7 +6,8 @@ delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`)
 `commands/assets.rs` (the IPC
 commands below, grouped by concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning + the recording-pill overlay window),
-`hotkeys.rs` (config + registration),
+`hotkeys.rs` (config + registration), `reminders.rs` (reminder storage,
+background ticker, firing),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
 watcher), and `autostart.rs` (one-time launch-at-login consent: a native
 dialog on first run — "Launch at Login" enables, "Not Now" disables, either
@@ -210,6 +211,36 @@ session_id }`: the session id is what `open_ask_session` resumes)
   `list_audio_devices` (enumerates input device names — the Settings pane's
   Voice section device picker is its one caller)
 - `apply_hotkeys` (hotkeys.rs) — see the hotkeys bullet above
+- `add_reminder` (`id`/`text`/`due_ms`/`note_timestamp` args; frontend calls
+  it once per note per app run, mirroring the auto-tagger's dedup shape —
+  see docs/ui.md's Reminders section. A duplicate `id` is a silent no-op
+  (`reminders::add_dedup`), so a note re-scanned on a later reload never
+  registers twice), `list_reminders` (undismissed, sorted by `due_ms`),
+  `dismiss_reminder(id)`, `snooze_reminder(id, minutes)` (sets a new
+  `due_ms` `minutes` from now and clears `fired`; the popover's "+10 min"
+  button is the one caller). The latter two also call
+  `audio::refresh_tray_title` after writing, since dismissing/snoozing the
+  last fired reminder can clear the tray's ⏰. All four persist through
+  `reminders::write_all` (prunes, then the same atomic `write_file` helper
+  as every other notes file).
+
+`reminders.rs` also runs a background thread (`spawn_ticker`, started from
+`.setup()` alongside the inbox watcher), sleeping 5s between ticks: each
+tick marks any unfired reminder whose `due_ms` has passed as fired,
+persists, emits `reminder-fired` (the fired `Reminder` as payload, though
+the frontend's listener ignores it and just re-fetches via `list_reminders`)
+once per newly-fired reminder, raises the popover
+(`window::show_or_focus_window` — no new show path), and calls
+`audio::refresh_tray_title`. A reminder due while the app wasn't running
+(overdue at launch) fires on the very first tick after launch — `due_now`
+treats "unfired and due_ms in the past" the same as "due now", it doesn't
+require an exact match. `audio::set_tray_title`'s Idle/Copied/Failed arm
+shows ⏰ when `reminders::any_fired_pending()` is true; a recording/
+transcribing title always takes priority and `refresh_tray_title` re-applies
+the ⏰ (or clears it) the moment the recorder returns to Idle/Copied/Failed,
+so the two indicators never fight over the title. No system notification, no sound —
+the popover and tray title are the only alert surfaces (see CLAUDE.md's "no
+new macOS permission surfaces" convention; this feature adds none).
 
 `append_inbox_text` (`commands/notes.rs`) is an O_APPEND write of one
 voice-note block — not an IPC command, just a plain fn the native recording

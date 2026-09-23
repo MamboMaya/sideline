@@ -33,7 +33,9 @@ entry = `### <icon> YYYY-MM-DD HH:MM #tags` + body (🎙️/🔗/📸).
 `todos/<project>.md`: routed project todos, `### ⬜|✅|🧊 <timestamp> #tags`,
 never deleted, the ONLY record of a routed note; long entries may lead with a
 `**title**` body line, re-routed ones may embed a `## Claude` reply.
-`archive.md`: append-only deleted notes. `.sideline.json`: frontend config
+`archive.md`: append-only deleted notes.
+`.sideline-reminders.json`: reminders auto-detected in note bodies (text,
+due time, fired/dismissed). `.sideline.json`: frontend config
 (pinnedTags, hiddenTags, zoom, prompts, models, projects → routing tags).
 Exact rules: docs/data-model.md.
 
