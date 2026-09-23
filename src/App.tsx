@@ -13,6 +13,7 @@ import {
 import { QUICK_TAGS, tagLabel } from "./lib/format";
 import { addToDictionary } from "./lib/config";
 import { appendToArchive } from "./lib/archive";
+import { isStale } from "./lib/stale";
 import {
   NO_IMAGE,
   pasteClipboardImage,
@@ -99,6 +100,7 @@ export default function App() {
     pushToTalk,
     dictionaryOverride,
     terminalOverride,
+    staleDays,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -108,6 +110,7 @@ export default function App() {
     setPushToTalk,
     setDictionary,
     setTerminal,
+    setStaleDays,
     addProject,
     removeProject,
     updateConfig,
@@ -293,6 +296,24 @@ export default function App() {
       }
     })();
   }, []);
+
+  // Wall clock for the stale-inbox-note badges (InboxCard's age badge,
+  // Header's "N stale" count — see src/lib/stale.ts). Recomputed whenever
+  // `notes` reloads (a freshly-loaded list may already be past the
+  // threshold) and at least hourly, so a note that ages past the threshold
+  // while the popover sits open in the background still gets flagged.
+  const [now, setNow] = useState(() => new Date());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reruns on every notes reload, not just mount
+  useEffect(() => {
+    setNow(new Date());
+  }, [notes]);
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  const staleCount = notes.filter((n) =>
+    isStale(n.timestamp, staleDays, now),
+  ).length;
 
   // Reopening the popover is a fresh glance: jump back to the top with a
   // clean slate (selection, search, modal). Tab switches within one open
@@ -538,6 +559,7 @@ export default function App() {
         onChangeView={setView}
         notesCount={notes.length}
         todosPending={todosPending}
+        staleCount={staleCount}
         askPending={askThreads.filter((t) => t.pending).length}
         recState={recState}
         audioLevel={audioLevel}
@@ -605,6 +627,8 @@ export default function App() {
           addProject={addProject}
           removeProject={removeProject}
           onChooseFolder={chooseProjectFolder}
+          staleDays={staleDays}
+          setStaleDays={setStaleDays}
           zoom={zoom}
           adjustZoom={adjustZoom}
           updateConfig={updateConfig}
@@ -671,6 +695,8 @@ export default function App() {
                     isSending={isSending}
                     isEditing={isEditingThis}
                     editArea={editArea}
+                    now={now}
+                    staleDays={staleDays}
                     cardRef={(el) => {
                       cardRefs.current[revIdx] = el;
                     }}

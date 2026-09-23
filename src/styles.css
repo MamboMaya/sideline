@@ -117,6 +117,28 @@ header {
   flex: 1;
   min-width: 0;
 }
+/* "N stale" badge — visible from any view (unlike the todos-only show-done
+   button above), so it lives right after the tabs rather than inside the
+   .ghost cluster on the right. Outline style, same shape as InboxCard's
+   .stale-badge, just clickable. */
+.stale-count {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.stale-count:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
 .tab {
   background: none;
   border: none;
@@ -281,6 +303,18 @@ header .ghost.gear {
   font-weight: 600;
   font-size: 11px;
   padding: 2px 8px;
+  border-radius: 10px;
+}
+/* Age badge on stale inbox cards (InboxCard) — outline rather than filled
+   like .sending-badge, so it reads as a quiet flag, not an active status. */
+.stale-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 10px;
+  padding: 1px 6px;
   border-radius: 10px;
 }
 .body {
@@ -836,6 +870,13 @@ header .ghost.gear {
 }
 .settings-input.error {
   border-color: var(--danger);
+}
+/* Stale-days number field (SettingsPane's Inbox section) — narrow instead
+   of the default flex:1, since a 1-2 digit day count doesn't need the
+   full row width the popover otherwise reserves for text/path inputs. */
+.settings-input-number {
+  flex: none;
+  width: 50px;
 }
 /* Press-to-record hotkey fields (SettingsPane.tsx's HotkeyCaptureField) are
    <button>s, not text inputs — reset the button chrome .settings-input

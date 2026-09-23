@@ -61,6 +61,16 @@ dropping away and the pill showing the error in red for ~3s before
 hiding, alongside the popover's toast — so a failed recording is never
 silent.
 
+STALE NOTES: an inbox note older than `.sideline.json`'s `staleDays`
+(default 3, 0 = off — see Settings) gets a small amber age badge next to its
+timestamp (`"4d"`, whole days since capture; see `src/lib/stale.ts`), a
+nudge to triage it. The header shows an amber "N stale" badge, next to the
+view tabs, counting every such note regardless of which view is active;
+clicking it jumps to the Inbox view (same as `⌘1`). Both recompute on every
+inbox reload and at least hourly, so a note that crosses the threshold while
+the popover sits open in the background still gets flagged without a
+reopen.
+
 ## Quick question
 
 The Ask view (`src/components/AskView.tsx`, `src/hooks/useAsk.ts`) — a THIRD
@@ -142,11 +152,11 @@ SAVE MODEL: there is no Save button. Every control writes the full config
 file on change/commit — same read-modify-write path pinned-tag toggles and
 every other existing config write already use (`useConfig`'s `updateConfig`
 in `src/hooks/useConfig.ts`, feeding `writeConfig`). A pane write always
-round-trips the 9 opaque overrides (`prompts`, `models`, `projects`,
-`claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`) it
-isn't touching, so a key the pane doesn't render — or an unknown key
-hand-edited into one it does — survives untouched. Five sections, one
-scrollable pane:
+round-trips the 10 opaque overrides (`prompts`, `models`, `projects`,
+`claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`,
+`staleDays`) it isn't touching, so a key the pane doesn't render — or an
+unknown key hand-edited into one it does — survives untouched. Six sections,
+one scrollable pane:
 
 1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
    `record`/`dictate`/`ask` (`HotkeyCaptureField` in
@@ -273,7 +283,15 @@ scrollable pane:
    on the Settings pane with the panel open (`project-picked` event), so
    the new chip is visible once added. Esc closes the panel (its own
    handler, before the app's Esc layering).
-5. **Zoom** — the current `zoom` value as a percentage, with −/+ steppers
+5. **Inbox** — a number input for `staleDays` ("Flag inbox notes older
+   than N days (0 = off)"; default 3), the threshold behind the age badge
+   on inbox cards and the header's "N stale" count (see Views &
+   navigation above and `src/lib/stale.ts`). Clamped to a non-negative
+   integer client-side; writing the default value removes the key from
+   the override (same omit-at-default convention as the Claude switch
+   above), writing `0` writes it explicitly since `0` (feature off) is
+   not the default.
+6. **Zoom** — the current `zoom` value as a percentage, with −/+ steppers
    and a Reset button (all three just call the existing `adjustZoom`, so
    they toast and clamp exactly like ⌘+/⌘−/⌘0 do) plus a hint pointing at
    those same shortcuts, since they already own this and the pane doesn't

@@ -4,6 +4,7 @@ import {
   DEFAULT_PROMPTS,
   type Models,
   DEFAULT_MODELS,
+  DEFAULT_STALE_DAYS,
   type ProjectsConfig,
   type HotkeysConfig,
   type DictionaryConfig,
@@ -110,11 +111,21 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [terminalOverride, setTerminalOverride] = useState<string | undefined>(
     undefined,
   );
+  // Resolved stale-note threshold in days (InboxCard's age badge, Header's
+  // "N stale" count — see src/lib/stale.ts), merged against
+  // DEFAULT_STALE_DAYS. `0` turns the feature off.
+  const [staleDays, setStaleDaysState] = useState(DEFAULT_STALE_DAYS);
+  // Raw `staleDays` value as read from the file (undefined = key absent) —
+  // kept only so a pin/zoom/hide write doesn't clobber a hand-edited value,
+  // same as `claudeOverride` (0 is meaningful here too).
+  const [staleDaysOverride, setStaleDaysOverride] = useState<
+    number | undefined
+  >(undefined);
 
-  // The 10 opaque `.sideline.json` overrides, read from current state —
+  // The 11 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // overlay/pushToTalk/dictionary/terminal value.
+  // overlay/pushToTalk/dictionary/terminal/staleDays value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -126,6 +137,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     pushToTalk: pushToTalkOverride,
     terminal: terminalOverride,
     dictionary: dictionaryOverride,
+    staleDays: staleDaysOverride,
   });
 
   const persistZoom = (next: number) => {
@@ -161,6 +173,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     pushToTalk?: boolean | undefined;
     dictionary?: DictionaryConfig | undefined;
     terminal?: string | undefined;
+    staleDays?: number | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
     const nextHidden = patch.hiddenTags ?? hiddenTags;
@@ -184,6 +197,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "dictionary" in patch ? patch.dictionary : dictionaryOverride;
     const nextTerminalOverride =
       "terminal" in patch ? patch.terminal : terminalOverride;
+    const nextStaleDaysOverride =
+      "staleDays" in patch ? patch.staleDays : staleDaysOverride;
 
     setPinnedTags(nextPinned);
     setHiddenTags(nextHidden);
@@ -203,6 +218,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalkState(nextPushToTalkOverride ?? false);
     setDictionaryOverride(nextDictionaryOverride);
     setTerminalOverride(nextTerminalOverride);
+    setStaleDaysOverride(nextStaleDaysOverride);
+    setStaleDaysState(nextStaleDaysOverride ?? DEFAULT_STALE_DAYS);
 
     await writeConfig({
       pinnedTags: nextPinned,
@@ -219,6 +236,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         pushToTalk: nextPushToTalkOverride,
         terminal: nextTerminalOverride,
         dictionary: nextDictionaryOverride,
+        staleDays: nextStaleDaysOverride,
       },
     });
   };
@@ -285,6 +303,18 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     const trimmed = name?.trim();
     updateConfig({
       terminal: trimmed && trimmed !== "auto" ? trimmed : undefined,
+    });
+  };
+
+  // Settings' "Flag inbox notes older than N days" number input. Clamped to
+  // a non-negative integer client-side; `DEFAULT_STALE_DAYS` (the default)
+  // clears the override entirely rather than writing it explicitly, same
+  // omit-at-default convention as `setClaudeEnabled` — `0` (feature off) is
+  // NOT the default here, so it's written explicitly like `claude: false`.
+  const setStaleDays = (days: number) => {
+    const clamped = Math.max(0, Math.floor(days) || 0);
+    updateConfig({
+      staleDays: clamped === DEFAULT_STALE_DAYS ? undefined : clamped,
     });
   };
 
@@ -380,6 +410,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalkOverride(config.pushToTalkOverride);
     setDictionaryOverride(config.dictionaryOverride);
     setTerminalOverride(config.terminalOverride);
+    setStaleDaysState(config.staleDays);
+    setStaleDaysOverride(config.staleDaysOverride);
   };
 
   const persistPinnedTags = async (next: string[]) => {
@@ -445,6 +477,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     claude,
     hotkeysOverride,
     pushToTalk,
+    staleDays,
     applyConfig,
     togglePin,
     hideTag,
@@ -462,6 +495,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     overlayOverride,
     dictionaryOverride,
     terminalOverride,
+    staleDaysOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -471,6 +505,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalk,
     setDictionary,
     setTerminal,
+    setStaleDays,
     addProject,
     removeProject,
     updateConfig,

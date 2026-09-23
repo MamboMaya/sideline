@@ -6,6 +6,14 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- Stale inbox notes get flagged: a note older than `staleDays` days (default
+  3, in Settings → Inbox; 0 turns it off) shows a small amber age badge on
+  its card, and the header shows an amber "N stale" count from any view —
+  click it to jump to the Inbox. Both recompute on reload and at least
+  hourly.
+
 ### Fixed
 
 - A failed recording is no longer silent: the recording pill now shows the

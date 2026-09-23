@@ -8,6 +8,10 @@ interface HeaderProps {
   onChangeView: (view: "inbox" | "todos" | "ask") => void;
   notesCount: number;
   todosPending: number;
+  // Inbox notes older than the configured staleDays threshold (see
+  // src/lib/stale.ts) — shown as an amber "N stale" badge, visible from
+  // any view, unlike the todos-only "Show done" button below. 0 hides it.
+  staleCount: number;
   // Threads still awaiting an answer — shown on the Ask tab as "Ask (N…)"
   // so a question asked from another view doesn't go unnoticed.
   askPending: number;
@@ -43,6 +47,7 @@ export function Header({
   onChangeView,
   notesCount,
   todosPending,
+  staleCount,
   askPending,
   recState,
   audioLevel,
@@ -88,6 +93,16 @@ export function Header({
           {askPending > 0 ? `Ask (${askPending}…)` : "Ask"}
         </button>
       </div>
+      {staleCount > 0 && (
+        <button
+          type="button"
+          className="stale-count"
+          title={`${staleCount} inbox note${staleCount === 1 ? "" : "s"} past the stale threshold — click to triage`}
+          onClick={() => onChangeView("inbox")}
+        >
+          {staleCount} stale
+        </button>
+      )}
       <div className="header-spacer" />
       {/* "copied"/"failed" are the pill's terminal notices — idle as far
           as the popover is concerned (the pill overlay owns those messages;

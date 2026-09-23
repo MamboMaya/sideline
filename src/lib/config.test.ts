@@ -9,6 +9,7 @@ import {
   serializeConfig,
   DEFAULT_PROMPTS,
   DEFAULT_MODELS,
+  DEFAULT_STALE_DAYS,
   mergeModels,
   mergePrompts,
   projectTagsFrom,
@@ -41,6 +42,8 @@ const DEFAULTS: SidelineConfig = {
   pushToTalkOverride: undefined,
   dictionaryOverride: undefined,
   terminalOverride: undefined,
+  staleDays: DEFAULT_STALE_DAYS,
+  staleDaysOverride: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -85,6 +88,7 @@ describe("parseConfig — full valid config", () => {
       pushToTalk: true,
       terminal: "iTerm",
       dictionary: { Tauri: ["towery"], Whisper: [] },
+      staleDays: 5,
     });
     const cfg = parseConfig(raw);
     expect(cfg.pinnedTags).toEqual(["bug", "idea"]);
@@ -115,6 +119,8 @@ describe("parseConfig — full valid config", () => {
     expect(cfg.pushToTalkOverride).toBe(true);
     expect(cfg.terminalOverride).toBe("iTerm");
     expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
+    expect(cfg.staleDays).toBe(5);
+    expect(cfg.staleDaysOverride).toBe(5);
   });
 });
 
@@ -213,6 +219,7 @@ describe("parseConfig — terminal", () => {
         pushToTalk: true,
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
+        staleDays: undefined,
       },
     });
     expect(Object.keys(JSON.parse(withTerminal))).toEqual([
@@ -237,9 +244,49 @@ describe("parseConfig — terminal", () => {
         pushToTalk: undefined,
         terminal: undefined,
         dictionary: undefined,
+        staleDays: undefined,
       },
     });
     expect(JSON.parse(absent)).not.toHaveProperty("terminal");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — staleDays (stale-inbox-note badges)
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — staleDays", () => {
+  test("absent key defaults to DEFAULT_STALE_DAYS, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.staleDays).toBe(DEFAULT_STALE_DAYS);
+    expect(cfg.staleDaysOverride).toBeUndefined();
+  });
+
+  test("a positive integer override round-trips", () => {
+    const cfg = parseConfig(JSON.stringify({ staleDays: 7 }));
+    expect(cfg.staleDays).toBe(7);
+    expect(cfg.staleDaysOverride).toBe(7);
+  });
+
+  test("staleDays: 0 is honored explicitly (feature off) and still recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ staleDays: 0 }));
+    expect(cfg.staleDays).toBe(0);
+    expect(cfg.staleDaysOverride).toBe(0);
+  });
+
+  test("a negative or non-integer staleDays value is ignored (treated as absent)", () => {
+    expect(
+      parseConfig(JSON.stringify({ staleDays: -1 })).staleDaysOverride,
+    ).toBeUndefined();
+    expect(
+      parseConfig(JSON.stringify({ staleDays: 2.5 })).staleDaysOverride,
+    ).toBeUndefined();
+  });
+
+  test("a non-numeric staleDays value is ignored (treated as absent, defaults to DEFAULT_STALE_DAYS)", () => {
+    const cfg = parseConfig(JSON.stringify({ staleDays: "3" }));
+    expect(cfg.staleDays).toBe(DEFAULT_STALE_DAYS);
+    expect(cfg.staleDaysOverride).toBeUndefined();
   });
 });
 
@@ -292,6 +339,7 @@ describe("parseConfig — dictionary", () => {
         pushToTalk: undefined,
         terminal: undefined,
         dictionary: undefined,
+        staleDays: undefined,
       },
     };
     expect(JSON.parse(serializeConfig(base))).toEqual({
@@ -597,6 +645,7 @@ const noOverrides = {
   pushToTalk: undefined,
   terminal: undefined,
   dictionary: undefined,
+  staleDays: undefined,
 };
 
 describe("serializeConfig", () => {
@@ -647,7 +696,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -663,6 +712,7 @@ describe("serializeConfig", () => {
         pushToTalk: true,
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
+        staleDays: 5,
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -679,10 +729,11 @@ describe("serializeConfig", () => {
       "pushToTalk",
       "terminal",
       "dictionary",
+      "staleDays",
     ]);
   });
 
-  test("overlay, pushToTalk, and terminal land between hotkeys and dictionary when all four are present", () => {
+  test("overlay, pushToTalk, terminal, and staleDays land between hotkeys and dictionary/after it when all are present", () => {
     const out = serializeConfig({
       pinnedTags: [],
       hiddenTags: [],
@@ -694,6 +745,7 @@ describe("serializeConfig", () => {
         pushToTalk: true,
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
+        staleDays: 5,
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -703,6 +755,7 @@ describe("serializeConfig", () => {
       "pushToTalk",
       "terminal",
       "dictionary",
+      "staleDays",
     ]);
   });
 
@@ -762,6 +815,36 @@ describe("serializeConfig", () => {
     expect(JSON.parse(out)).toHaveProperty("claude", true);
   });
 
+  test("staleDays is omitted when undefined (key absent, not forced to the default)", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: noOverrides,
+    });
+    expect(JSON.parse(out)).not.toHaveProperty("staleDays");
+  });
+
+  test("staleDays: 0 round-trips as 0, not omitted as falsy", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, staleDays: 0 },
+    });
+    expect(JSON.parse(out)).toHaveProperty("staleDays", 0);
+  });
+
+  test("staleDays: 7 round-trips as 7", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, staleDays: 7 },
+    });
+    expect(JSON.parse(out)).toHaveProperty("staleDays", 7);
+  });
+
   test("is pretty-printed with a 2-space indent, matching the original writeConfigFile output", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
@@ -791,6 +874,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       hotkeys: { toggle: "alt+cmd+space" },
       pushToTalk: true,
       terminal: "iTerm",
+      staleDays: 5,
     };
     const cfg = parseConfig(JSON.stringify(original));
     const rewritten = JSON.parse(
@@ -809,6 +893,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           pushToTalk: cfg.pushToTalkOverride,
           terminal: cfg.terminalOverride,
           dictionary: undefined,
+          staleDays: cfg.staleDaysOverride,
         },
       }),
     );
@@ -823,6 +908,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.hotkeys).toEqual(original.hotkeys);
     expect(rewritten.pushToTalk).toBe(original.pushToTalk);
     expect(rewritten.terminal).toBe(original.terminal);
+    expect(rewritten.staleDays).toBe(original.staleDays);
   });
 });
 

@@ -126,7 +126,14 @@
   built-in Claude corrections (see docs/backend.md). Read from the file on
   EVERY transcription, so a Settings-pane edit (Voice → Dictionary, one row per term) applies to the next recording
   with no restart; `capture/voice-note.sh` reads the same key via jq so
-  Raycast captures get the identical prompt and corrections. Frontend-owned
+  Raycast captures get the identical prompt and corrections. Also optional
+  `"staleDays": 5` (default 3, positive integer; `0` turns the feature off) —
+  an inbox note older than this many whole days gets an amber age badge on
+  its card and counts toward the header's "N stale" badge (Settings → Inbox
+  — see docs/ui.md's Views & navigation and Settings sections,
+  `src/lib/stale.ts`). Frontend-only — no Rust command reads or writes it;
+  recomputed on inbox reload and at least hourly, never from a file watch.
+  Frontend-owned
   schema (the `audio` key is read/written Rust-side by audio.rs, `hotkeys`
   is read-only Rust-side at startup by lib.rs — the Settings pane's
   live-apply path is the one exception, reading it only via the frontend's

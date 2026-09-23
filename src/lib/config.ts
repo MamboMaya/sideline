@@ -57,6 +57,13 @@ export const DEFAULT_MODELS: Models = {
   ask: "sonnet",
 };
 
+// `.sideline.json`'s `staleDays` field — an inbox note older than this many
+// days gets the amber age badge (InboxCard) and counts toward the header's
+// "N stale" badge (see src/lib/stale.ts). `0` turns the feature off
+// entirely — a meaningful non-default value, same as `claude: false` below,
+// so it round-trips explicitly rather than being omitted as falsy.
+export const DEFAULT_STALE_DAYS = 3;
+
 // `.sideline.json`'s `projects` field: either the original `{tag: path}` map
 // (paths are no longer used for anything — a repo just names itself in the
 // map to opt in) or a plain array of tags. Either shape round-trips
@@ -336,6 +343,13 @@ export interface SidelineConfig {
   // Raw `terminal` value as it appeared in the file (undefined = auto) — see
   // its declaration comment above.
   terminalOverride: string | undefined;
+  // Resolved stale-note threshold in days, merged against DEFAULT_STALE_DAYS
+  // (absent/invalid = default). `0` means the feature is off.
+  staleDays: number;
+  // Raw `staleDays` value as it appeared in the file (undefined when the key
+  // is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited value, same as `claudeOverride`.
+  staleDaysOverride: number | undefined;
 }
 
 const EMPTY_CONFIG: SidelineConfig = {
@@ -357,6 +371,8 @@ const EMPTY_CONFIG: SidelineConfig = {
   pushToTalkOverride: undefined,
   dictionaryOverride: undefined,
   terminalOverride: undefined,
+  staleDays: DEFAULT_STALE_DAYS,
+  staleDaysOverride: undefined,
 };
 
 // Validates a raw `dictionary` value into DictionaryConfig: an object whose
@@ -443,6 +459,12 @@ export function parseConfig(raw: string): SidelineConfig {
       typeof parsed?.terminal === "string" && parsed.terminal.trim()
         ? parsed.terminal
         : undefined;
+    const staleDaysOverride =
+      typeof parsed?.staleDays === "number" &&
+      Number.isInteger(parsed.staleDays) &&
+      parsed.staleDays >= 0
+        ? parsed.staleDays
+        : undefined;
     return {
       pinnedTags: sanitized.slice(0, 6),
       hiddenTags: hidden,
@@ -462,6 +484,8 @@ export function parseConfig(raw: string): SidelineConfig {
       dictionaryOverride,
       terminalOverride,
       zoom,
+      staleDays: staleDaysOverride ?? DEFAULT_STALE_DAYS,
+      staleDaysOverride,
     };
   } catch {
     return EMPTY_CONFIG;
@@ -503,6 +527,11 @@ export interface ConfigOverrides {
   // see its declaration comment above SidelineConfig.terminalOverride.
   terminal: string | undefined;
   dictionary: DictionaryConfig | undefined;
+  // Raw `staleDays` number as read from the file — `undefined` means the
+  // key is absent (stays omitted on write, not forced to the default).
+  // Unlike `pushToTalk`, `0` IS a meaningful value here (feature off), so
+  // serializeConfig checks `!== undefined`, same as `claude`.
+  staleDays: number | undefined;
 }
 
 export interface ConfigWrite {
@@ -515,7 +544,7 @@ export interface ConfigWrite {
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
 // projects?, claude?, zoom?, audio?, hotkeys?, overlay?, pushToTalk?,
-// terminal?, dictionary? (omitted when falsy/empty/default) —
+// terminal?, dictionary?, staleDays? (omitted when falsy/empty/default) —
 // .sideline.json is read by capture/ tooling too, so this order is contract
 // (see docs/data-model.md). Object spread preserves insertion order for
 // these string keys, so the order below is exactly the emitted order.
@@ -544,6 +573,11 @@ export function serializeConfig(cfg: ConfigWrite): string {
       ...(cfg.overrides.terminal ? { terminal: cfg.overrides.terminal } : {}),
       ...(cfg.overrides.dictionary
         ? { dictionary: cfg.overrides.dictionary }
+        : {}),
+      // Numeric override, same shape as `claude` above: `0` (feature off)
+      // is meaningful, so this checks `!== undefined` rather than truthiness.
+      ...(cfg.overrides.staleDays !== undefined
+        ? { staleDays: cfg.overrides.staleDays }
         : {}),
     },
     null,

@@ -55,6 +55,9 @@ export interface SettingsPaneProps {
   removeProject: (tag: string) => void;
   // "Choose folder…": native folder picker → AddProjectModal (App.tsx).
   onChooseFolder: () => void;
+  // Inbox
+  staleDays: number;
+  setStaleDays: (days: number) => void;
   // Zoom
   zoom: number;
   adjustZoom: (delta: number) => void;
@@ -569,6 +572,8 @@ export function SettingsPane({
   addProject,
   removeProject,
   onChooseFolder,
+  staleDays,
+  setStaleDays,
   zoom,
   adjustZoom,
   updateConfig,
@@ -937,7 +942,31 @@ export function SettingsPane({
         </div>
       </section>
 
-      {/* ── 5. Zoom ────────────────────────────────────────────────── */}
+      {/* ── 5. Inbox ───────────────────────────────────────────────── */}
+      <section className="settings-section">
+        <div className="settings-section-title">Inbox</div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="stale-days">
+            Flag inbox notes older than N days (0 = off)
+          </label>
+          <input
+            id="stale-days"
+            type="number"
+            min={0}
+            step={1}
+            className="settings-input settings-input-number"
+            value={staleDays}
+            onChange={(e) => setStaleDays(Number(e.target.value))}
+            onKeyDown={blurOnEscape}
+          />
+        </div>
+        <div className="settings-hint">
+          Notes captured longer ago than this get an amber age badge, and count
+          toward the header's stale total, as a nudge to triage them.
+        </div>
+      </section>
+
+      {/* ── 6. Zoom ────────────────────────────────────────────────── */}
       <section className="settings-section">
         <div className="settings-section-title">Zoom</div>
         <div className="settings-row">
