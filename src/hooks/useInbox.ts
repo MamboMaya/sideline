@@ -2,6 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { type Note, parseInbox, serializeInbox } from "../inbox";
 import { autoTag } from "../lib/autotag";
+import {
+  type ClassifyPick,
+  applyClassifierPicks,
+  buildClassifyRequest,
+  buildClaudePrompt,
+  parseClaudeReply,
+  parseLocalResponse,
+  selectForClassification,
+} from "../lib/classify";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
 import { parseReminder, reminderId } from "../lib/reminders";
 import {
@@ -11,6 +20,8 @@ import {
   readArchive,
   addReminder,
   removeReminder,
+  classifyLocal,
+  sendToClaude,
 } from "../lib/commands";
 import { insertNoteAt } from "../lib/undo";
 import { loadConfig, type SidelineConfig } from "../lib/config";
@@ -103,6 +114,15 @@ export function useInbox({
   // which is fine — the note it belonged to hasn't changed, so there is
   // nothing to remove.
   const remindersRegisteredRef = useRef<Map<string, boolean>>(new Map());
+  // Notes already scanned for classification this app run, same raw-keyed,
+  // reset-on-restart contract as autoTaggedRef — kept separate so a note
+  // that the keyword auto-tagger already fully tagged (and therefore isn't
+  // eligible for classification at all, see classify.ts's
+  // eligibleForClassification) is still recorded as scanned exactly once.
+  const classifiedRef = useRef<Set<string>>(new Set());
+  // True once the local-classifier-unreachable toast has fired this app
+  // run — see runClassifier below: one toast per app run, not one per note.
+  const classifierToastedRef = useRef(false);
 
   const loadArchiveTags = async (): Promise<string[]> => {
     try {
@@ -114,6 +134,74 @@ export function useInbox({
     } catch {
       return [];
     }
+  };
+
+  // Classifier pass: kicked off (not awaited) by reload() below, after
+  // notes/preamble already went into state, so a slow or unreachable
+  // classifier never delays the notes list from showing. Limited to 2
+  // concurrent calls; every eligible note is marked processed regardless of
+  // outcome (see selectForClassification) so a persistently unreachable
+  // local classifier is tried once per note per app run, not retried every
+  // reload. Applies against `notesRef.current` (not the `currentNotes`
+  // snapshot passed in) and writes through `persist`, so it batches
+  // cleanly with anything else that changed notes while the calls were in
+  // flight, in one write.
+  const runClassifier = async (
+    currentNotes: Note[],
+    config: SidelineConfig,
+  ) => {
+    const provider = config.classifier.provider;
+    if (provider === "off") return;
+    // No-Claude-mode disables the claude provider the same way it disables
+    // every other send_to_claude call — silent fallback to "off" behavior.
+    if (provider === "claude" && !config.claude) return;
+
+    const { eligible, processedKeys } = selectForClassification(currentNotes, {
+      alreadyProcessed: classifiedRef.current,
+      projectTags: config.projectTags,
+    });
+    for (const key of processedKeys) classifiedRef.current.add(key);
+    if (eligible.length === 0) return;
+
+    const picks = new Map<string, ClassifyPick>();
+    let localUnreachable = false;
+    const queue = [...eligible];
+    const worker = async () => {
+      while (queue.length > 0) {
+        const note = queue.shift();
+        if (!note) return;
+        try {
+          if (provider === "local") {
+            const payload = buildClassifyRequest(note, config.projectTags);
+            const resp = await classifyLocal(config.classifier.url, payload);
+            picks.set(note.raw, parseLocalResponse(resp));
+          } else {
+            const prompt = buildClaudePrompt(note, config.projectTags);
+            const reply = await sendToClaude(prompt, config.models.triage);
+            picks.set(note.raw, parseClaudeReply(reply, config.projectTags));
+          }
+        } catch {
+          // claude errors are silent per-note; a local error also stays
+          // silent per-note, but flags the one-time toast below.
+          if (provider === "local") localUnreachable = true;
+        }
+      }
+    };
+    // ≤2 in flight at once.
+    await Promise.all([worker(), worker()]);
+
+    if (localUnreachable && !classifierToastedRef.current) {
+      classifierToastedRef.current = true;
+      showToastRef.current("Classifier unreachable — using keyword tags only");
+    }
+
+    if (picks.size === 0) return;
+    const { changed, nextNotes } = applyClassifierPicks(
+      notesRef.current,
+      picks,
+      { removedTags: removedTagsRef.current, projectTags: config.projectTags },
+    );
+    if (changed) persist(nextNotes);
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
@@ -239,6 +327,9 @@ export function useInbox({
     }
     setPreamble(parsedPreamble);
     setNotes(taggedNotes);
+    // Fire-and-forget: see runClassifier's own comment for why this must
+    // not be awaited here.
+    runClassifier(taggedNotes, config);
   }, []);
 
   useEffect(() => {
