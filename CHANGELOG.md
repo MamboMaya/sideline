@@ -6,6 +6,8 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-07
+
 ### Added
 
 - Spoken lists show as bullets. A voice note becomes a list when you
