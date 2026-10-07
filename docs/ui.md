@@ -199,21 +199,51 @@ starting at 1 from ONE family, each a whole word at the start of the text or
 a line or right after `.,;:!?` + whitespace, so "I have one idea and two
 questions" and "one two three four" never match; anything ambiguous (a
 repeated marker, two families at once) is skipped. The same
-`validateList` proof applies. Markers win; if there are none, the rules also
-recognize an UNNUMBERED list the speaker announces (`leadInStarts`, a port
+`validateList` proof applies. The most explicit signal is the spoken keyword
+**"bullet"** (or "bullet point") before each item (`bulletStarts`, port of
+`bullet_list` in `listrules.rs`; works in notes and dictation): two or more
+of them make a list, the text before the first is the lead, and the keyword
+itself is dropped from the bullets (the validator may skip "bullet" and
+"point"). It was chosen because it never occurred in 170 scanned voice
+notes, so it can't split a note by accident; "bulletin" is not the keyword
+and a single "bullet" is not a list. Rule order: bullet keyword, then number
+markers, then lead-in lists, then natural glue. If there are no markers, the
+rules also recognize an UNNUMBERED list the speaker announces (`leadInStarts`, a port
 of `lead_in_list` in `src-tauri/src/listrules.rs`): the first sentence of the
 note must be a lead-in — "a few / some / several / a couple of / a bunch of
 things | ideas | tasks | points | …", a stated count ("three things…"),
-"to-do list", "here's what…" — and the items come from either the pause line
-breaks (voice notes now break a line at every ~2 s pause, each chunk
-transcribed separately: "A few things for tomorrow.⏎Renew the car
-registration⏎book the flights⏎call mom back" gives a lead and one bullet per
-line; the first item may share the lead's line after its comma or colon) or a
+"to-do list", "here's what…" — and the items come from either line breaks
+in the text (typed or edited notes: "A few things for tomorrow.⏎Renew the
+car registration⏎book the flights⏎call mom back" gives a lead and one bullet
+per line; the first item may share the lead's line after its comma or
+colon) or a
 stated count ("Three things for tomorrow. Renew…. Book…. Call….": the
 sentences, only when there are exactly that many). With a stated count only a
 split yielding exactly that many items qualifies; without one, at least two
-pause chunks. A lead-in alone ("a few thoughts on the design: it's too blue")
-is never a list. (2) CLAUDE, for looser lists the rules didn't catch, when
+lines. A lead-in alone ("a few thoughts on the design: it's too blue")
+is never a list. MIXED SIGNALS (`signalStarts`, the union rule — port of `signal_list` in
+`listrules.rs`): after a lead-in first sentence, ANY mix of item signals
+starts an item — the "bullet" keyword, a counting word followed by a comma
+or colon at a clause start ("One, …", "first: …", "and number two, …"; a
+"number N" label also counts after a bare "and": "call mom back and number
+three, walk the dog"), and
+the speaker's own glue: a sentence opening with "Also", "And also", "And then
+also", "Another thing", "One more thing", "On top of that" or "Plus," (comma
+required), or a mid-sentence "and also" / "and then also". So "A few things
+for tomorrow. One, let's find a new cat and also find a new insurance
+provider. Bullet, take out the garbage." gives the lead and three bullets
+("Let's find a new cat", "Find a new insurance provider.", "Take out the
+garbage."). The text after the lead clause is item 1; bare "and then" and
+plain sentence boundaries never cut, so one item can span several sentences.
+A cut at glue starts at the glue phrase: "also" / "and also" / "and then
+also" are stripped as connectors, while "Another thing…" etc. stay as
+spoken. At least two items are needed ("Some things never change. Also the
+sky is blue." is one item → plain text), a stated count ("Three things…")
+must equal the item count, and no lead-in means no list. NOTES
+need no explicit signal — glue alone splits after a lead-in. DICTATION
+(`require_explicit`) needs at least one "bullet" or counting word, because
+pasted text can't be switched back the way a card can and connectors alone
+must never split a paste. (2) CLAUDE, for looser lists the rules didn't catch, when
 the note passes `needsListCheck` (same length rule as headers) — or is a
 short note whose first sentence is a lead-in (`hasLeadIn`) — and `claude` is
 on: Claude (`models.triage`) is asked only WHERE

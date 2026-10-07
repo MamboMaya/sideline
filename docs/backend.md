@@ -398,21 +398,14 @@ payload shape. `Ask` mode's finished transcript is emitted as
 `ask-transcript` (string payload) rather than feeding `append_inbox_text`
 or the clipboard — see docs/ui.md's Quick question section.
 
-`Note` and `Dictate` keep pauses (`Ask` doesn't): with `whisper::transcribe`'s
-`line_breaks` flag, `long_pauses` finds silences of at least
-`PAUSE_LINE_BREAK_SECS` (2.0s, relative to the recording's own speech
-level), and each pause-separated chunk is transcribed on its own pass and
-joined with `\n` (`split_at_pauses`; silent chunks skipped). Whisper often
-runs one segment straight across a pause and its word timestamps drift by
-a word around silence, so separate passes are the only reliable way to
-break exactly at a pause — and short chunks decode fast enough that it
-isn't slower in practice. Past `MAX_PAUSE_CHUNKS` (8) it's one pass with
-`join_on_pauses` (a break only at segment boundaries that sit at a pause).
 For dictation, unless `autoList` is false, `listrules::number_list` turns an
-explicitly enumerated dictation ("First, … Second, …", "one … two …
+explicitly enumerated dictation (the "bullet" / "bullet point" keyword before
+each item — tried first, `bullet_list`; "First, … Second, …", "one … two …
 three …", "number one …", or a mix) — or an announced one (a lead-in like
-"a few things for tomorrow" followed by pause-separated chunks, or by
-exactly the number of sentences it states) — into a lead line plus
+"three things for tomorrow" followed by exactly that many sentences) — — or a lead-in list whose items mix signals ("bullet", counting words
+like "One,", and glue like "and also"; `signal_list` with `require_explicit`,
+so connectors alone never split a paste, unlike the notes path, which needs no
+explicit signal) — into a lead line plus
 `1. item` lines — a Rust port of the frontend's `rulesStarts` (same marker rules,
 same no-word-lost check; anything else pastes unchanged). Rules only: a
 Claude call would delay every paste, and pasted text can't be switched

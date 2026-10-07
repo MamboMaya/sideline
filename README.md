@@ -45,7 +45,8 @@ triage calls and quick questions.
 - **Capture**: global hotkey (⌥⌘R by default) records a voice note, transcribes it
   on-device with Whisper (Metal-accelerated), and appends it to
   `~/notes/inbox.md`. The tray shows a live 🔴 REC timer; the popover shows a
-  level meter so you know the mic is hot.
+  level meter so you know the mic is hot. Unplug the mic mid-recording and
+  Sideline switches to the system default input instead of losing the note.
 - **Dictate anywhere** (⌥⌘V by default): same on-device recording and
   transcription, but the result is copied to the clipboard and auto-pasted
   into whatever app is frontmost instead of going to the inbox — handy for
@@ -59,6 +60,11 @@ triage calls and quick questions.
   One row per term with the ways it gets mis-heard — terms bias Whisper
   toward the right spelling, and mis-hearings are corrected after
   transcription.
+- **Spoken lists**: number your items ("first… second…"), say "bullet"
+  before each one, or announce the list ("three things for tomorrow…") and
+  the voice note shows as bullets; dictation pastes it as `1.` `2.` `3.`.
+  Rule-based and instant. The note file keeps exactly what you said (the
+  bullets are a view, `l` toggles back), and no word is ever dropped.
 - **Live inbox**: the popover (⌥⌘Space) shows every note the second it lands.
   Quick tags (`#bug` `#todo` `#idea`), pinned custom tags, and `@project` tags
   with keyboard-first triage.
@@ -184,7 +190,7 @@ you want recording off the app's permission identity or you live in Raycast:
 `~/notes/.sideline.json` — pinned tags, hidden tags, zoom, hotkeys, triage
 prompts and models (plus the question model), project routing (tag → folder,
 the folder is informational only), the no-Claude toggle, audio input device,
-the terminal for "Continue in Terminal".
+the terminal for "Continue in Terminal", spoken-list formatting on/off.
 All of it is editable in-app via the Settings pane (⌘,); the file is still
 plain JSON if you'd rather hand-edit (hotkey edits made that way need a
 restart; Settings applies them live). Schema in

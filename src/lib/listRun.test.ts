@@ -67,7 +67,7 @@ describe("detectListStarts (rules first, Claude as fallback)", () => {
     expect(sendToClaude).not.toHaveBeenCalled();
   });
 
-  test("a lead-in note with pause line breaks is formatted by rules — no Claude call", async () => {
+  test("a lead-in note with one item per line is formatted by rules — no Claude call", async () => {
     const note =
       "A few things for tomorrow.\nRenew the car registration\nbook the flights\ncall mom back";
     expect(await detectListStarts(note, "haiku")).toHaveLength(3);

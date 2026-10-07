@@ -920,11 +920,7 @@ fn finish_recording(
         );
     }
 
-    // Notes and dictation keep long pauses as line breaks — easier to read,
-    // and the pause-separated chunks are what lets a lead-in ("a few things
-    // for tomorrow…") become a list without spoken numbering (listrules.rs,
-    // and listFormat.ts for notes). Ask questions stay one line.
-    match crate::whisper::transcribe(&app, &pcm, mode != RecMode::Ask) {
+    match crate::whisper::transcribe(&app, &pcm) {
         // `transcribe` already runs the Claude mis-hear correction pass for
         // every caller, so `text` here is corrected regardless of mode.
         // Filler-word cleanup (cleanup.rs) runs next, before the mode

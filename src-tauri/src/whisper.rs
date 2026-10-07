@@ -203,184 +203,44 @@ fn get_ctx(path: &Path) -> Result<&'static WhisperContext, String> {
     Ok(WHISPER_CTX.get().expect("just set"))
 }
 
-/// Minimum silence that counts as a deliberate pause — `line_breaks` mode
-/// turns one into a new line. Well above between-sentence breaths and
-/// short thinking pauses (~0.3–1.5 s): only a clear stop breaks the line
-/// (the user's call, 2026-10-07 — 1 s broke lines too often).
-const PAUSE_LINE_BREAK_SECS: f32 = 2.0;
-/// Silence-detection window: 20 ms at 16 kHz.
-const SILENCE_WINDOW: usize = 320;
-
-/// Silent stretches of at least `PAUSE_LINE_BREAK_SECS`, as (start, end)
-/// seconds. "Silent" is relative to the recording's own speech level (10%
-/// of the 95th-percentile window RMS, floored for near-silent recordings),
-/// so it works for a quiet built-in mic and a hot USB one alike.
-fn long_pauses(pcm: &[f32]) -> Vec<(f32, f32)> {
-    let rms: Vec<f32> = pcm
-        .chunks(SILENCE_WINDOW)
-        .map(|w| (w.iter().map(|s| s * s).sum::<f32>() / w.len() as f32).sqrt())
-        .collect();
-    if rms.is_empty() {
-        return Vec::new();
-    }
-    let mut sorted = rms.clone();
-    sorted.sort_by(f32::total_cmp);
-    let p95 = sorted[(sorted.len() * 95 / 100).min(sorted.len() - 1)];
-    let threshold = (p95 * 0.1).max(0.004);
-    let win_secs = SILENCE_WINDOW as f32 / 16_000.0;
-
-    let mut pauses = Vec::new();
-    let mut start: Option<usize> = None;
-    for (i, &r) in rms.iter().chain(std::iter::once(&f32::MAX)).enumerate() {
-        match (r < threshold, start) {
-            (true, None) => start = Some(i),
-            (false, Some(st)) => {
-                let (a, b) = (st as f32 * win_secs, i as f32 * win_secs);
-                if b - a >= PAUSE_LINE_BREAK_SECS {
-                    pauses.push((a, b));
-                }
-                start = None;
-            }
-            _ => {}
-        }
-    }
-    pauses
-}
-
-/// Up to this many pauses, each pause-separated chunk is transcribed on its
-/// own (one extra whisper pass per chunk). Past it — a long rambling note —
-/// latency matters more, so it's one pass with `join_on_pauses`.
-const MAX_PAUSE_CHUNKS: usize = 8;
-
-/// Cuts `pcm` at the middle of each pause.
-fn split_at_pauses<'a>(pcm: &'a [f32], pauses: &[(f32, f32)]) -> Vec<&'a [f32]> {
-    let mut chunks = Vec::new();
-    let mut from = 0;
-    for &(s, e) in pauses {
-        let cut = (((s + e) / 2.0) * 16_000.0) as usize;
-        if cut > from && cut < pcm.len() {
-            chunks.push(&pcm[from..cut]);
-            from = cut;
-        }
-    }
-    chunks.push(&pcm[from..]);
-    chunks
-}
-
-/// A chunk with no 100 ms window above mic self-noise — transcribing it
-/// would only invite whisper's silence hallucinations ("Thank you.").
-fn chunk_is_silent(chunk: &[f32]) -> bool {
-    !chunk
-        .chunks(1_600)
-        .any(|w| (w.iter().map(|s| s * s).sum::<f32>() / w.len() as f32).sqrt() >= 0.01)
-}
-
-/// Joins whisper segments (text, t0, t1 in centiseconds), putting a line
-/// break at a segment boundary only where a long pause sits at it. Whisper's
-/// segment times abut and it also splits mid-sentence, so the boundary
-/// alone means nothing — the measured silence is what counts. Its boundary
-/// lands near the END of the silence (where speech resumes), hence the
-/// asymmetric tolerance.
-fn join_on_pauses(segments: &[(String, i64, i64)], pauses: &[(f32, f32)]) -> String {
-    let mut out = String::new();
-    for (i, (text, _, _)) in segments.iter().enumerate() {
-        let at_pause = i > 0 && {
-            let b = segments[i - 1].2 as f32 / 100.0;
-            pauses.iter().any(|&(s, e)| s - 0.3 <= b && b <= e + 0.5)
-        };
-        if at_pause {
-            out.truncate(out.trim_end().len());
-            out.push('\n');
-            out.push_str(text.trim_start());
-        } else {
-            out.push_str(text);
-        }
-    }
-    out
-}
-
-/// Transcribes 16 kHz mono f32 PCM, English, greedy, with the
+/// Transcribes 16 kHz mono f32 PCM, English, greedy, no timestamps, with the
 /// vocabulary-bias initial prompt (built-in list + the user's `dictionary`
 /// terms), then applies the Claude mis-hear correction pass followed by the
-/// user dictionary's corrections. `line_breaks` (dictation) turns a long
-/// pause into a new line (`join_on_pauses`); otherwise segments run
-/// together as one paragraph. Downloads the model first if it's missing
+/// user dictionary's corrections. Downloads the model first if it's missing
 /// (emitting `downloading-model` via the shared recorder-state path).
-pub fn transcribe(app: &AppHandle, pcm: &[f32], line_breaks: bool) -> Result<String, String> {
+pub fn transcribe(app: &AppHandle, pcm: &[f32]) -> Result<String, String> {
     let path = ensure_model(app)?;
     emit_state(app, RecState::Transcribing);
-    transcribe_with_model(&path, pcm, line_breaks)
-}
-
-/// `transcribe` minus the model download and state events — split out so a
-/// test can run the real model without an `AppHandle`.
-fn transcribe_with_model(path: &Path, pcm: &[f32], line_breaks: bool) -> Result<String, String> {
     let dict = load_dictionary();
     let prompt = build_prompt(&dict);
     let corrections = build_corrections(&dict);
 
-    let ctx = get_ctx(path)?;
+    let ctx = get_ctx(&path)?;
     let mut state = ctx
         .create_state()
         .map_err(|e| format!("whisper state error: {e}"))?;
-    let mut run = |audio: &[f32], prompt: &str| -> Result<Vec<(String, i64, i64)>, String> {
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_language(Some("en"));
-        params.set_print_special(false);
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        params.set_print_timestamps(false);
-        params.set_initial_prompt(prompt);
-        state
-            .full(params, audio)
-            .map_err(|e| format!("transcription failed: {e}"))?;
-        let mut segments = Vec::new();
-        for i in 0..state.full_n_segments() {
-            if let Some(seg) = state.get_segment(i) {
-                if let Ok(s) = seg.to_str() {
-                    segments.push((s.to_string(), seg.start_timestamp(), seg.end_timestamp()));
-                }
-            }
-        }
-        Ok(segments)
-    };
 
-    let pauses = if line_breaks {
-        long_pauses(pcm)
-    } else {
-        Vec::new()
-    };
-    let text = if !pauses.is_empty() && pauses.len() < MAX_PAUSE_CHUNKS {
-        // Whisper often runs one segment straight across a pause, and its
-        // word timestamps drift by a word around silence, so the only
-        // reliable way to break exactly at a pause is to transcribe each
-        // pause-separated chunk on its own.
-        let mut lines = Vec::new();
-        for chunk in split_at_pauses(pcm, &pauses) {
-            if chunk_is_silent(chunk) {
-                continue;
-            }
-            // Condition each chunk on what came before (after the vocab
-            // prompt), as a single pass would be — a short chunk alone
-            // loses context and mis-hears ("call mom back" → "Colm on back").
-            let context = format!("{prompt} {}", lines.join(" "));
-            let line: String = run(chunk, &context)?
-                .iter()
-                .map(|(s, _, _)| s.as_str())
-                .collect();
-            if !line.trim().is_empty() {
-                lines.push(line.trim().to_string());
+    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    params.set_language(Some("en"));
+    params.set_print_special(false);
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_timestamps(false);
+    params.set_initial_prompt(&prompt);
+
+    state
+        .full(params, pcm)
+        .map_err(|e| format!("transcription failed: {e}"))?;
+
+    let n = state.full_n_segments();
+    let mut text = String::new();
+    for i in 0..n {
+        if let Some(seg) = state.get_segment(i) {
+            if let Ok(s) = seg.to_str() {
+                text.push_str(s);
             }
         }
-        lines.join("\n")
-    } else {
-        let segments = run(pcm, &prompt)?;
-        if line_breaks {
-            join_on_pauses(&segments, &pauses)
-        } else {
-            segments.iter().map(|(s, _, _)| s.as_str()).collect()
-        }
-    };
+    }
 
     let corrected = correct_claude_mishears(text.trim());
     Ok(apply_corrections(&corrected, &corrections))
@@ -389,99 +249,6 @@ fn transcribe_with_model(path: &Path, pcm: &[f32], line_breaks: bool) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn seg(text: &str, t0: i64, t1: i64) -> (String, i64, i64) {
-        (text.to_string(), t0, t1)
-    }
-
-    // Segment times and pauses measured from a real whisper-cli run on a
-    // synthetic clip with two 1.5 s pauses (boundaries 4.40 and 8.48 s sit
-    // at the end of a pause; 10.60 s is a mid-sentence split, no pause).
-    #[test]
-    fn line_break_only_at_boundaries_with_a_long_pause() {
-        let segments = [
-            seg(" Pick up milk.", 0, 440),
-            seg(" Call the dentist.", 440, 848),
-            seg(" Email Sam the slides,", 848, 1060),
-            seg(" and also check the budget.", 1060, 1334),
-        ];
-        let pauses = [(2.7, 4.38), (6.8, 8.46)];
-        assert_eq!(
-            join_on_pauses(&segments, &pauses),
-            " Pick up milk.\nCall the dentist.\nEmail Sam the slides, and also check the budget."
-        );
-    }
-
-    #[test]
-    fn no_pauses_joins_as_one_paragraph() {
-        let segments = [seg(" One.", 0, 100), seg(" Two.", 100, 200)];
-        assert_eq!(join_on_pauses(&segments, &[]), " One. Two.");
-    }
-
-    #[test]
-    fn long_pauses_finds_only_silences_of_two_seconds_or_more() {
-        let speech = |secs: f32| vec![0.2f32; (secs * 16_000.0) as usize];
-        let silence = |secs: f32| vec![0.0f32; (secs * 16_000.0) as usize];
-        let pcm: Vec<f32> = [
-            speech(1.0),
-            silence(1.5),
-            speech(1.0),
-            silence(2.5),
-            speech(1.0),
-        ]
-        .concat();
-        let pauses = long_pauses(&pcm);
-        assert_eq!(pauses.len(), 1, "{pauses:?}");
-        let (s, e) = pauses[0];
-        assert!(
-            (s - 3.5).abs() < 0.05 && (e - 6.0).abs() < 0.05,
-            "{pauses:?}"
-        );
-    }
-
-    /// End-to-end against the real model: `SIDELINE_PAUSE_WAV=<16 kHz mono
-    /// 16-bit wav with 2+ pauses of ≥2 s> cargo test --release -- --ignored
-    /// real_model` (e.g. macOS `say` with `[[slnc 2500]]` between items). The test
-    /// binary may then SIGABRT at exit in ggml's Metal teardown — after the
-    /// result line prints; it's whisper.cpp's static destructor, not this.
-    #[test]
-    #[ignore]
-    fn real_model_breaks_lines_at_pauses() {
-        let wav = std::fs::read(std::env::var("SIDELINE_PAUSE_WAV").unwrap()).unwrap();
-        let data = wav.windows(4).position(|w| w == b"data").unwrap() + 8;
-        let pcm: Vec<f32> = wav[data..]
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|&b| i16::from_le_bytes(b) as f32 / 32768.0)
-            .collect();
-        let t = std::time::Instant::now();
-        let single = transcribe_with_model(&model_path(), &pcm, false).unwrap();
-        println!("single pass {:?}: {single}", t.elapsed());
-        let t = std::time::Instant::now();
-        let text = transcribe_with_model(&model_path(), &pcm, true).unwrap();
-        println!("chunked {:?}:\n{text}", t.elapsed());
-        println!(
-            "--- as dictation:\n{:?}",
-            crate::listrules::number_list(&text)
-        );
-        assert!(text.lines().count() >= 3, "{text}");
-    }
-
-    #[test]
-    fn split_at_pauses_cuts_mid_pause() {
-        let pcm = vec![0.1f32; 16_000 * 4];
-        let chunks = split_at_pauses(&pcm, &[(1.0, 2.0)]);
-        assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0].len(), 24_000);
-        assert!(chunk_is_silent(&[0.0; 3_200]));
-        assert!(!chunk_is_silent(&pcm[..3_200]));
-    }
-
-    #[test]
-    fn long_pauses_empty_input() {
-        assert!(long_pauses(&[]).is_empty());
-    }
 
     #[test]
     fn corrects_code_variants_to_claude_code() {

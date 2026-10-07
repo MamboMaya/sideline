@@ -65,6 +65,8 @@ const SKIPPABLE_WORDS: ReadonlySet<string> = new Set([
   ...ORDINAL_WORDS,
   ...CARDINALS,
   "number",
+  "bullet",
+  "point",
 ]);
 
 const WORD = /[\p{L}\p{N}'’]+/gu;
@@ -202,6 +204,16 @@ const TRAILING_MARKER = new RegExp(
   `(^|[.,;:!?]\\s+)(?:and\\s+(?:then\\s+)?)?(?:number\\s+(?:${CARDINAL_ALT})|${ORDINAL_ALT}|${CARDINAL_ALT})\\s*[,:]?\\s*$`,
   "i",
 );
+// "… back and number three," — a "number N" label after a bare "and"
+// (AND_NUMBER_RE in signalStarts), stripped with its "and".
+const TRAILING_AND_NUMBER = new RegExp(
+  `\\s+and\\s+(?:then\\s+)?number\\s+(?:${CARDINAL_ALT})\\s*[,:]?\\s*$`,
+  "i",
+);
+// The spoken "bullet" / "bullet point" keyword left at the end of the
+// previous slice (bulletStarts points each item just past its keyword), with
+// any punctuation that came with it.
+const TRAILING_BULLET = /\bbullet(?:\s+point)?\b[\s,.:;]*$/i;
 // A trailing run of connector words, anchored at a word start.
 const TRAILING_CONNECTOR_RUN =
   /(?:^|[\s,;])((?:(?:and|then|also)(?:[\s,;]+|$))+)$/i;
@@ -222,7 +234,11 @@ function stripLeadingGlue(text: string): string {
 function stripTrailingGlue(text: string): string {
   let s = text;
   for (;;) {
-    let next = s.replace(/[\s,;]+$/, "").replace(TRAILING_MARKER, "$1");
+    let next = s
+      .replace(/[\s,;]+$/, "")
+      .replace(TRAILING_MARKER, "$1")
+      .replace(TRAILING_AND_NUMBER, "")
+      .replace(TRAILING_BULLET, "");
     const m = TRAILING_CONNECTOR_RUN.exec(next);
     if (m) {
       const run = m[1];
@@ -389,10 +405,10 @@ function chunkStart(seg: string, base: number): number | null {
 // `lead_in_list` in src-tauri/src/listrules.rs: the first sentence must match
 // LEAD_IN_RE; the lead clause runs to the first `,;:.!?` after the lead-in
 // (anything after it on that line is the first item). Items come from the
-// pause line breaks voice notes carry (each non-blank chunk is an item) or a
+// line breaks in the text (each non-blank line is an item) or a
 // stated count ("three things…" followed by exactly three sentences). With a
 // stated count only a split yielding exactly that many items qualifies;
-// without one, at least two pause chunks. Offsets index `text`, so
+// without one, at least two lines. Offsets index `text`, so
 // buildList/validateList/displayBody work unchanged (lead = text before the
 // first start).
 export function leadInStarts(text: string): number[] | null {
@@ -426,7 +442,7 @@ export function leadInStarts(text: string): number[] | null {
   if (count === undefined) return chunks.length >= 2 ? chunks : null;
   if (chunks.length === count) return chunks;
   if (chunks.length === 0) return null;
-  // Stated count that the pause chunks don't match: split everything after
+  // Stated count that the lines don't match: split everything after
   // the lead clause into sentences instead.
   const sents: number[] = [];
   let from = chunks[0];
@@ -442,7 +458,124 @@ export function leadInStarts(text: string): number[] | null {
   return sents.length === count ? sents : null;
 }
 
+// The spoken item keyword: "bullet" (or "bullet point") before each item.
+// It never occurred in 170 scanned voice notes, so it can't split a note by
+// accident; "bulletin" is not the keyword. At least two of them make a list:
+// the text before the first is the lead, each item starts just past its
+// keyword (which buildList then strips from the end of the previous slice).
+// Mirrors BULLET_RE / bullet_list in src-tauri/src/listrules.rs.
+const BULLET_RE = /\bbullet(?:\s+point)?\b[\s,.:;]*/gi;
+
+export function bulletStarts(text: string): number[] | null {
+  const hits = [...text.matchAll(BULLET_RE)];
+  if (hits.length < 2) return null;
+  return hits.map((m) => m.index + m[0].length);
+}
+
+// The union rule: after a lead-in, ANY mix of item signals starts an item —
+// the "bullet" keyword, a counting word + `,`/`:` at a clause start ("One,
+// …", "first: …"), and the speaker's own glue (a sentence opening with
+// "Also" / "And also" / "And then also" / "Another thing" / "One more thing"
+// / "On top of that" / "Plus,", or a mid-sentence "and also" / "and then
+// also"). Port of `signal_list` in src-tauri/src/listrules.rs: "A few things
+// for tomorrow. One, let's find a new cat and also find a new insurance
+// provider. Bullet, take out the garbage." has three items. The lead clause
+// is leadInStarts' (to the first `,;:.!?` after the lead-in); at least two
+// items. `requireExplicit` (dictation, where pasted text can't be switched
+// back) also demands one explicit signal (a bullet or counting word) so glue
+// alone never splits a paste; notes pass false. Bare "and then" and plain
+// sentence boundaries never cut. Cuts for glue start AT the glue phrase
+// (buildList strips also / and also / and then also itself; "Another thing"
+// and the rest stay as spoken); explicit signals start the item just past
+// the marker, which buildList strips from the tail of the previous slice.
+// Deviation from the Rust regexes: glue words end at a real word boundary
+// (`also-ran` is not "also").
+const NUM_WORDS = CARDINALS.join("|");
+const MARKER_ITEM_RE = new RegExp(
+  `(?:^\\s*|[.,;:!?]\\s+(?:and\\s+(?:then\\s+)?)?)(?<w>(?:number\\s+)?(?:${NUM_WORDS})|first(?:ly)?|second(?:ly)?|third(?:ly)?|fourth|fifth)\\s*[,:]\\s*`,
+  "gi",
+);
+// "… and number three, …": a "number N" label is explicit enough to start
+// an item after a bare "and", with no comma before it.
+const AND_NUMBER_RE = new RegExp(
+  `\\sand\\s+(?:then\\s+)?(?<w>number\\s+(?:${NUM_WORDS}))\\s*[,:]\\s*`,
+  "gi",
+);
+const WB = "(?![\\p{L}\\p{N}'’-])";
+const SENTENCE_GLUE_RE = new RegExp(
+  `(?:^\\s*|[.!?]\\s+)(?<w>(?:and\\s+(?:then\\s+)?)?also${WB}|another\\s+thing${WB}|one\\s+more\\s+thing${WB}|on\\s+top\\s+of\\s+that${WB}|plus,)`,
+  "giu",
+);
+const MID_GLUE_RE = new RegExp(
+  `[\\s,](?<w>and\\s+(?:then\\s+)?also${WB})`,
+  "giu",
+);
+
+export function signalStarts(
+  text: string,
+  requireExplicit = false,
+): number[] | null {
+  const end = sentenceEnd(text, 0);
+  const lead = LEAD_IN_RE.exec(text.slice(0, end === -1 ? text.length : end));
+  if (!lead) return null;
+  const leadInEnd = lead.index + lead[0].length;
+  const n = lead.groups?.n?.toLowerCase();
+  const count =
+    n === undefined
+      ? undefined
+      : /^\d+$/.test(n)
+        ? Number.parseInt(n, 10)
+        : CARDINALS.indexOf(n as (typeof CARDINALS)[number]) + 1;
+  const punct = text.slice(leadInEnd).search(/[,;:.!?]/);
+  const clauseEnd = punct === -1 ? text.length : leadInEnd + punct + 1;
+  const rest = text.slice(clauseEnd);
+
+  // [cut, itemStart, explicit], offsets into `rest`.
+  const cuts: [number, number, boolean][] = [];
+  const wordAt = (m: RegExpMatchArray) =>
+    (m.index ?? 0) + m[0].indexOf(m.groups?.w ?? "");
+  for (const re of [MARKER_ITEM_RE, AND_NUMBER_RE]) {
+    for (const m of rest.matchAll(re)) {
+      cuts.push([wordAt(m), m.index + m[0].length, true]);
+    }
+  }
+  for (const m of rest.matchAll(BULLET_RE)) {
+    cuts.push([m.index, m.index + m[0].length, true]);
+  }
+  for (const re of [SENTENCE_GLUE_RE, MID_GLUE_RE]) {
+    for (const m of rest.matchAll(re)) {
+      const at = m.index + m[0].length - (m.groups?.w.length ?? 0);
+      cuts.push([at, at, false]);
+    }
+  }
+  cuts.sort((x, y) => x[0] - y[0] || x[1] - y[1] || +x[2] - +y[2]);
+
+  const hasWords = (t: string) => tokenize(t).length > 0;
+  const froms: number[] = [];
+  let explicit = false;
+  let from = 0;
+  let prevEnd = 0;
+  for (const [cut, start, isExplicit] of cuts) {
+    if (cut < prevEnd) continue; // inside a signal already taken
+    if (hasWords(rest.slice(from, cut))) froms.push(from);
+    explicit ||= isExplicit;
+    from = start;
+    prevEnd = Math.max(start, cut + 1);
+  }
+  if (hasWords(rest.slice(from))) froms.push(from);
+  const starts = froms
+    .map((f) => chunkStart(rest.slice(f), clauseEnd + f))
+    .filter((i): i is number => i !== null);
+  // A stated count ("three things …") must match exactly.
+  if (starts.length < 2 || (requireExplicit && !explicit)) return null;
+  if (count !== undefined && count !== starts.length) return null;
+  return starts;
+}
+
 export function rulesStarts(text: string): number[] | null {
+  // The spoken "bullet" keyword is the most explicit signal: it wins.
+  const bullets = bulletStarts(text);
+  if (bullets) return bullets;
   // A 3+ chain that switches families beats any shorter single-family one
   // (which would stop at the switch); a single-family 3+ chain is found by
   // this too, with the same starts.
@@ -454,7 +587,9 @@ export function rulesStarts(text: string): number[] | null {
     markerChain(text, CARDINAL_FAMILY, 3),
   ].filter((h): h is number[] => h !== null);
   // Explicit markers win; a lead-in announced list is the fallback.
-  return hits.length === 1 ? hits[0] : leadInStarts(text);
+  return hits.length === 1
+    ? hits[0]
+    : (leadInStarts(text) ?? signalStarts(text, false));
 }
 
 // rulesStarts on the shown text of a stored body, kept only if the result

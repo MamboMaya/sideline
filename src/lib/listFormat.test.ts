@@ -18,6 +18,8 @@ import {
   rulesDetect,
   rulesStarts,
   autoListPlan,
+  bulletStarts,
+  signalStarts,
   hasLeadIn,
   leadInStarts,
   startsFromReply,
@@ -955,7 +957,7 @@ describe("leadInStarts — unnumbered lists announced by a lead-in", () => {
     return { starts, built, ok: validateList(text, built) };
   };
 
-  test("lead-in + pause line breaks: one item per line", () => {
+  test("lead-in + one item per line", () => {
     const text =
       "A few things for tomorrow.\nRenew the car registration\nbook the flights, probably Thursday\ncall mom back";
     const { starts, built, ok } = render(text);
@@ -1006,7 +1008,7 @@ describe("leadInStarts — unnumbered lists announced by a lead-in", () => {
     ]);
     expect(ok).toBe(true);
   });
-  test("stated count that pause chunks match uses the chunks", () => {
+  test("stated count that the lines match uses the lines", () => {
     const text = "Two things for tomorrow.\nbuy milk. and eggs\ncall mom back.";
     const { built } = render(text);
     expect(built.items).toEqual(["Buy milk. and eggs", "Call mom back."]);
@@ -1097,5 +1099,231 @@ describe("autoListPlan — short lead-in notes", () => {
         "A few things for tomorrow.\n\n![screenshot](inbox-assets/a.png)",
       ),
     ).toBe("skip");
+  });
+});
+
+describe("bulletStarts — the spoken 'bullet' keyword", () => {
+  const render = (text: string) => {
+    const starts = rulesStarts(text) as number[];
+    const built = buildList(text, starts);
+    return { built, ok: validateList(text, built) };
+  };
+
+  test("lead + 'Bullet,' / 'Bullet' / 'bullet point' items, keyword dropped", () => {
+    const text =
+      "Things for tomorrow. Bullet, renew the car registration. Bullet book the flights, bullet point call mom back.";
+    const { built, ok } = render(text);
+    expect(built.lead).toBe("Things for tomorrow.");
+    expect(built.items).toEqual([
+      "Renew the car registration.",
+      "Book the flights",
+      "Call mom back.",
+    ]);
+    expect(ok).toBe(true);
+  });
+  test("no lead", () => {
+    const { built, ok } = render("Bullet. Buy milk. Bullet. Call the dentist.");
+    expect(built.lead).toBe("");
+    expect(built.items).toEqual(["Buy milk.", "Call the dentist."]);
+    expect(ok).toBe(true);
+  });
+  test("one 'bullet' is not a list", () => {
+    expect(bulletStarts("Fix the bullet alignment on the slide.")).toBeNull();
+    expect(rulesStarts("Fix the bullet alignment on the slide.")).toBeNull();
+  });
+  test("'bulletin' is not the keyword", () => {
+    const text = "Read the bulletin. Then read the other bulletin.";
+    expect(bulletStarts(text)).toBeNull();
+    expect(rulesStarts(text)).toBeNull();
+  });
+  test("starts point just past each keyword", () => {
+    const text = "Plan. bullet buy milk bullet point call mom";
+    expect(bulletStarts(text)).toEqual([
+      text.indexOf("buy"),
+      text.indexOf("call"),
+    ]);
+  });
+  test("bullet wins over numbering markers", () => {
+    const text = "Bullet first, buy milk. Bullet second, call mom.";
+    const { built } = render(text);
+    expect(built.items).toEqual(["Buy milk.", "Call mom."]);
+  });
+  test("an empty bullet item fails validation (rulesDetect null)", () => {
+    expect(rulesDetect("Bullet bullet call mom")).toBeNull();
+  });
+  test("the validator skips 'bullet' and 'point' but not other words", () => {
+    expect(
+      validateList("bullet point buy milk bullet call mom", {
+        lead: "",
+        items: ["Buy milk", "Call mom"],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("signalStarts — glue after a lead-in (notes)", () => {
+  const USER =
+    "in the sidebar, a few things. I'd love a \"collapse all\" button or icon and then on laptop I noticed that if I open up multiple sidebar accordions, they're only so tall, so you have to scroll inside of each individual expanded menu. Instead, the whole sidebar should scroll, not an individual accordion menu component. And then also shortcut keys for play and pause. Also I should be able to multi-select videos and then click a prepare all.";
+
+  test("the user's real note: 3 items, lead-in clause as the lead", () => {
+    const starts = rulesStarts(USER) as number[];
+    expect(starts).toHaveLength(3);
+    const built = buildList(USER, starts);
+    expect(built.lead).toBe("in the sidebar, a few things.");
+    expect(built.items).toEqual([
+      "I'd love a \"collapse all\" button or icon and then on laptop I noticed that if I open up multiple sidebar accordions, they're only so tall, so you have to scroll inside of each individual expanded menu. Instead, the whole sidebar should scroll, not an individual accordion menu component.",
+      "Shortcut keys for play and pause.",
+      "I should be able to multi-select videos and then click a prepare all.",
+    ]);
+    expect(validateList(USER, built)).toBe(true);
+  });
+  test("signalStarts alone gives the same offsets", () => {
+    expect(signalStarts(USER)).toEqual(rulesStarts(USER));
+  });
+  test("a mid-sentence ', and then also' cuts an item", () => {
+    const text = "A few things for tomorrow. Buy milk, and then also call mom";
+    const starts = rulesStarts(text) as number[];
+    const built = buildList(text, starts);
+    expect(built.items).toEqual(["Buy milk", "Call mom"]);
+    expect(validateList(text, built)).toBe(true);
+  });
+  test("'Another thing' / 'One more thing' / 'On top of that' / 'Plus,' cut and stay as spoken", () => {
+    const text =
+      "Some things I noticed. The icons are blurry. Another thing is the scroll. One more thing, the logo. On top of that the colors. Plus, the fonts.";
+    const built = buildList(text, rulesStarts(text) as number[]);
+    expect(built.items).toEqual([
+      "The icons are blurry.",
+      "Another thing is the scroll.",
+      "One more thing, the logo.",
+      "On top of that the colors.",
+      "Plus, the fonts.",
+    ]);
+  });
+  test("plain 'Plus' with no comma, bare 'and then', and plain sentence boundaries do not cut", () => {
+    expect(
+      signalStarts(
+        "A few things. Buy milk and then call mom. Plus one for Sam. Then nap.",
+      ),
+    ).toBeNull();
+  });
+  test("no lead-in → null", () => {
+    expect(
+      signalStarts("Buy milk. Also call mom. And then also nap."),
+    ).toBeNull();
+  });
+  test("lead-in but no glue → null", () => {
+    expect(
+      signalStarts("A few things for tomorrow. Buy milk. Call mom."),
+    ).toBeNull();
+  });
+  test("'Some things never change. Also the sky is blue.' is one item → null", () => {
+    expect(
+      signalStarts("Some things never change. Also the sky is blue."),
+    ).toBeNull();
+    expect(
+      rulesStarts("Some things never change. Also the sky is blue."),
+    ).toBeNull();
+  });
+  test("'Also-ran' is not a glue word", () => {
+    expect(
+      signalStarts("A few things. Buy milk now. Also-ran lists are fine."),
+    ).toBeNull();
+  });
+  test("explicit markers and the lead-in rule win over glue", () => {
+    const text = "A few things for tomorrow.\nbuy milk\ncall mom. Also nap";
+    const lead = leadInStarts(text);
+    expect(rulesStarts(text)).toEqual(lead);
+  });
+  test("autoListPlan applies glue instantly (no Claude)", () => {
+    expect(autoListPlan(USER)).toEqual({ starts: rulesDetect(USER) });
+    expect(rulesDetect(USER)).not.toBeNull();
+  });
+});
+
+describe("signalStarts — mixed signals after a lead-in", () => {
+  const MIXED =
+    "A few things for tomorrow. One, let's find a new cat and also find a new insurance provider. Bullet, take out the garbage.";
+
+  test("the user's dictation: a counting word, glue and a bullet", () => {
+    const starts = rulesStarts(MIXED) as number[];
+    const built = buildList(MIXED, starts);
+    expect(built.lead).toBe("A few things for tomorrow.");
+    expect(built.items).toEqual([
+      "Let's find a new cat",
+      "Find a new insurance provider.",
+      "Take out the garbage.",
+    ]);
+    expect(validateList(MIXED, built)).toBe(true);
+    expect(signalStarts(MIXED, true)).toEqual(starts);
+  });
+  test('the user\'s note: bare "and number three," plus a stated count', () => {
+    const text =
+      "Three things for today. Let's get the car registration done. Number two, let's call mom back and number three, let's walk the dog.";
+    const built = buildList(text, rulesStarts(text) as number[]);
+    expect(built.lead).toBe("Three things for today.");
+    expect(built.items).toEqual([
+      "Let's get the car registration done.",
+      "Let's call mom back",
+      "Let's walk the dog.",
+    ]);
+    expect(validateList(text, built)).toBe(true);
+    // A split that misses the stated count is rejected.
+    expect(
+      signalStarts(
+        "Three things for today. Get the car registered. Number two, call mom back.",
+        false,
+      ),
+    ).toBeNull();
+  });
+  test("glue alone: dictation (requireExplicit) says null, notes split", () => {
+    const text =
+      "A few things for tomorrow. Find a new cat and also find a new insurance provider.";
+    expect(signalStarts(text, true)).toBeNull();
+    const built = buildList(text, signalStarts(text, false) as number[]);
+    expect(built.lead).toBe("A few things for tomorrow.");
+    expect(built.items).toEqual([
+      "Find a new cat",
+      "Find a new insurance provider.",
+    ]);
+    expect(validateList(text, built)).toBe(true);
+    // The notes path through rulesStarts is the non-explicit one.
+    expect(rulesStarts(text)).toEqual(signalStarts(text, false));
+  });
+  test("no lead-in: never", () => {
+    expect(
+      signalStarts("Find a cat. Also, bullet, take out the garbage.", false),
+    ).toBeNull();
+    expect(
+      signalStarts("Find a cat. Also, bullet, take out the garbage.", true),
+    ).toBeNull();
+  });
+  test("counting word with a colon, and 'and number two'", () => {
+    const text =
+      "Some things I noticed. First: the icons are blurry, and number two, the sidebar won't scroll.";
+    const built = buildList(text, signalStarts(text, true) as number[]);
+    expect(built.lead).toBe("Some things I noticed.");
+    expect(built.items).toEqual([
+      "The icons are blurry",
+      "The sidebar won't scroll.",
+    ]);
+    expect(validateList(text, built)).toBe(true);
+  });
+  test("a counting word without a comma or colon is not a signal", () => {
+    expect(
+      signalStarts("A few things for tomorrow. One cat. Two dogs.", false),
+    ).toBeNull();
+  });
+  test("'also' is skippable in the validator", () => {
+    expect(
+      validateList("buy milk. also call mom", {
+        lead: "",
+        items: ["Buy milk.", "Call mom"],
+      }),
+    ).toBe(true);
+  });
+  test("a mid-sentence 'and also' (no 'then') now cuts", () => {
+    const text = "A few things. Buy milk and also call mom";
+    const built = buildList(text, signalStarts(text, false) as number[]);
+    expect(built.items).toEqual(["Buy milk", "Call mom"]);
   });
 });
