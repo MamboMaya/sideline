@@ -101,13 +101,21 @@ impl RecMode {
     }
 }
 
-/// What the capture thread hands back when recording stops: downmixed mono
-/// samples at the device's native sample rate (resampling to 16 kHz happens
-/// after handoff, off the audio thread).
+/// What the capture thread hands back when recording stops: one segment of
+/// downmixed mono samples per device used, each at that device's native
+/// sample rate — more than one only when the mic vanished mid-recording and
+/// capture failed over to the system default (see `capture_thread`).
+/// Resampling to 16 kHz happens after handoff, off the audio thread.
 struct CaptureResult {
-    samples: Vec<f32>,
-    sample_rate: u32,
+    segments: Vec<(Vec<f32>, u32)>,
 }
+
+/// How long `capture_thread` keeps retrying after the recording device
+/// vanishes — macOS needs a moment to promote a new default input.
+const FAILOVER_WAIT: Duration = Duration::from_secs(2);
+/// Failovers allowed per session, so a flapping device (loose USB cable)
+/// can't keep the capture thread reopening streams forever.
+const MAX_FAILOVERS: u32 = 5;
 
 /// Managed via `app.manage(AudioState::default())`. Only ever one recording
 /// session at a time; the lock is held just long enough to flip `state` or
@@ -329,7 +337,7 @@ fn build_stream<T>(
     buffer: Arc<Mutex<Vec<f32>>>,
     level: Arc<AtomicU32>,
     channels: usize,
-    session_err: Arc<Mutex<Option<String>>>,
+    lost: Arc<Mutex<Option<StreamLoss>>>,
 ) -> Result<cpal::Stream, String>
 where
     T: SizedSample,
@@ -361,24 +369,163 @@ where
                     level.store(rms.to_bits(), Ordering::Relaxed);
                 }
             },
-            move |err| {
-                // Device died mid-recording (Bluetooth drop, USB unplug):
-                // route it to the session-error slot so the ticker tears the
-                // session down NOW, instead of the user dictating into a dead
-                // stream until they press stop.
-                let mut slot = session_err.lock().unwrap_or_else(|p| p.into_inner());
-                slot.get_or_insert_with(|| format!("Recording stopped: {err}"));
+            move |err: cpal::Error| {
+                // Device died mid-recording (Bluetooth drop, USB unplug) or
+                // its stream was invalidated: `capture_thread` polls this
+                // slot and fails over to the system default input.
+                let mut slot = lost.lock().unwrap_or_else(|p| p.into_inner());
+                slot.get_or_insert_with(|| StreamLoss {
+                    device_gone: err.kind() == cpal::ErrorKind::DeviceNotAvailable,
+                    msg: err.to_string(),
+                });
             },
             None,
         )
         .map_err(|e| e.to_string())
 }
 
+/// A mid-recording stream failure, as reported by cpal's error callback
+/// (or synthesized by `capture_thread`'s stall watchdog).
+struct StreamLoss {
+    /// The device itself disappeared (unplugged, Bluetooth dropped), as
+    /// opposed to its stream being invalidated (e.g. a sample-rate change).
+    device_gone: bool,
+    msg: String,
+}
+
+/// One live capture stream plus the buffer it fills. `lost` is per-segment
+/// so a late error callback from an already-replaced stream can't trigger a
+/// second, spurious failover.
+struct Segment {
+    stream: cpal::Stream,
+    ident: DeviceIdent,
+    buffer: Arc<Mutex<Vec<f32>>>,
+    sample_rate: u32,
+    lost: Arc<Mutex<Option<StreamLoss>>>,
+}
+
+/// Which device a segment records from, kept after its stream is dropped so
+/// `reopen_after_loss` can tell "same mic" from "different mic".
+struct DeviceIdent {
+    device: cpal::Device,
+    /// `device_key` of `device`.
+    key: String,
+    /// Display name, captured at open — a dead device may fail the query.
+    name: String,
+}
+
+/// Stable identity for a device: cpal's id (CoreAudio's device UID) when
+/// available, else the display name — two mics can share a name.
+fn device_key(device: &cpal::Device) -> String {
+    match device.id() {
+        Ok(id) => format!("{id:?}"),
+        Err(_) => device.to_string(),
+    }
+}
+
+/// Opens + plays a capture stream on `device`.
+fn open_segment(device: cpal::Device, level: &Arc<AtomicU32>) -> Result<Segment, String> {
+    let config = device.default_input_config().map_err(|e| e.to_string())?;
+    let sample_rate = config.sample_rate();
+    let channels = config.channels() as usize;
+    let sample_format = config.sample_format();
+    let stream_config: cpal::StreamConfig = config.into();
+    let buffer: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
+    let lost: Arc<Mutex<Option<StreamLoss>>> = Arc::new(Mutex::new(None));
+
+    let (b, l, x) = (buffer.clone(), level.clone(), lost.clone());
+    let stream = match sample_format {
+        cpal::SampleFormat::F32 => build_stream::<f32>(&device, &stream_config, b, l, channels, x),
+        cpal::SampleFormat::I16 => build_stream::<i16>(&device, &stream_config, b, l, channels, x),
+        cpal::SampleFormat::I32 => build_stream::<i32>(&device, &stream_config, b, l, channels, x),
+        cpal::SampleFormat::I8 => build_stream::<i8>(&device, &stream_config, b, l, channels, x),
+        other => Err(format!("unsupported sample format: {other:?}")),
+    }?;
+    stream.play().map_err(|e| e.to_string())?;
+    Ok(Segment {
+        stream,
+        ident: DeviceIdent {
+            key: device_key(&device),
+            name: device.to_string(),
+            device,
+        },
+        buffer,
+        sample_rate,
+        lost,
+    })
+}
+
+/// How `reopen_after_loss` ended.
+enum Reopen {
+    Opened(Segment),
+    /// Stop was pressed (or the session torn down) mid-retry.
+    Stopped,
+    Failed,
+}
+
+/// After the recording stream dies, reopens capture. A stream that was
+/// merely invalidated (device still there) is reopened on the same device
+/// first. Otherwise — or if that fails — on whatever `select_device` now
+/// resolves to: the configured device if it's still present, else the
+/// system default. Retries for up to `FAILOVER_WAIT`: right after an unplug
+/// macOS may still report the dead device as the default, so it's skipped
+/// until the deadline, when it's accepted as a probable replug. Checks
+/// `stop_rx` between attempts so a stop press isn't held up by the retry.
+fn reopen_after_loss(
+    device_filter: Option<&str>,
+    level: &Arc<AtomicU32>,
+    lost: &DeviceIdent,
+    device_gone: bool,
+    stop_rx: &mpsc::Receiver<()>,
+) -> Reopen {
+    let deadline = Instant::now() + FAILOVER_WAIT;
+    loop {
+        if !matches!(stop_rx.try_recv(), Err(mpsc::TryRecvError::Empty)) {
+            return Reopen::Stopped;
+        }
+        if !device_gone {
+            if let Ok(seg) = open_segment(lost.device.clone(), level) {
+                return Reopen::Opened(seg);
+            }
+        }
+        let past_deadline = Instant::now() >= deadline;
+        let attempt = select_device(device_filter).and_then(|d| {
+            // Key OR name: a just-removed device can fail the UID query, so
+            // its fresh key may fall back to the name.
+            let is_lost = device_key(&d) == lost.key || d.to_string() == lost.name;
+            if device_gone && !past_deadline && is_lost {
+                Err("old device still the default".to_string())
+            } else {
+                open_segment(d, level)
+            }
+        });
+        match attempt {
+            Ok(seg) => return Reopen::Opened(seg),
+            Err(_) if past_deadline => return Reopen::Failed,
+            Err(_) => std::thread::sleep(Duration::from_millis(100)),
+        }
+    }
+}
+
+/// A live stream whose buffer hasn't grown for this long is treated as lost
+/// — catches a stream opened on a device that died before its disconnect
+/// listener registered, which would otherwise record nothing, silently.
+const STALL_TIMEOUT: Duration = Duration::from_secs(2);
+/// The same watchdog before a stream's first samples arrive — longer, since
+/// a Bluetooth mic can take a few seconds to deliver its first callback.
+const FIRST_AUDIO_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Runs entirely on its own OS thread: `cpal::Stream` isn't `Send`, so it
-/// must be built, played, and dropped on the thread that owns it. Blocks on
+/// must be built, played, and dropped on the thread that owns it. Waits on
 /// `stop_rx` until `toggle_recording`'s stop branch signals it, then reports
-/// the buffered samples back over `result_tx`.
+/// the buffered samples back over `result_tx`. If the device dies
+/// mid-recording (mic unplugged), it keeps what was captured, reopens
+/// (`reopen_after_loss`), and emits `mic-switched` with the new device's
+/// name when the mic changed. If nothing can be reopened, what was captured
+/// is still transcribed (`stop_if_recording`); only a session with no audio
+/// at all fails.
 fn capture_thread(
+    app: AppHandle,
     device_filter: Option<String>,
     stop_rx: mpsc::Receiver<()>,
     result_tx: mpsc::Sender<Result<CaptureResult, String>>,
@@ -395,83 +542,104 @@ fn capture_thread(
             .get_or_insert_with(|| e.clone());
         let _ = result_tx.send(Err(e));
     };
-    let device = match select_device(device_filter.as_deref()) {
-        Ok(d) => d,
-        Err(e) => {
-            fail(e);
-            return;
-        }
-    };
-    let config = match device.default_input_config() {
-        Ok(c) => c,
-        Err(e) => {
-            fail(e.to_string());
-            return;
-        }
-    };
-    let sample_rate = config.sample_rate();
-    let channels = config.channels() as usize;
-    let sample_format = config.sample_format();
-    let stream_config: cpal::StreamConfig = config.into();
-    let buffer: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut seg =
+        match select_device(device_filter.as_deref()).and_then(|d| open_segment(d, &level)) {
+            Ok(s) => s,
+            Err(e) => return fail(e),
+        };
+    let mut done: Vec<(Vec<f32>, u32)> = Vec::new();
+    let mut failovers = 0;
+    let (mut last_len, mut last_growth) = (0usize, Instant::now());
 
-    let stream = match sample_format {
-        cpal::SampleFormat::F32 => build_stream::<f32>(
-            &device,
-            &stream_config,
-            buffer.clone(),
-            level.clone(),
-            channels,
-            session_err.clone(),
-        ),
-        cpal::SampleFormat::I16 => build_stream::<i16>(
-            &device,
-            &stream_config,
-            buffer.clone(),
-            level.clone(),
-            channels,
-            session_err.clone(),
-        ),
-        cpal::SampleFormat::I32 => build_stream::<i32>(
-            &device,
-            &stream_config,
-            buffer.clone(),
-            level.clone(),
-            channels,
-            session_err.clone(),
-        ),
-        cpal::SampleFormat::I8 => build_stream::<i8>(
-            &device,
-            &stream_config,
-            buffer.clone(),
-            level.clone(),
-            channels,
-            session_err.clone(),
-        ),
-        other => Err(format!("unsupported sample format: {other:?}")),
-    };
-    let stream = match stream {
-        Ok(s) => s,
-        Err(e) => {
-            fail(e);
-            return;
+    // Wait for stop (Ok) or session teardown (Disconnected), polling the
+    // live segment's loss slot and stall watchdog in between; the stream
+    // stays alive (and callbacks keep firing) the whole time.
+    while let Err(mpsc::RecvTimeoutError::Timeout) = stop_rx.recv_timeout(Duration::from_millis(50))
+    {
+        let len = seg.buffer.lock().unwrap_or_else(|p| p.into_inner()).len();
+        if len != last_len {
+            (last_len, last_growth) = (len, Instant::now());
         }
-    };
-    if let Err(e) = stream.play() {
-        fail(e.to_string());
-        return;
+        let reported = seg.lost.lock().unwrap_or_else(|p| p.into_inner()).take();
+        let stall_after = if last_len == 0 {
+            FIRST_AUDIO_TIMEOUT
+        } else {
+            STALL_TIMEOUT
+        };
+        // A stall isn't proof the device is gone, so the reopen tries the
+        // same device first; if it's really dead that open fails fast.
+        let Some(loss) = reported.or_else(|| {
+            (last_growth.elapsed() >= stall_after).then(|| StreamLoss {
+                device_gone: false,
+                msg: "mic stopped sending audio".to_string(),
+            })
+        }) else {
+            continue;
+        };
+        // Stop the dead stream but keep the rest of `seg` for its identity.
+        let Segment {
+            stream,
+            ident,
+            buffer,
+            sample_rate,
+            ..
+        } = seg;
+        drop(stream);
+        done.push((take_samples(&buffer), sample_rate));
+        level.store(0, Ordering::Relaxed);
+
+        failovers += 1;
+        let reopened = if failovers > MAX_FAILOVERS {
+            Reopen::Failed
+        } else {
+            let filter = device_filter.as_deref();
+            reopen_after_loss(filter, &level, &ident, loss.device_gone, &stop_rx)
+        };
+        match reopened {
+            Reopen::Opened(next) => {
+                if next.ident.key != ident.key {
+                    let _ = app.emit("mic-switched", next.ident.name.clone());
+                }
+                seg = next;
+                (last_len, last_growth) = (0, Instant::now());
+            }
+            Reopen::Stopped => {
+                let _ = result_tx.send(Ok(CaptureResult { segments: done }));
+                return;
+            }
+            Reopen::Failed if done.iter().any(|(s, _)| !s.is_empty()) => {
+                // No mic left, but there's audio: hand it over and end the
+                // session as if stop were pressed, rather than discard it.
+                // Stop BEFORE sending: once the result is out, a fast
+                // finish_recording could free the recorder for a new
+                // session that this stop would then end by mistake.
+                // finish_recording just blocks on recv until the send.
+                let _ = app.emit(
+                    "capture-error",
+                    "Mic disconnected — transcribing what was recorded",
+                );
+                stop_if_recording(&app);
+                let _ = result_tx.send(Ok(CaptureResult { segments: done }));
+                return;
+            }
+            Reopen::Failed => return fail(format!("Recording stopped: {}", loss.msg)),
+        }
     }
+    drop(seg.stream);
+    done.push((take_samples(&seg.buffer), seg.sample_rate));
+    let _ = result_tx.send(Ok(CaptureResult { segments: done }));
+}
 
-    // Block until told to stop; the stream stays alive (and callbacks keep
-    // firing) for the whole wait.
-    let _ = stop_rx.recv();
-    drop(stream);
+fn take_samples(buffer: &Mutex<Vec<f32>>) -> Vec<f32> {
+    std::mem::take(&mut *buffer.lock().unwrap_or_else(|p| p.into_inner()))
+}
 
-    let samples = buffer.lock().unwrap_or_else(|p| p.into_inner()).clone();
-    let _ = result_tx.send(Ok(CaptureResult {
-        samples,
-        sample_rate,
-    }));
+/// Resamples each captured segment to 16 kHz and joins them in order.
+fn segments_to_16k(segments: &[(Vec<f32>, u32)]) -> Vec<f32> {
+    segments
+        .iter()
+        .flat_map(|(samples, rate)| resample_to_16k(samples, *rate))
+        .collect()
 }
 
 /// Starts or stops+transcribes a voice note in `RecMode::Note` (⌥⌘R / tray
@@ -537,8 +705,9 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
             {
                 let level = level.clone();
                 let session_err = session_err.clone();
+                let app = app.clone();
                 std::thread::spawn(move || {
-                    capture_thread(device_filter, stop_rx, result_tx, level, session_err);
+                    capture_thread(app, device_filter, stop_rx, result_tx, level, session_err);
                 });
             }
 
@@ -554,8 +723,9 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
             // ~20 Hz level events + 1 Hz tray elapsed title, for as long as
             // `recording_flag` stays true (cleared by the stop branch). Also
             // the watchdog for `session_err`: a capture failure (no device,
-            // TCC denied, stream died mid-recording) must reach the user
-            // NOW, not when they press stop after dictating into the void.
+            // TCC denied, mic lost with no fallback and nothing captured)
+            // must reach the user NOW, not when they press stop after
+            // dictating into the void.
             let app_ticker = app.clone();
             let started = Instant::now();
             std::thread::spawn(move || {
@@ -594,28 +764,44 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
 
             Ok(RecState::Recording.as_str().to_string())
         }
-        RecState::Recording => {
-            let stop_tx = inner.stop_tx.take();
-            let result_rx = inner.result_rx.take();
-            let recording_flag = inner.recording_flag.take();
-            let mode = inner.mode; // == `mode` param here (checked above); read back for finish_recording
-            inner.state_val = Some(RecState::Transcribing);
-            drop(inner);
-
-            if let Some(f) = recording_flag {
-                f.store(false, Ordering::Relaxed);
-            }
-            emit_state(&app, RecState::Transcribing);
-            if let Some(tx) = stop_tx {
-                let _ = tx.send(());
-            }
-
-            let app2 = app.clone();
-            tauri::async_runtime::spawn_blocking(move || finish_recording(app2, result_rx, mode));
-
-            Ok(RecState::Transcribing.as_str().to_string())
-        }
+        RecState::Recording => Ok(stop_session(&app, inner)),
         busy => Ok(busy.as_str().to_string()),
+    }
+}
+
+/// The stop branch: Recording → Transcribing, signal the capture thread,
+/// and hand off to `finish_recording`. Caller must have checked the state
+/// is Recording under the same lock it passes in.
+fn stop_session(app: &AppHandle, mut inner: std::sync::MutexGuard<'_, Inner>) -> String {
+    let stop_tx = inner.stop_tx.take();
+    let result_rx = inner.result_rx.take();
+    let recording_flag = inner.recording_flag.take();
+    let mode = inner.mode;
+    inner.state_val = Some(RecState::Transcribing);
+    drop(inner);
+
+    if let Some(f) = recording_flag {
+        f.store(false, Ordering::Relaxed);
+    }
+    emit_state(app, RecState::Transcribing);
+    if let Some(tx) = stop_tx {
+        let _ = tx.send(());
+    }
+
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || finish_recording(app2, result_rx, mode));
+
+    RecState::Transcribing.as_str().to_string()
+}
+
+/// `capture_thread`'s salvage path: stops the session as if the hotkey were
+/// pressed, but only if it's still Recording — a real stop press may have
+/// raced it, in which case `finish_recording` is already on its way.
+fn stop_if_recording(app: &AppHandle) {
+    let audio = app.state::<AudioState>();
+    let inner = audio.lock();
+    if inner.state() == RecState::Recording {
+        stop_session(app, inner);
     }
 }
 
@@ -703,11 +889,10 @@ fn finish_recording(
         None => return fail(&app, "recording thread vanished".to_string()),
     };
 
-    if capture.samples.is_empty() {
+    let pcm = segments_to_16k(&capture.segments);
+    if pcm.is_empty() {
         return fail(&app, "No audio captured".to_string());
     }
-
-    let pcm = resample_to_16k(&capture.samples, capture.sample_rate);
 
     if max_window_rms(&pcm) < SPEECH_RMS_FLOOR {
         // Usually the mic, not the speaker: input gain at zero or a muted
@@ -813,6 +998,22 @@ mod tests {
         let samples = vec![0.0f32; 300];
         let out = resample_to_16k(&samples, 48_000);
         assert_eq!(out.len(), 100);
+    }
+
+    #[test]
+    fn segments_resample_independently_and_join_in_order() {
+        // A failover from a 48 kHz mic to a 16 kHz one: 300 samples at
+        // 48 kHz become 100, then the 16 kHz segment's 50 pass through.
+        let segments = vec![(vec![0.5f32; 300], 48_000), (vec![-0.5f32; 50], 16_000)];
+        let out = segments_to_16k(&segments);
+        assert_eq!(out.len(), 150);
+        assert!(out[..100].iter().all(|&s| s == 0.5));
+        assert!(out[100..].iter().all(|&s| s == -0.5));
+    }
+
+    #[test]
+    fn segments_all_empty_yield_no_audio() {
+        assert!(segments_to_16k(&[(vec![], 48_000), (vec![], 44_100)]).is_empty());
     }
 
     #[test]

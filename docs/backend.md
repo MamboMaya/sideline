@@ -321,6 +321,21 @@ rate; a linear-interpolation resample to 16 kHz happens after handoff, off
 the audio thread. Device selection: the system default input, unless
 `~/notes/.sideline.json` has `audio: { "device": "<substring>" }` (see
 docs/data-model.md), matched case-insensitively against `list_audio_devices`.
+If the device dies mid-recording (unplug, Bluetooth drop), its stream is
+invalidated, or its buffer stops growing for `STALL_TIMEOUT` (2s; `FIRST_AUDIO_TIMEOUT`, 5s, before the first samples — catches a stream opened on an already-dead device; a stall retries the same device first), `capture_thread` doesn't fail
+the session: it keeps the samples captured so far as one segment and
+`reopen_after_loss` reopens — same device first if it's still there (e.g.
+a sample-rate change), else whatever `select_device` now resolves to (the
+configured device if present, else the system default), retried for up to
+`FAILOVER_WAIT` (2s), skipping the dead device (by cpal device id or name) while
+macOS still reports it as default, and checking `stop_rx` between attempts
+so a stop press isn't held up. A switch to a different mic emits
+`mic-switched` (device name; the frontend toasts it). Segments are
+resampled to 16 kHz individually and joined. If nothing reopens (or after
+`MAX_FAILOVERS`, 5, in one session), audio captured so far is still
+transcribed — `stop_if_recording` ends the session as if stop were pressed,
+with a "Mic disconnected — transcribing what was recorded" `capture-error`
+toast; only a session with no audio at all fails ("Recording stopped: …").
 
 State machine (`audio::RecState`: Idle → Recording → Transcribing, plus a
 DownloadingModel sub-state of Transcribing, a terminal Copied notice

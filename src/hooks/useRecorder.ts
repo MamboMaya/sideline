@@ -129,10 +129,16 @@ export function useRecorder(
         "File watching stopped — restart Sideline to see external edits",
       ),
     );
+    // The mic vanished mid-recording and capture failed over to the
+    // system default — the recording keeps going on the named device.
+    const unMic = listen<string>("mic-switched", (e) =>
+      showToast(`Mic disconnected — recording continues on ${e.payload}`),
+    );
     return () => {
       unError.then((f) => f());
       unHotkey.then((f) => f());
       unWatcher.then((f) => f());
+      unMic.then((f) => f());
     };
   }, []);
 

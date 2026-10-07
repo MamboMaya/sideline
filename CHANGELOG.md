@@ -40,6 +40,11 @@ Notable, user-visible changes to Sideline. Format follows
 
 ### Fixed
 
+- Unplugging your mic mid-recording no longer kills the recording: Sideline
+  keeps what it already captured, switches to the system default input, and
+  keeps recording (a toast names the new mic). If no other input is left, it
+  transcribes what it captured instead of discarding it.
+
 - A failed recording is no longer silent: the recording pill now shows the
   error (e.g. "No speech detected — check mic input level") for a few
   seconds before hiding, even with the popover closed.
