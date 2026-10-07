@@ -7,95 +7,40 @@ project todo list, or delete it. Everything is plain Markdown under `~/notes`,
 and nothing ever leaves your machine except the (optional) Claude-assisted
 triage calls and quick questions.
 
-> **New in 0.6 — screenshots on cards.** Copy a screenshot (⌃⇧⌘4), select a
-> card in the Todos view, press ⌘V: the image is saved under
-> `~/notes/inbox-assets/`, shows as a thumbnail on the card (click to open
-> it in Preview), and rides along in the todo file as a markdown image link
-> a Claude Code session can open. Pasting while editing a note (`e`) works
-> too. No new permissions.
-
-> **Add a project with the mouse** (0.5): right-click the tray icon →
-> **Add project…** (or Settings → Tags → **Choose folder…**), pick the repo's
-> folder, and Sideline prefills the routing tag from its name
-> (`Content-Studio` → `#content-studio`), pins it, and offers to set the
-> repo up: one click opens your terminal and appends the todos pointer to
-> that repo's `CLAUDE.local.md`, so a Claude Code session there knows where
-> its routed notes live. No new permissions — the folder picker is macOS's
-> own, Sideline only remembers the path, and the terminal does the write.
-> Details under [What it does](#what-it-does).
-
-> **Quick questions** (0.4): the kind of question you'd open a browser tab
-> for ("what does WISP mean in real estate?") has a hotkey: press ⌥⌘A, say
-> it, and a short web-searched answer from Claude lands in the popover's Ask
-> tab — no note created unless you press ⌘S to keep it. `o` reopens that
-> conversation in your terminal. Needs the `claude` CLI; everything else in
-> Sideline still works without it.
-
-> **Dictation pass-through** (0.3): press ⌥⌘V, talk, and the transcript is
-> pasted into whatever app you're in — the inbox is never involved. It always
-> lands on the clipboard too, so a paste that goes nowhere is one ⌘V from
-> being recovered. This is the one feature that asks for a second macOS
-> permission (Accessibility, used only to send the auto-paste ⌘V); decline it
-> and the clipboard is simply the whole delivery. Like every Sideline hotkey,
-> ⌥⌘V is just the default — remap it in Settings (⌘,). See
-> [Permissions](#permissions).
+What's new in each version: [CHANGELOG.md](CHANGELOG.md).
 
 ## What it does
 
-- **Capture**: global hotkey (⌥⌘R by default) records a voice note, transcribes it
-  on-device with Whisper (Metal-accelerated), and appends it to
-  `~/notes/inbox.md`. The tray shows a live 🔴 REC timer; the popover shows a
-  level meter so you know the mic is hot. Unplug the mic mid-recording and
-  Sideline switches to the system default input instead of losing the note.
-- **Dictate anywhere** (⌥⌘V by default): same on-device recording and
-  transcription, but the result is copied to the clipboard and auto-pasted
-  into whatever app is frontmost instead of going to the inbox — handy for
-  dictating straight into another app. The pill always ends with "Copied —
-  ⌘V to paste", so if the paste went nowhere (a stray click defocused your
-  target, say) the transcript is still one ⌘V away rather than lost.
-  Auto-paste needs the Accessibility permission (asked once, on first
-  use); without it, the transcript still lands on the clipboard for a
-  manual ⌘V.
-- **Dictionary**: teach the transcriber your vocabulary (Settings → Voice).
-  One row per term with the ways it gets mis-heard — terms bias Whisper
-  toward the right spelling, and mis-hearings are corrected after
-  transcription.
-- **Spoken lists**: number your items ("first… second…"), say "bullet"
-  before each one, or announce the list ("three things for tomorrow…") and
-  the voice note shows as bullets; dictation pastes it as `1.` `2.` `3.`.
-  Rule-based and instant. The note file keeps exactly what you said (the
-  bullets are a view, `l` toggles back), and no word is ever dropped.
-- **Live inbox**: the popover (⌥⌘Space) shows every note the second it lands.
-  Quick tags (`#bug` `#todo` `#idea`), pinned custom tags, and `@project` tags
-  with keyboard-first triage.
+- **Capture** (⌥⌘R): records a voice note, transcribes it on-device with
+  Whisper (Metal-accelerated), and appends it to `~/notes/inbox.md`. The tray
+  shows a live 🔴 REC timer; the popover shows a level meter.
+- **Dictate anywhere** (⌥⌘V): same recording, but the transcript is copied to
+  the clipboard and pasted into the frontmost app instead of the inbox. The
+  auto-paste needs Accessibility (see [Permissions](#permissions)); without
+  it, the text is still on the clipboard for a manual ⌘V.
+- **Quick questions** (⌥⌘A, or `q` in the popover): speak or type a one-off
+  question and get a short web-searched answer from Claude in the Ask tab.
+  Nothing is written unless you save it with ⌘S; `o` continues the thread in
+  your terminal. Needs the `claude` CLI.
+- **Live inbox** (⌥⌘Space): every note appears the second it lands. Quick
+  tags (`#bug` `#todo` `#idea`), pinned custom tags, `@project` tags, and
+  keyboard-first triage.
 - **Triage**: notes become YAML-frontmattered files in `~/notes/notes/`, or
   route to per-project todo lists in `~/notes/todos/` — optionally with
-  Claude-generated headers (uses your existing `claude` CLI, non-interactive,
-  cheap models).
+  Claude-generated headers (your existing `claude` CLI, cheap models).
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
-  and undo.
-- **Screenshots on cards**: copy a screenshot (⌃⇧⌘4), select a card, press
-  ⌘V — it's saved to `~/notes/inbox-assets/` and shows as a thumbnail (click
-  to open in Preview). The todo file gets a plain markdown image link, so a
-  Claude Code session working that todo can look at the screenshot too.
-- **Add a project by picking its folder**: tray → Add project…, or Settings
-  → Tags → Choose folder…. The tag is prefilled from the folder name and
-  pinned, and "Set up repo in Terminal" runs a small, idempotent script in
-  your terminal that appends the `~/notes/todos/<tag>.md` pointer to the
-  repo's `CLAUDE.local.md` (or copy the command and run it yourself). Typing
-  a tag into Settings still works too.
-- **Quick questions** (⌥⌘A by default, or `q` / ⌘3 in the popover): speak
-  or type a one-off question and get a short answer from Claude with web
-  search, in the Ask tab. Answers stay for the session (click away, come
-  back later — they're still there), nothing is written unless you save one
-  to the inbox with ⌘S, and `o` continues the thread in your terminal as a
-  full Claude session. Uses the `claude` CLI with only its web tools
-  enabled — no file access, no hooks, no MCP servers.
-- **Settings in-app** (⌘, or the gear in the header): remap the four global
-  hotkeys by pressing the new combo (applied live, no restart), pick the
-  input mic, toggle/tune Claude triage, choose the question model and the
-  terminal for "Continue in Terminal", manage tags and projects, adjust
-  zoom.
+  and undo. Paste a screenshot onto a card (⌘V) and it's saved to
+  `~/notes/inbox-assets/` and linked from the todo file.
+- **Projects**: tray → Add project… (or Settings → Tags → Choose folder…)
+  picks a repo folder, prefills the routing tag from its name, and can append
+  the todos pointer to that repo's `CLAUDE.local.md` so a Claude Code session
+  there knows where its routed notes live.
+- **Voice extras**: a dictionary that biases Whisper toward your vocabulary
+  and corrects mis-hearings, filler-word removal, and spoken lists ("first…
+  second…", "bullet …") shown as bullets — all rule-based and instant, and
+  the note on disk always keeps exactly what you said.
+- **Settings in-app** (⌘,): remap all four hotkeys live, pick the mic,
+  tune or disable Claude, manage tags and projects, zoom.
 
 ![Record a voice note, watch it land in the inbox, triage it to a project todo](assets/demo.gif)
 
@@ -131,35 +76,31 @@ downloads the Whisper model (~148 MB) to `~/.whisper-models/`. macOS 10.15
 (Catalina) or later; Apple Silicon recommended (transcription runs on Metal).
 
 On first launch, Sideline asks once whether to launch automatically at login;
-after that, System Settings > General > Login Items is authoritative (change
-it there anytime).
+after that, System Settings > General > Login Items is authoritative.
 
 Optional: install the [`claude` CLI](https://claude.com/claude-code) to enable
-Claude-assisted triage, note headers, and the Ask tab's quick questions.
-Everything else works without it.
+Claude-assisted triage, note headers, and quick questions. Everything else
+works without it.
 
 ### Using without Claude
 
-No `claude` CLI or subscription? Flip the Claude toggle off in Settings
-(⌘,) — or set `"claude": false` in `~/notes/.sideline.json`. Capture and transcription are already fully local
-(Whisper); with this set, triage stops calling out too — notes file with
-locally-derived headers (the note's own first line) instead of Haiku-written
-ones, and no `## Claude` reply appendix. Quick questions are the one thing
-that genuinely needs the CLI; without it the Ask tab just reports the error.
+Flip the Claude toggle off in Settings (⌘,), or set `"claude": false` in
+`~/notes/.sideline.json`. Capture and transcription are already fully local;
+with this set, triage stops calling out too and notes get locally-derived
+headers (the note's own first line). Quick questions are the one thing that
+genuinely needs the CLI.
 
 ## Permissions
 
 Sideline needs exactly **two** macOS permissions: the microphone, asked once
 on your first recording, and Accessibility, asked once on your first
-dictation (⌥⌘V) — needed only for the synthetic ⌘V that auto-pastes the
-transcript into the frontmost app. Skip granting it and dictation still
-works; the transcript just stays on the clipboard for you to paste yourself.
-Everything else is deliberately prompt-free — notes live in `~/notes`, which
+dictation (⌥⌘V) — used only for the synthetic ⌘V that auto-pastes the
+transcript. Decline it and dictation still works via the clipboard.
+Everything else is deliberately prompt-free: notes live in `~/notes`, which
 is not a TCC-protected folder (Documents/Desktop/Downloads are; that's why
 the location is fixed). The "Add project" folder picker is macOS's own
-consent dialog and never prompts: Sideline stores the path you picked and
-nothing more — it never reads or writes inside that folder (the repo setup
-script runs in your terminal, under your terminal's permissions).
+dialog; Sideline stores the path and never reads or writes inside that
+folder — the repo setup script runs in your terminal, under its permissions.
 
 If you rebuild the app yourself, sign it with a stable identity so macOS
 remembers your permission answers across builds:
@@ -169,8 +110,8 @@ APPLE_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" pnpm tauri build
 ```
 
 Without it, each rebuild is a "new app" to macOS and the mic prompt returns
-once per build. (Any Apple Development certificate works, including the free
-one from Xcode.)
+once per build. Any Apple Development certificate works, including the free
+one from Xcode.
 
 ## Alternative capture: external scripts
 
@@ -181,19 +122,16 @@ you want recording off the app's permission identity or you live in Raycast:
   → append. Needs `brew install ffmpeg whisper-cpp` and the model file.
 - `link-note.sh` — Raycast: append the frontmost Google Chrome tab's title
   and URL as a 🔗 entry. Reads the tab via AppleScript; macOS will ask once
-  whether to let Raycast control Chrome (an Automation permission for
-  Raycast, not for Sideline).
+  whether to let Raycast control Chrome (a permission for Raycast, not
+  Sideline).
 - `delete-last-note.sh` — remove the most recent inbox entry.
 
 ## Configuration
 
-`~/notes/.sideline.json` — pinned tags, hidden tags, zoom, hotkeys, triage
-prompts and models (plus the question model), project routing (tag → folder,
-the folder is informational only), the no-Claude toggle, audio input device,
-the terminal for "Continue in Terminal", spoken-list formatting on/off.
-All of it is editable in-app via the Settings pane (⌘,); the file is still
-plain JSON if you'd rather hand-edit (hotkey edits made that way need a
-restart; Settings applies them live). Schema in
+`~/notes/.sideline.json` holds every setting (tags, hotkeys, Claude
+prompts/models, project routing, mic, zoom, …). The Settings pane (⌘,)
+edits all of it live; it's plain JSON if you'd rather hand-edit (hotkey edits
+made that way need a restart). Schema in
 [docs/data-model.md](docs/data-model.md).
 
 ## Docs
