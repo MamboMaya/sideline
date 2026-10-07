@@ -694,7 +694,7 @@ fn toggle_recording_mode(app: AppHandle, mode: RecMode) -> Result<String, String
     }
 
     match state {
-        RecState::Idle | RecState::Copied | RecState::Failed => {
+        s if s.can_start() => {
             let (stop_tx, stop_rx) = mpsc::channel::<()>();
             let (result_tx, result_rx) = mpsc::channel::<Result<CaptureResult, String>>();
             let level = Arc::new(AtomicU32::new(0));

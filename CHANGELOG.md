@@ -40,6 +40,11 @@ Notable, user-visible changes to Sideline. Format follows
 
 ### Fixed
 
+- Pressing a recording hotkey while a "⏰" reminder is showing on the pill now
+  starts recording. Before, the press was ignored, and if you held the key
+  until the reminder faded, releasing it started a recording you didn't ask
+  for.
+
 - Unplugging your mic mid-recording no longer kills the recording: Sideline
   keeps what it already captured, switches to the system default input, and
   keeps recording (a toast names the new mic). If no other input is left, it
