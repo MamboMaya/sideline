@@ -48,6 +48,8 @@ const DEFAULTS: SidelineConfig = {
   staleDaysOverride: undefined,
   cleanFillers: true,
   cleanFillersOverride: undefined,
+  autoList: true,
+  autoListOverride: undefined,
   classifier: DEFAULT_CLASSIFIER,
   classifierOverride: undefined,
 };
@@ -96,6 +98,7 @@ describe("parseConfig — full valid config", () => {
       dictionary: { Tauri: ["towery"], Whisper: [] },
       staleDays: 5,
       cleanFillers: false,
+      autoList: false,
       classifier: { provider: "local", url: "http://127.0.0.1:9999" },
     });
     const cfg = parseConfig(raw);
@@ -239,6 +242,7 @@ describe("parseConfig — terminal", () => {
         dictionary: { Tauri: ["towery"] },
         staleDays: undefined,
         cleanFillers: undefined,
+        autoList: undefined,
         classifier: undefined,
       },
     });
@@ -266,6 +270,7 @@ describe("parseConfig — terminal", () => {
         dictionary: undefined,
         staleDays: undefined,
         cleanFillers: undefined,
+        autoList: undefined,
         classifier: undefined,
       },
     });
@@ -363,6 +368,7 @@ describe("parseConfig — dictionary", () => {
         dictionary: undefined,
         staleDays: undefined,
         cleanFillers: undefined,
+        autoList: undefined,
         classifier: undefined,
       },
     };
@@ -669,6 +675,70 @@ describe("parseConfig — cleanFillers", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseConfig — autoList (spoken-list bullet formatting)
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — autoList", () => {
+  test("absent autoList key defaults to true, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.autoList).toBe(true);
+    expect(cfg.autoListOverride).toBeUndefined();
+  });
+
+  test("autoList: false is honored and recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ autoList: false }));
+    expect(cfg.autoList).toBe(false);
+    expect(cfg.autoListOverride).toBe(false);
+  });
+
+  test("a non-boolean autoList value is ignored (defaults to true)", () => {
+    const cfg = parseConfig(JSON.stringify({ autoList: "no" }));
+    expect(cfg.autoList).toBe(true);
+    expect(cfg.autoListOverride).toBeUndefined();
+  });
+
+  test("serializeConfig writes autoList only when overridden, after cleanFillers", () => {
+    const overrides = {
+      prompts: undefined,
+      models: undefined,
+      projects: undefined,
+      claude: undefined,
+      audio: undefined,
+      hotkeys: undefined,
+      overlay: undefined,
+      pushToTalk: undefined,
+      terminal: undefined,
+      dictionary: undefined,
+      staleDays: undefined,
+      cleanFillers: false,
+      autoList: false,
+      classifier: undefined,
+    };
+    const out = JSON.parse(
+      serializeConfig({ pinnedTags: [], hiddenTags: [], zoom: 1, overrides }),
+    );
+    expect(Object.keys(out)).toEqual([
+      "pinnedTags",
+      "cleanFillers",
+      "autoList",
+    ]);
+    const none = JSON.parse(
+      serializeConfig({
+        pinnedTags: [],
+        hiddenTags: [],
+        zoom: 1,
+        overrides: {
+          ...overrides,
+          cleanFillers: undefined,
+          autoList: undefined,
+        },
+      }),
+    );
+    expect(Object.keys(none)).toEqual(["pinnedTags"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // parseConfig — unknown keys preserved in the right override
 // ---------------------------------------------------------------------------
 
@@ -769,6 +839,7 @@ const noOverrides = {
   dictionary: undefined,
   staleDays: undefined,
   cleanFillers: undefined,
+  autoList: undefined,
   classifier: undefined,
 };
 
@@ -838,6 +909,7 @@ describe("serializeConfig", () => {
         dictionary: { Tauri: ["towery"] },
         staleDays: 5,
         cleanFillers: false,
+        autoList: undefined,
         classifier: { provider: "local", url: "http://127.0.0.1:4410" },
       },
     });
@@ -875,6 +947,7 @@ describe("serializeConfig", () => {
         dictionary: { Tauri: ["towery"] },
         staleDays: 5,
         cleanFillers: false,
+        autoList: undefined,
         classifier: { provider: "claude", url: "http://127.0.0.1:4410" },
       },
     });
@@ -1038,6 +1111,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       terminal: "iTerm",
       staleDays: 5,
       cleanFillers: false,
+      autoList: false,
       classifier: { provider: "local", url: "http://127.0.0.1:4410" },
     };
     const cfg = parseConfig(JSON.stringify(original));
@@ -1059,6 +1133,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           dictionary: undefined,
           staleDays: cfg.staleDaysOverride,
           cleanFillers: cfg.cleanFillersOverride,
+          autoList: cfg.autoListOverride,
           classifier: cfg.classifierOverride,
         },
       }),

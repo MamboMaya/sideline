@@ -39,6 +39,8 @@ export interface SettingsPaneProps {
   setPushToTalk: (enabled: boolean) => void;
   cleanFillers: boolean;
   setCleanFillersEnabled: (enabled: boolean) => void;
+  autoList: boolean;
+  setAutoListEnabled: (enabled: boolean) => void;
   dictionaryOverride: DictionaryConfig | undefined;
   setDictionary: (dict: DictionaryConfig | undefined) => void;
   // Claude
@@ -569,6 +571,8 @@ export function SettingsPane({
   setPushToTalk,
   cleanFillers,
   setCleanFillersEnabled,
+  autoList,
+  setAutoListEnabled,
   dictionaryOverride,
   setDictionary,
   claude,
@@ -900,6 +904,21 @@ export function SettingsPane({
           Strips hesitation words, discourse fillers, and stutter repeats from
           in-app transcripts before they're handed off. Applies to the next
           recording; the external Raycast capture script is unaffected.
+        </div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="auto-list-toggle">
+            Format spoken lists as bullets
+          </label>
+          <Switch
+            id="auto-list-toggle"
+            checked={autoList}
+            onChange={setAutoListEnabled}
+          />
+        </div>
+        <div className="settings-hint">
+          New long voice notes that are spoken lists show as bullets. Your words
+          are never changed or dropped — press l on a note to switch back to the
+          original. Numbered lists format instantly; looser ones use Claude.
         </div>
       </section>
 

@@ -12,7 +12,10 @@ import {
   parseLocalResponse,
   runClassifyBatch,
   selectForClassification,
+  withinClassifyWindow,
 } from "../lib/classify";
+import { autoListPlan, listKey, parseLists } from "../lib/listFormat";
+import { detectListViaClaude } from "../lib/listRun";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
 import { parseReminder, reminderId } from "../lib/reminders";
 import {
@@ -24,6 +27,8 @@ import {
   removeReminder,
   classifyLocal,
   sendToClaude,
+  readLists,
+  setListEntry,
 } from "../lib/commands";
 import { insertNoteAt } from "../lib/undo";
 import { loadConfig, type SidelineConfig } from "../lib/config";
@@ -34,6 +39,8 @@ import { loadConfig, type SidelineConfig } from "../lib/config";
 // own reload()/runClassifier() — still share one cap of 2 concurrent
 // classify calls total, rather than 2 each.
 const classifierLimiter = new Limiter(2);
+// Same shape for the spoken-list formatter (runListFormatter below).
+const listLimiter = new Limiter(2);
 
 export interface UseInboxParams {
   // Current config state App.tsx owns — read here only for the `knownTags`
@@ -133,6 +140,11 @@ export function useInbox({
   // would break the "classified at most once per session" contract; the
   // timestamp is stable across both. Reset only on app restart.
   const classifiedRef = useRef<Set<string>>(new Set());
+  // Notes already scanned by the spoken-list formatter this app run, keyed by
+  // listKey (timestamp + body hash). Every scanned note is marked, eligible
+  // or not, BEFORE any await — the formatter's own sidecar write fires
+  // `inbox-changed`, which re-runs reload() and must find nothing new to do.
+  const listCheckedRef = useRef<Set<string>>(new Set());
   // True once the local-classifier-unreachable toast has fired this app
   // run — see runClassifier below: one toast per app run, not one per note.
   const classifierToastedRef = useRef(false);
@@ -249,6 +261,79 @@ export function useInbox({
       classifierToastedRef.current = true;
       showToastRef.current("Classifier unreachable — using keyword tags only");
     }
+  };
+
+  // Auto-formats new long voice notes that are spoken lists (display layer
+  // only — see src/lib/listFormat.ts; the note on disk is never modified).
+  // Fire-and-forget from reload(), like runClassifier: never delays the
+  // list. Only the sidecar entry is written: validated starts + show, or
+  // `starts: null` for "not a list" / failed validation. Explicit
+  // enumerations ("first, second…", "one, two, three…") are formatted
+  // instantly by rules — any length, no Claude, not counted against the
+  // limiter; only longer notes the rules didn't catch go to Claude (and
+  // only with `claude` on). A thrown Claude error writes nothing, so the
+  // note is tried again next launch. Silent on errors.
+  const runListFormatter = async (
+    currentNotes: Note[],
+    config: SidelineConfig,
+  ) => {
+    if (!config.autoList) return;
+    const now = new Date();
+    const pending: {
+      key: string;
+      body: string;
+      plan: Exclude<ReturnType<typeof autoListPlan>, "skip">;
+    }[] = [];
+    for (const n of currentNotes) {
+      const key = listKey(n.timestamp, n.body);
+      if (listCheckedRef.current.has(key)) continue;
+      listCheckedRef.current.add(key);
+      if (!withinClassifyWindow(n.timestamp, now)) continue;
+      const plan = autoListPlan(n.body);
+      if (plan === "skip") continue;
+      if (plan === "claude" && !config.claude) continue;
+      pending.push({ key, body: n.body, plan });
+    }
+    if (pending.length === 0) return;
+    // Fresh read (not hook state, which may be stale): a note formatted by
+    // `l`, or by an earlier launch, already has an entry and is skipped.
+    let existing: ReturnType<typeof parseLists>;
+    try {
+      existing = parseLists(await readLists());
+    } catch (e) {
+      console.error("list sidecar read failed:", e);
+      return;
+    }
+    await Promise.all(
+      pending
+        .filter((p) => !(p.key in existing))
+        .map(async (p) => {
+          // if_absent on every write: an `l` press that finished first wins.
+          if (p.plan !== "claude") {
+            await setListEntry(
+              p.key,
+              { starts: p.plan.starts, show: true },
+              true,
+            ).catch((e) => console.error("list sidecar write failed:", e));
+            return;
+          }
+          await listLimiter.run(async () => {
+            try {
+              const starts = await detectListViaClaude(
+                p.body,
+                config.models.triage,
+              );
+              await setListEntry(
+                p.key,
+                { starts, show: starts !== null },
+                true,
+              );
+            } catch (e) {
+              console.error("list formatting failed:", e);
+            }
+          });
+        }),
+    );
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
@@ -377,6 +462,7 @@ export function useInbox({
     // Fire-and-forget: see runClassifier's own comment for why this must
     // not be awaited here.
     runClassifier(taggedNotes, config);
+    runListFormatter(taggedNotes, config);
   }, []);
 
   useEffect(() => {

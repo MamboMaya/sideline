@@ -134,6 +134,15 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [cleanFillersOverride, setCleanFillersOverride] = useState<
     boolean | undefined
   >(undefined);
+  // Spoken-list auto-format switch: `.sideline.json`'s `autoList` key,
+  // merged against the default of `true` (useInbox.ts reads it fresh from
+  // loadConfig; this slice just backs the Settings toggle and the override
+  // round-trip). See src/lib/listFormat.ts.
+  const [autoList, setAutoList] = useState(true);
+  // Raw `autoList` value as read from the file (undefined = key absent).
+  const [autoListOverride, setAutoListOverride] = useState<boolean | undefined>(
+    undefined,
+  );
   // Resolved classifier config (Settings' "Auto-classify new notes"
   // dropdown + URL field): `.sideline.json`'s `classifier` key, merged
   // against DEFAULT_CLASSIFIER (absent/invalid = provider "off", today's
@@ -149,7 +158,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   // The 13 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // overlay/pushToTalk/dictionary/terminal/staleDays/cleanFillers/classifier
+  // overlay/pushToTalk/dictionary/terminal/staleDays/cleanFillers/autoList/classifier
   // value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
@@ -164,6 +173,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     dictionary: dictionaryOverride,
     staleDays: staleDaysOverride,
     cleanFillers: cleanFillersOverride,
+    autoList: autoListOverride,
     classifier: classifierOverride,
   });
 
@@ -202,6 +212,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     terminal?: string | undefined;
     staleDays?: number | undefined;
     cleanFillers?: boolean | undefined;
+    autoList?: boolean | undefined;
     classifier?: Partial<ClassifierConfig> | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
@@ -230,6 +241,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "staleDays" in patch ? patch.staleDays : staleDaysOverride;
     const nextCleanFillersOverride =
       "cleanFillers" in patch ? patch.cleanFillers : cleanFillersOverride;
+    const nextAutoListOverride =
+      "autoList" in patch ? patch.autoList : autoListOverride;
     const nextClassifierOverride =
       "classifier" in patch ? patch.classifier : classifierOverride;
 
@@ -255,6 +268,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setStaleDaysState(nextStaleDaysOverride ?? DEFAULT_STALE_DAYS);
     setCleanFillersOverride(nextCleanFillersOverride);
     setCleanFillers(nextCleanFillersOverride ?? true);
+    setAutoListOverride(nextAutoListOverride);
+    setAutoList(nextAutoListOverride ?? true);
     setClassifierOverride(nextClassifierOverride);
     setClassifier(mergeClassifier(nextClassifierOverride));
 
@@ -275,6 +290,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         dictionary: nextDictionaryOverride,
         staleDays: nextStaleDaysOverride,
         cleanFillers: nextCleanFillersOverride,
+        autoList: nextAutoListOverride,
         classifier: nextClassifierOverride,
       },
     });
@@ -330,6 +346,12 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   // `"cleanFillers": true`.
   const setCleanFillersEnabled = (enabled: boolean) => {
     updateConfig({ cleanFillers: enabled ? undefined : false });
+  };
+
+  // The Voice section's "Format spoken lists as bullets" toggle. Same
+  // omit-at-default convention as `setCleanFillersEnabled` (default `true`).
+  const setAutoListEnabled = (enabled: boolean) => {
+    updateConfig({ autoList: enabled ? undefined : false });
   };
 
   // The Voice section's "Hold to record" toggle. `enabled` writes an
@@ -489,6 +511,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setStaleDaysOverride(config.staleDaysOverride);
     setCleanFillers(config.cleanFillers);
     setCleanFillersOverride(config.cleanFillersOverride);
+    setAutoList(config.autoList);
+    setAutoListOverride(config.autoListOverride);
     setClassifier(config.classifier);
     setClassifierOverride(config.classifierOverride);
   };
@@ -558,6 +582,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     pushToTalk,
     staleDays,
     cleanFillers,
+    autoList,
     classifier,
     applyConfig,
     togglePin,
@@ -578,6 +603,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     terminalOverride,
     staleDaysOverride,
     cleanFillersOverride,
+    autoListOverride,
     classifierOverride,
     unhideTag,
     setModelOverride,
@@ -590,6 +616,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setTerminal,
     setStaleDays,
     setCleanFillersEnabled,
+    setAutoListEnabled,
     setClassifierProvider,
     setClassifierUrl,
     addProject,

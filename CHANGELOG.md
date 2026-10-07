@@ -8,6 +8,28 @@ Notable, user-visible changes to Sideline. Format follows
 
 ### Added
 
+- Long voice notes that are spoken lists now show as bullets automatically
+  ("pick up milk, and grab some eggs, call the dentist, ..."). Your words
+  are never changed or dropped: the note on disk stays exactly as you said
+  it, the bullets are only a view, and a note that can't be split without
+  losing a word shows as plain text. Press `l` on a note (Inbox or Todos) to
+  switch between list and original — it formats any note on the spot, and
+  copy (`c`, ⧉) follows whichever view is showing. Numbered lists ("first,
+  second, third…", "number one, number two…", "one, two, three…") format
+  instantly with no Claude call, even in short notes, and so do lists you
+  announce — "a few things for tomorrow…" — when you pause between items
+  or state a count ("three things…" then three sentences); looser lists use
+  Claude in the background. Turn the automatic pass
+  off in Settings → Voice → "Format spoken lists as bullets".
+
+- Dictation and voice notes keep your pauses: stop talking for about two
+  seconds and the text starts a new line. Breaths and short thinking pauses
+  don't count. A numbered dictation ("First, … Second, …" or "one, … two,
+  … three, …") or an announced one ("A few things for tomorrow…" with a
+  pause between items) pastes as a numbered list (`1.`, `2.`, …), instantly
+  and with no Claude call; Settings → Voice → "Format spoken lists as
+  bullets" turns it off.
+
 - Stale inbox notes get flagged: a note at least `staleDays` days old
   (default 3, in Settings → Inbox; 0 turns it off) shows a small amber age
   badge on its card, and the header shows an amber "N stale" count from any

@@ -35,7 +35,8 @@ never deleted, the ONLY record of a routed note; long entries may lead with a
 `**title**` body line, re-routed ones may embed a `## Claude` reply.
 `archive.md`: append-only deleted notes.
 `.sideline-reminders.json`: reminders auto-detected in note bodies (text,
-due time, fired/dismissed). `.sideline.json`: frontend config
+due time, fired/dismissed). `.sideline-lists.json`: display-only spoken-list
+split offsets per note (note text is never modified). `.sideline.json`: frontend config
 (pinnedTags, hiddenTags, zoom, prompts, models, projects → routing tags).
 Exact rules: docs/data-model.md.
 

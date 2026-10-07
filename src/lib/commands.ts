@@ -268,3 +268,26 @@ export function classifyLocal(url: string, payload: unknown): Promise<unknown> {
 export function classifierHealth(url: string): Promise<void> {
   return invoke<void>("classifier_health", { url });
 }
+
+// The spoken-list display sidecar (`~/notes/.sideline-lists.json`, see
+// src/lib/listFormat.ts): `readLists` returns the raw JSON text (`{}` when
+// absent; rejects if the file is corrupt) for parseLists to validate;
+// `setListEntry` stores one note's entry, or removes it when `entry` is null;
+// `ifAbsent` makes it a no-op when the key already exists (the
+// auto-formatter's write, so it never clobbers an `l` press that finished
+// first). Never touches a note file.
+export function readLists(): Promise<string> {
+  return invoke<string>("read_lists");
+}
+
+export function setListEntry(
+  key: string,
+  entry: { starts: number[] | null; show: boolean } | null,
+  ifAbsent = false,
+): Promise<void> {
+  return invoke<void>("set_list_entry", {
+    key,
+    entry,
+    if_absent: ifAbsent,
+  });
+}

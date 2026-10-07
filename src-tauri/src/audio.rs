@@ -289,6 +289,23 @@ fn clean_fillers_enabled() -> bool {
         .unwrap_or(true)
 }
 
+/// Reads `autoList` from `~/notes/.sideline.json` — same failure-tolerant
+/// shape and default (enabled) as `clean_fillers_enabled`. One setting for
+/// spoken-list formatting everywhere: popover cards and dictation pastes.
+fn auto_list_enabled() -> bool {
+    let p = crate::paths::notes_dir().join(".sideline.json");
+    let Ok(raw) = std::fs::read_to_string(p) else {
+        return true;
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return true;
+    };
+    parsed
+        .get("autoList")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
 /// Linear-interpolation resample to 16 kHz mono — whisper.cpp's required
 /// input rate. Good enough for speech; avoids pulling in a full resampling
 /// crate for what's a short voice note.
@@ -903,7 +920,11 @@ fn finish_recording(
         );
     }
 
-    match crate::whisper::transcribe(&app, &pcm) {
+    // Notes and dictation keep long pauses as line breaks — easier to read,
+    // and the pause-separated chunks are what lets a lead-in ("a few things
+    // for tomorrow…") become a list without spoken numbering (listrules.rs,
+    // and listFormat.ts for notes). Ask questions stay one line.
+    match crate::whisper::transcribe(&app, &pcm, mode != RecMode::Ask) {
         // `transcribe` already runs the Claude mis-hear correction pass for
         // every caller, so `text` here is corrected regardless of mode.
         // Filler-word cleanup (cleanup.rs) runs next, before the mode
@@ -925,6 +946,13 @@ fn finish_recording(
                     }
                 }
                 RecMode::Dictate => {
+                    // An explicitly enumerated dictation pastes as a
+                    // numbered list (listrules.rs); anything else as-is.
+                    let text = if auto_list_enabled() {
+                        crate::listrules::number_list(&text).unwrap_or(text)
+                    } else {
+                        text
+                    };
                     // Copied: the transcript is on the clipboard — say so,
                     // whether or not the auto-paste landed anywhere useful.
                     // Failed: dictate.rs already emitted the `capture-error`.

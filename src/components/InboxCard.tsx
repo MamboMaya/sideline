@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { type Note, splitBodyImages } from "../inbox";
 import { tagChipClass, tagLabel } from "../lib/format";
+import { type ListEntry, displayBody } from "../lib/listFormat";
 import { ageDays, isStale } from "../lib/stale";
 import type { TagEditorHook } from "../hooks/useTagEditor";
 import { BodyImages } from "./BodyImages";
@@ -8,6 +9,10 @@ import { TagEditor } from "./TagEditor";
 
 interface InboxCardProps {
   note: Note;
+  // This note's spoken-list sidecar entry (App.tsx looks it up by
+  // listKey) — when it says show, the body renders as bullets; see
+  // src/lib/listFormat.ts. Display only, the stored body never changes.
+  listEntry?: ListEntry;
   isSelected: boolean;
   isSending: boolean;
   isEditing: boolean;
@@ -45,6 +50,7 @@ interface InboxCardProps {
 // generalized.
 export function InboxCard({
   note,
+  listEntry,
   isSelected,
   isSending,
   isEditing,
@@ -132,7 +138,7 @@ export function InboxCard({
         editArea
       ) : (
         <>
-          {text && <div className="body">{text}</div>}
+          {text && <div className="body">{displayBody(text, listEntry)}</div>}
           <BodyImages images={images} />
         </>
       )}

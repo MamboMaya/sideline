@@ -7,7 +7,8 @@ delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`)
 commands below, grouped by concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning + the recording-pill overlay window),
 `hotkeys.rs` (config + registration), `reminders.rs` (reminder storage,
-background ticker, firing), `classifier.rs` (the optional local
+background ticker, firing), `lists.rs` (the spoken-list display sidecar),
+`classifier.rs` (the optional local
 auto-classifier's HTTP call + host/scheme validation — see below),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
 watcher), and `autostart.rs` (one-time launch-at-login consent: a native
@@ -15,7 +16,8 @@ dialog on first run — "Launch at Login" enables, "Not Now" disables, either
 answer writes an `autostart-prompted` sentinel to Application Support so the
 question never returns, and System Settings > Login Items is authoritative
 from then on) — plus `audio.rs`, `whisper.rs`, `cleanup.rs` (rule-based
-filler-word stripping), and `dictate.rs` for in-app voice recording (note
+filler-word stripping), `listrules.rs` (dictation's numbered-list
+formatting), and `dictate.rs` for in-app voice recording (note
 capture and dictation-to-clipboard), documented separately below.
 
 Quit path: the run-loop callback in lib.rs handles `RunEvent::Exit` with
@@ -244,6 +246,26 @@ session_id }`: the session id is what `open_ask_session` resumes)
   empty list back over whatever was actually on disk; `tick` specifically
   logs and skips the tick rather than writing.
 
+- `read_lists()` / `set_list_entry(key, entry, if_absent)` (`lists.rs`) — the spoken-list
+  display sidecar `~/notes/.sideline-lists.json`; see docs/data-model.md for
+  the shape and docs/ui.md's List formatting section for the behavior.
+  `read_lists` returns the file as a raw JSON string (`{}` only when the file
+  is missing — `ErrorKind::NotFound`; any other read error, or a corrupt
+  file, is an error) and the frontend parses/validates it
+  (`parseLists`). `set_list_entry` validates strictly — key non-empty, at
+  most 200 chars, no newline; entry an object with exactly `starts` (null,
+  or at most 100 strictly ascending u32 offsets) and `show` (bool) — then
+  inserts, replaces, or (`entry` null) removes the key, skipping the write
+  when nothing changed. With `if_absent` true a set is a no-op when the key
+  already exists — the auto-formatter's slow Claude call must not clobber an
+  entry an `l` press stored meanwhile (`l` passes false). Same discipline as `reminders.rs`: a module-level
+  `LOCK` held across every read-modify-write, a corrupt file is an error
+  instead of being read as empty and overwritten, and each write goes to a
+  uniquely-named temp file (pid + a counter) renamed into place. It never
+  touches a note file. Like any write under `~/notes`, it fires the
+  watcher's `inbox-changed`; the auto-formatter's once-per-session set
+  (useInbox.ts) keeps that from looping.
+
 `reminders.rs` also runs a background thread (`spawn_ticker`, started from
 `.setup()` alongside the inbox watcher), sleeping 5s between ticks: each
 tick marks any unfired reminder whose `due_ms` has passed as fired,
@@ -366,7 +388,7 @@ starts a session and records `mode`; a same-mode press while Recording stops
 it exactly as before; a press in the OTHER mode while a session is already
 active is ignored outright and emits `capture-error` "Already recording" —
 the recorder never silently switches modes mid-recording. The transient
-Copied and Failed notices count as idle for all of this (`RecState::can_start`):
+Copied, Failed, and Reminder notices count as idle for all of this (`RecState::can_start`):
 either hotkey during it starts a fresh session, and the notice's hide
 timer stands down when it sees the state has moved on. `emit_state`
 additionally emits `recording-mode` (`"note"`/`"dictate"`/`"ask"` string
@@ -375,6 +397,26 @@ pill can tell the three apart; it does not change the `recording-state`
 payload shape. `Ask` mode's finished transcript is emitted as
 `ask-transcript` (string payload) rather than feeding `append_inbox_text`
 or the clipboard — see docs/ui.md's Quick question section.
+
+`Note` and `Dictate` keep pauses (`Ask` doesn't): with `whisper::transcribe`'s
+`line_breaks` flag, `long_pauses` finds silences of at least
+`PAUSE_LINE_BREAK_SECS` (2.0s, relative to the recording's own speech
+level), and each pause-separated chunk is transcribed on its own pass and
+joined with `\n` (`split_at_pauses`; silent chunks skipped). Whisper often
+runs one segment straight across a pause and its word timestamps drift by
+a word around silence, so separate passes are the only reliable way to
+break exactly at a pause — and short chunks decode fast enough that it
+isn't slower in practice. Past `MAX_PAUSE_CHUNKS` (8) it's one pass with
+`join_on_pauses` (a break only at segment boundaries that sit at a pause).
+For dictation, unless `autoList` is false, `listrules::number_list` turns an
+explicitly enumerated dictation ("First, … Second, …", "one … two …
+three …", "number one …", or a mix) — or an announced one (a lead-in like
+"a few things for tomorrow" followed by pause-separated chunks, or by
+exactly the number of sentences it states) — into a lead line plus
+`1. item` lines — a Rust port of the frontend's `rulesStarts` (same marker rules,
+same no-word-lost check; anything else pastes unchanged). Rules only: a
+Claude call would delay every paste, and pasted text can't be switched
+back like a card.
 
 Every transition also drives the recording-pill overlay: `sync_overlay`
 (window.rs), called from the same `emit_state` choke point, shows the

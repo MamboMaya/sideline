@@ -182,6 +182,90 @@ unless a recording/transcribing session is active, whose own title always
 takes priority; the ⏰ re-applies the moment the recorder returns to idle
 (see docs/backend.md).
 
+## List formatting
+
+A long voice note that is really a spoken list ("pick up milk, and grab
+some eggs, call the dentist, and also email Sam the slides") shows as
+bullets — a display layer only: the note's text on disk is NEVER modified.
+Two paths, both a once-per-session pass over inbox notes captured in the
+last 24 hours without screenshots (`useInbox.ts`'s `runListFormatter`,
+fire-and-forget from `reload()`, silent on errors — same shape as the
+classifier; skipped when `autoList` is off). (1) INSTANT RULES, no Claude, any
+note length, never counted against the 2-concurrent Claude limiter: an
+explicit numbered enumeration — "first, second, …" (≥2 markers), "number
+one, number two, …" (≥2) or bare "one, two, three, …" (≥3) — is split on
+its markers (`rulesStarts`). Markers must be a consecutive in-order chain
+starting at 1 from ONE family, each a whole word at the start of the text or
+a line or right after `.,;:!?` + whitespace, so "I have one idea and two
+questions" and "one two three four" never match; anything ambiguous (a
+repeated marker, two families at once) is skipped. The same
+`validateList` proof applies. Markers win; if there are none, the rules also
+recognize an UNNUMBERED list the speaker announces (`leadInStarts`, a port
+of `lead_in_list` in `src-tauri/src/listrules.rs`): the first sentence of the
+note must be a lead-in — "a few / some / several / a couple of / a bunch of
+things | ideas | tasks | points | …", a stated count ("three things…"),
+"to-do list", "here's what…" — and the items come from either the pause line
+breaks (voice notes now break a line at every ~2 s pause, each chunk
+transcribed separately: "A few things for tomorrow.⏎Renew the car
+registration⏎book the flights⏎call mom back" gives a lead and one bullet per
+line; the first item may share the lead's line after its comma or colon) or a
+stated count ("Three things for tomorrow. Renew…. Book…. Call….": the
+sentences, only when there are exactly that many). With a stated count only a
+split yielding exactly that many items qualifies; without one, at least two
+pause chunks. A lead-in alone ("a few thoughts on the design: it's too blue")
+is never a list. (2) CLAUDE, for looser lists the rules didn't catch, when
+the note passes `needsListCheck` (same length rule as headers) — or is a
+short note whose first sentence is a lead-in (`hasLeadIn`) — and `claude` is
+on: Claude (`models.triage`) is asked only WHERE
+each item starts: one line per item, the first few words copied
+verbatim (a first reply line ending in ":" is treated as preamble and
+dropped). Detection runs on `listText(body)` — the text the cards show — so
+stored offsets index the same string everywhere. Sideline then builds the
+bullets from the user's own words (`src/lib/listFormat.ts`): the text before
+the first item becomes a lead line, and spoken glue is trimmed off each
+item. A phrase is located only at a word boundary (never inside "2.5" or
+"plus-one"), must be at least 2 words, and must match exactly once in the
+remaining text — anything doubtful means plain text. Glue trimming is
+conservative so it never eats content: a leading "and then also" / "and" /
+"also" / "then" is dropped only as a whole word followed by space, comma or
+the end ("And-or" stays); a trailing connector run is dropped only if it
+contains "and" or follows a comma ("…the icon and then" → "…the icon", but
+"finish the slides by then" keeps "then"; `plus` is never glue). Spoken
+ordinals (first, second, third, … next, lastly, finally) and counting
+markers (one–ten, "number two") left at the end of the previous item or the
+lead are handled too: a trailing one right after punctuation ("…before
+Friday. Second", "…for tomorrow, one") is dropped — a period is kept, a
+comma removed — and a leading ordinal only with a comma/colon ("First,
+renew…"; "First thing tomorrow, call mom" stays). `validateList` proves nothing was lost or
+reworded — every word of the bullets must be the next word of the original,
+an original word may be skipped only if it is a connector (and/then/also),
+an ordinal or a counting marker (one–ten, "number"), and every bullet must contain a word. Any failure (NONE, a
+phrase that isn't found or is ambiguous, a failed proof) shows the note as
+plain text. The result is stored in `~/notes/.sideline-lists.json` (see
+docs/data-model.md); a note recorded as "not a list" is never sent again.
+
+`l` toggles the selected note between list and original, in the Inbox and
+on any Todos row (todo or triaged), remembered per note, with an undo toast
+("Showing list" / "Showing original"). A note already checked and found not
+to be a list is checked AGAIN (pressing `l` is an explicit request); so is a
+note with no entry yet (older than 24h, short, triaged, a todo) — it is
+formatted on the spot: the instant rules first ("Showing list" immediately,
+no Claude needed), otherwise "Formatting…" and Claude, then "Showing list"
+or "No list found in this note". With `claude` off and no rules hit the
+toast is "List formatting needs Claude (Settings → Claude)". The automatic pass writes its result only if the note
+still has no entry (`if_absent`), so a slow auto check can't overwrite what
+an `l` press stored first. Cards (inbox, triaged, todo) render `displayBody`; copy follows
+the view: `c` in the Inbox, `c` in Todos (`copyRow`) and the per-project ⧉
+bundle (`copyProjectTodos`) all copy the bullets while a note's list is
+shown, the stored text otherwise. The entry is keyed by timestamp + a hash
+of the stored body, which survives triage (the body is copied verbatim);
+editing a note's text gives it a new key, so an old entry just stops
+matching. Settings → Voice has a **Format spoken lists as bullets** switch
+for `autoList` (default on) — it controls the automatic pass and
+dictation's numbered-list paste (an explicitly enumerated dictation pastes
+as `1.`/`2.` lines — rules only, see docs/backend.md); `l` always works. Rule-based formatting needs no Claude; only the Claude path
+needs `claude` on.
+
 ## Settings
 
 The header's ⚙ button (`src/components/Header.tsx`) or `⌘,` (the standard
@@ -215,7 +299,7 @@ every other existing config write already use (`useConfig`'s `updateConfig`
 in `src/hooks/useConfig.ts`, feeding `writeConfig`). A pane write always
 round-trips the 13 opaque overrides (`prompts`, `models`, `projects`,
 `claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`,
-`terminal`, `staleDays`, `cleanFillers`, `classifier`) it isn't touching, so
+`terminal`, `staleDays`, `cleanFillers`, `autoList`, `classifier`) it isn't touching, so
 a key the pane doesn't render — or an unknown key hand-edited into one it
 does — survives untouched. Six sections, one scrollable pane:
 
@@ -299,7 +383,9 @@ does — survives untouched. Six sections, one scrollable pane:
    audio.rs reads the key fresh on every recording, so toggling it applies
    to the next recording, no restart; `capture/voice-note.sh` (external
    Raycast capture) is unaffected either way (see
-   docs/data-model.md, docs/backend.md).
+   docs/data-model.md, docs/backend.md). Below that, a **Format spoken lists
+   as bullets** on/off switch for `autoList` (On is default): see List
+   formatting above — frontend-only, nothing Rust-side reads the key.
 3. **Claude** — an on/off switch for `claude` (default on; off is
    no-Claude mode, see the Triage section below), plus dropdowns for `models.triage`/`models.batch`/`models.ask`
    ("Question model" — see the Quick question section above; default
@@ -566,8 +652,10 @@ the Inbox (`open_inbox_in_vscode`; Finder-reveal lives in the tray menu),
 the selected row's file in Todos
 (`open_triaged` / `open_todos` for a todo row's project file); `c` copies the
 SELECTED row in both views (inbox note body; todo entry; triaged note
-body+reply); the per-section `⧉` button copies a whole project's pending
-entries. Per-card ghost buttons mirror `d`/`x` for mouse use; the triaged
+body+reply — the bullets instead of the text while a note's list is shown,
+see List formatting); the per-section `⧉` button copies a whole project's
+pending entries. `l` flips a note between its spoken-list bullets and the
+original text, in the Inbox and on todo/triaged rows alike. Per-card ghost buttons mirror `d`/`x` for mouse use; the triaged
 card additionally still expands on click. Cards also grow a hover-only ✎
 button mirroring `e`.
 

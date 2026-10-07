@@ -70,6 +70,26 @@
   against whatever `read_inbox` just returned, so it covers in-app voice,
   typed notes, and external Raycast captures alike without any capture-side
   changes.
+- **`~/notes/.sideline-lists.json`** — display-only sidecar for spoken-list
+  formatting (see docs/ui.md's List formatting section): a JSON object
+  `{ "<key>": { "starts": [12, 40] | null, "show": true } }`. The key is
+  `<timestamp>|<fnv1a32 hex of the note's stored body>` — an inbox note's
+  `timestamp`, a triaged note's `captured` and a todo's `timestamp` are the
+  same string, and triage copies the body verbatim, so one entry follows a
+  note from inbox to triaged/todo. `starts` are char offsets (into the text
+  a card shows: the body minus screenshot links and an embedded `## Claude`
+  reply) where each bullet begins; `null` means "checked, not a list" and
+  is never re-asked. `show` is the per-note `l` toggle. Sideline NEVER
+  modifies a note's text for this — bullets are rebuilt from the original
+  words on every render and re-validated (`src/lib/listFormat.ts`), so a
+  stale or hand-edited entry falls back to the plain text. Editing a note
+  changes its body hash and deleting one leaves its entry behind; entries
+  that no longer match anything are simply never read. Written by
+  `set_list_entry` (`src-tauri/src/lists.rs`): atomic temp-file rename under
+  a process-wide lock, and a corrupt or unreadable file (anything but
+  "missing") is an error rather than being overwritten. The automatic pass
+  writes with `if_absent`, so it never replaces an entry that already exists
+  (e.g. one an `l` press stored while its Claude call was in flight). Never read or written by `capture/` scripts.
 - **`~/notes/.sideline.json`** — app config: `{ "pinnedTags": [...] }` (up to 6
   pinned tags), optional `"hiddenTags": [...]` (tags deleted from
   autocomplete via the suggest dropdown's ✕ — excluded from suggestions and
@@ -164,6 +184,11 @@
   non-boolean value both mean enabled — `false` is the only way to keep the
   raw (dictionary-corrected) transcript. `capture/voice-note.sh` does NOT
   read this key, so external Raycast captures are never cleaned up. Also optional
+  `"autoList": false` (default `true`) — Settings → Voice → "Format spoken
+  lists as bullets": turns off the automatic once-per-note pass that checks
+  new long voice notes for a spoken list (see `.sideline-lists.json` above);
+  the `l` key still works. Explicit "first, second…"/"one, two, three…" lists are rule-formatted with no Claude call; the looser-list pass needs `"claude"` on. Absent or a non-boolean
+  value both mean enabled. Frontend-only. Also optional
   `"classifier": { "provider": "off"|"claude"|"local", "url":
 "http://127.0.0.1:4410" }` (default `provider: "off"`, `url:
 "http://127.0.0.1:4410"`; missing or invalid = off = today's keyword-only

@@ -34,6 +34,8 @@ import { useTagEditor } from "./hooks/useTagEditor";
 import { useTodosData } from "./hooks/useTodosData";
 import { useTriage } from "./hooks/useTriage";
 import { useTodosActions } from "./hooks/useTodosActions";
+import { useLists } from "./hooks/useLists";
+import { listKey } from "./lib/listFormat";
 import { useEditRow } from "./hooks/useEditRow";
 import { useKeyboard } from "./keys/useKeyboard";
 import { Toast } from "./components/Toast";
@@ -107,6 +109,7 @@ export default function App() {
     overlayOverride,
     pushToTalk,
     cleanFillers,
+    autoList,
     dictionaryOverride,
     terminalOverride,
     staleDays,
@@ -120,6 +123,7 @@ export default function App() {
     setOverlayHidden,
     setPushToTalk,
     setCleanFillersEnabled,
+    setAutoListEnabled,
     setDictionary,
     setTerminal,
     setStaleDays,
@@ -129,6 +133,14 @@ export default function App() {
     removeProject,
     updateConfig,
   } = useConfig({ showToast, dismissToast });
+
+  // Spoken-list display sidecar (`l` key, card bullets, copy-follows-view) —
+  // see src/lib/listFormat.ts. Display only; notes on disk are never touched.
+  const { lists, toggleList } = useLists({
+    claude,
+    triageModel: models.triage,
+    showToast,
+  });
 
   // "Add project…" (tray menu, or Settings' "Choose folder…"): the picked
   // folder, while the AddProjectModal is up; null = closed. The tray path
@@ -420,6 +432,7 @@ export default function App() {
     dismissToast,
     projectTags,
     generateTitles,
+    lists,
   });
 
   // Edit-in-place (`e`): which row is being edited, keyed per kind — inbox
@@ -535,6 +548,8 @@ export default function App() {
     // leaves the typed value and suggestion index alone.
     dismissTagInput: () => tagEditor.setTagInputOpen(false),
     openEdit,
+    lists,
+    toggleList,
     notes,
     filteredNotes,
     selected,
@@ -629,6 +644,8 @@ export default function App() {
           setPushToTalk={setPushToTalk}
           cleanFillers={cleanFillers}
           setCleanFillersEnabled={setCleanFillersEnabled}
+          autoList={autoList}
+          setAutoListEnabled={setAutoListEnabled}
           dictionaryOverride={dictionaryOverride}
           setDictionary={setDictionary}
           claude={claude}
@@ -717,6 +734,7 @@ export default function App() {
                   <InboxCard
                     key={idx}
                     note={note}
+                    listEntry={lists[listKey(note.timestamp, note.body)]}
                     isSelected={isSelected}
                     isSending={isSending}
                     isEditing={isEditingThis}
@@ -813,6 +831,11 @@ export default function App() {
                               key={`${row.project}::${row.entryIndex}`}
                               variant="normal"
                               entry={row.entry}
+                              listEntry={
+                                lists[
+                                  listKey(row.entry.timestamp, row.entry.body)
+                                ]
+                              }
                               isSelected={isSelected}
                               isExpanded={isExpanded}
                               isEditing={isEditingThis}
@@ -920,6 +943,9 @@ export default function App() {
                               key={note.filename}
                               variant="normal"
                               note={note}
+                              listEntry={
+                                lists[listKey(note.captured, note.body)]
+                              }
                               isSelected={isSelected}
                               isExpanded={isExpanded}
                               isEditing={isEditingThis}
@@ -1014,6 +1040,11 @@ export default function App() {
                                 key={`iced::${row.project}::${row.entryIndex}`}
                                 variant="iced"
                                 entry={row.entry}
+                                listEntry={
+                                  lists[
+                                    listKey(row.entry.timestamp, row.entry.body)
+                                  ]
+                                }
                                 isSelected={isSelected}
                                 isExpanded={isExpanded}
                                 isEditing={isEditingThis}
@@ -1080,6 +1111,9 @@ export default function App() {
                                 key={`iced::${note.filename}`}
                                 variant="iced"
                                 note={note}
+                                listEntry={
+                                  lists[listKey(note.captured, note.body)]
+                                }
                                 isSelected={isSelected}
                                 isExpanded={triagedExpanded.has(note.filename)}
                                 isEditing={isEditingThis}

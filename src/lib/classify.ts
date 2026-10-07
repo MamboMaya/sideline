@@ -192,7 +192,7 @@ export function validateClassifierUrl(url: string): string | null {
 // docs/data-model.md) — same `.replace(" ", "T")` local-time parse as
 // stale.ts's ageDays. Unparseable reads as "not within the window" (never
 // eligible), the safe default.
-function withinClassifyWindow(timestamp: string, now: Date): boolean {
+export function withinClassifyWindow(timestamp: string, now: Date): boolean {
   const then = new Date(timestamp.replace(" ", "T")).getTime();
   if (Number.isNaN(then)) return false;
   return now.getTime() - then <= CLASSIFY_WINDOW_HOURS * MS_PER_HOUR;

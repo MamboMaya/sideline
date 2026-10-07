@@ -11,6 +11,8 @@ mod cleanup;
 mod commands;
 mod dictate;
 mod hotkeys;
+mod listrules;
+mod lists;
 mod paths;
 mod reminders;
 mod tray;
@@ -210,7 +212,9 @@ pub fn run() {
             reminders::dismiss_reminder,
             reminders::snooze_reminder,
             classifier::classify_local,
-            classifier::classifier_health
+            classifier::classifier_health,
+            lists::read_lists,
+            lists::set_list_entry
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,
