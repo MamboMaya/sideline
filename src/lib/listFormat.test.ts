@@ -1327,3 +1327,21 @@ describe("signalStarts — mixed signals after a lead-in", () => {
     expect(built.items).toEqual(["Buy milk", "Call mom"]);
   });
 });
+
+describe('bare "Then" before a marker', () => {
+  const DICTATION =
+    "Okay, a few things. Number one, let's get rid of the demo view button that lives on projects. Number two, right next to that button there is a text that says two projects. We don't have to list the number of projects. That's fine. Then number three, I want the ability to search from not only each page, but a command K that will let me search through entire, like all the tables. Then number four, do we need a client's page? We have leads, we have projects, but we don't have clients. What do you think?";
+  test("the user's real dictation splits into all four items", () => {
+    const starts = rulesStarts(DICTATION) as number[];
+    expect(starts).toHaveLength(4);
+    const built = buildList(DICTATION, starts);
+    expect(built.lead).toBe("Okay, a few things.");
+    expect(built.items).toEqual([
+      "Let's get rid of the demo view button that lives on projects.",
+      "Right next to that button there is a text that says two projects. We don't have to list the number of projects. That's fine.",
+      "I want the ability to search from not only each page, but a command K that will let me search through entire, like all the tables.",
+      "Do we need a client's page? We have leads, we have projects, but we don't have clients. What do you think?",
+    ]);
+    expect(validateList(DICTATION, built)).toBe(true);
+  });
+});
