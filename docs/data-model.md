@@ -50,6 +50,46 @@
   every Ask-view "Continue in Terminal" (`open_ask_session`, docs/backend.md):
   a two-line zsh script that resumes one `claude` CLI session. Safe to
   delete at any time; never read back.
+- **`~/notes/.sideline-reminders.json`** — reminders auto-detected in note
+  bodies (see docs/ui.md's Reminders section): a JSON array of
+  `{ id, text, due_ms, note_timestamp, fired, dismissed }`. `id` is the
+  source note's own timestamp (or timestamp+icon on the rare collision of
+  two notes captured in the same minute), so re-scanning the SAME note on a
+  later reload — even after it's been edited — resolves to the same
+  reminder: an unchanged note is a no-op, an edited one upserts in place
+  (`reminders::upsert`, `src-tauri/src/reminders.rs`), and an edit that
+  removes whatever made the note parse as a reminder drops the not-yet-fired
+  entry (`remove_reminder`). Deleting the source note from the inbox drops
+  its reminder too, fired or not (undo re-registers it if still ahead);
+  triaging it does not — the note lives on, so the reminder stands. Written atomically, each write to its own uniquely-
+  named temp file (pid + a counter, not a shared fixed name — the
+  background ticker and a command can write concurrently) and guarded by a
+  process-wide lock across every read-modify-write; a dismissed entry is
+  pruned once its `due_ms` is more than 24h in the past, on every write.
+  Never read or written by `capture/` scripts — detection runs frontend-side
+  against whatever `read_inbox` just returned, so it covers in-app voice,
+  typed notes, and external Raycast captures alike without any capture-side
+  changes.
+- **`~/notes/.sideline-lists.json`** — display-only sidecar for spoken-list
+  formatting (see docs/ui.md's List formatting section): a JSON object
+  `{ "<key>": { "starts": [12, 40] | null, "show": true } }`. The key is
+  `<timestamp>|<fnv1a32 hex of the note's stored body>` — an inbox note's
+  `timestamp`, a triaged note's `captured` and a todo's `timestamp` are the
+  same string, and triage copies the body verbatim, so one entry follows a
+  note from inbox to triaged/todo. `starts` are char offsets (into the text
+  a card shows: the body minus screenshot links and an embedded `## Claude`
+  reply) where each bullet begins; `null` means "checked, not a list" and
+  is never re-asked. `show` is the per-note `l` toggle. Sideline NEVER
+  modifies a note's text for this — bullets are rebuilt from the original
+  words on every render and re-validated (`src/lib/listFormat.ts`), so a
+  stale or hand-edited entry falls back to the plain text. Editing a note
+  changes its body hash and deleting one leaves its entry behind; entries
+  that no longer match anything are simply never read. Written by
+  `set_list_entry` (`src-tauri/src/lists.rs`): atomic temp-file rename under
+  a process-wide lock, and a corrupt or unreadable file (anything but
+  "missing") is an error rather than being overwritten. The automatic pass
+  writes with `if_absent`, so it never replaces an entry that already exists
+  (e.g. one an `l` press stored while its Claude call was in flight). Never read or written by `capture/` scripts.
 - **`~/notes/.sideline.json`** — app config: `{ "pinnedTags": [...] }` (up to 6
   pinned tags), optional `"hiddenTags": [...]` (tags deleted from
   autocomplete via the suggest dropdown's ✕ — excluded from suggestions and
@@ -126,15 +166,54 @@
   built-in Claude corrections (see docs/backend.md). Read from the file on
   EVERY transcription, so a Settings-pane edit (Voice → Dictionary, one row per term) applies to the next recording
   with no restart; `capture/voice-note.sh` reads the same key via jq so
-  Raycast captures get the identical prompt and corrections. Frontend-owned
+  Raycast captures get the identical prompt and corrections. Also optional
+  `"staleDays": 5` (default 3, positive integer; `0` turns the feature off) —
+  an inbox note at least this many whole days old gets an amber age badge on
+  its card and counts toward the header's "N stale" badge (Settings → Inbox
+  — see docs/ui.md's Views & navigation and Settings sections,
+  `src/lib/stale.ts`). Frontend-only — no Rust command reads or writes it;
+  recomputed on inbox reload and at least hourly, never from a file watch. Also optional
+  `"cleanFillers": false` (default `true`) — filler-word cleanup for in-app
+  voice transcripts (Settings → Voice → "Remove filler words (um, uh,
+  repeats)"): strips hesitation words (um, uh, erm, hmm, ...), comma-delimited
+  discourse fillers ("you know", "I mean", "like", "sort of", "kind of"), and
+  immediate stutter repeats, purely rule-based (no network call, no LLM — see
+  `src-tauri/src/cleanup.rs`). Runs in `finish_recording` (audio.rs) after the
+  dictionary corrections above and before the Note/Dictate/Ask hand-off; read
+  Rust-side fresh on every recording, same as `dictionary`. Absent or a
+  non-boolean value both mean enabled — `false` is the only way to keep the
+  raw (dictionary-corrected) transcript. `capture/voice-note.sh` does NOT
+  read this key, so external Raycast captures are never cleaned up. Also optional
+  `"autoList": false` (default `true`) — Settings → Voice → "Format spoken
+  lists as bullets": turns off the automatic once-per-note pass that checks
+  new long voice notes for a spoken list (see `.sideline-lists.json` above);
+  the `l` key still works. Explicit "first, second…"/"one, two, three…" lists are rule-formatted with no Claude call; the looser-list pass needs `"claude"` on. Absent or a non-boolean
+  value both mean enabled. Frontend-only. Also optional
+  `"classifier": { "provider": "off"|"claude"|"local", "url":
+"http://127.0.0.1:4410" }` (default `provider: "off"`, `url:
+"http://127.0.0.1:4410"`; missing or invalid = off = today's keyword-only
+  auto-tagging, unchanged) — auto-tags inbox notes with a type
+  (bug/todo/idea) and, if any projects are configured, a project, on top of
+  the existing keyword auto-tagger (src/lib/autotag.ts): `"claude"` sends
+  one `send_to_claude` call per note (`models.triage`, respects `"claude":
+false`); `"local"` POSTs to `<url>/decide` on a local classifier (a
+  loopback-only HTTP decision service — see `classify_local` in
+  docs/backend.md) and only accepts an answer at/above a confidence
+  threshold. Either way, a tag is only added if the note doesn't already
+  carry one of that kind, and a tag the user removed this session is never
+  re-added (src/lib/classify.ts). `url` must be `http`/`https` and resolve to
+  127.0.0.1/localhost/::1 — enforced both in the Settings pane and by
+  `classify_local`/`classifier_health` Rust-side, so a note's text never
+  leaves the machine. Frontend-owned
   schema (the `audio` key is read/written Rust-side by audio.rs, `hotkeys`
   is read-only Rust-side at startup by lib.rs — the Settings pane's
   live-apply path is the one exception, reading it only via the frontend's
   already-loaded config state, never re-reading the file itself; `overlay`
   is read-only Rust-side by window.rs, on every sync rather than once at
   startup; `pushToTalk` is read-only Rust-side by lib.rs's global-shortcut
-  handler, fresh on every keypress; `dictionary` is read-only Rust-side by
-  whisper.rs — everything
+  handler, fresh on every keypress; `dictionary` and `cleanFillers` are
+  read-only Rust-side by whisper.rs and audio.rs respectively, fresh on every
+  transcription/recording — everything
   else by src/App.tsx); the ONLY key a capture/ script reads is
   `dictionary` (voice-note.sh, read-only) — none writes the file.
 

@@ -9,8 +9,11 @@ import {
   serializeConfig,
   DEFAULT_PROMPTS,
   DEFAULT_MODELS,
+  DEFAULT_STALE_DAYS,
+  DEFAULT_CLASSIFIER,
   mergeModels,
   mergePrompts,
+  mergeClassifier,
   projectTagsFrom,
   projectsAdd,
   tagFromFolder,
@@ -41,6 +44,14 @@ const DEFAULTS: SidelineConfig = {
   pushToTalkOverride: undefined,
   dictionaryOverride: undefined,
   terminalOverride: undefined,
+  staleDays: DEFAULT_STALE_DAYS,
+  staleDaysOverride: undefined,
+  cleanFillers: true,
+  cleanFillersOverride: undefined,
+  autoList: true,
+  autoListOverride: undefined,
+  classifier: DEFAULT_CLASSIFIER,
+  classifierOverride: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -85,6 +96,10 @@ describe("parseConfig — full valid config", () => {
       pushToTalk: true,
       terminal: "iTerm",
       dictionary: { Tauri: ["towery"], Whisper: [] },
+      staleDays: 5,
+      cleanFillers: false,
+      autoList: false,
+      classifier: { provider: "local", url: "http://127.0.0.1:9999" },
     });
     const cfg = parseConfig(raw);
     expect(cfg.pinnedTags).toEqual(["bug", "idea"]);
@@ -115,6 +130,18 @@ describe("parseConfig — full valid config", () => {
     expect(cfg.pushToTalkOverride).toBe(true);
     expect(cfg.terminalOverride).toBe("iTerm");
     expect(cfg.dictionaryOverride).toEqual({ Tauri: ["towery"], Whisper: [] });
+    expect(cfg.staleDays).toBe(5);
+    expect(cfg.staleDaysOverride).toBe(5);
+    expect(cfg.cleanFillers).toBe(false);
+    expect(cfg.cleanFillersOverride).toBe(false);
+    expect(cfg.classifier).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
+    expect(cfg.classifierOverride).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
   });
 });
 
@@ -213,6 +240,10 @@ describe("parseConfig — terminal", () => {
         pushToTalk: true,
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
+        staleDays: undefined,
+        cleanFillers: undefined,
+        autoList: undefined,
+        classifier: undefined,
       },
     });
     expect(Object.keys(JSON.parse(withTerminal))).toEqual([
@@ -237,9 +268,52 @@ describe("parseConfig — terminal", () => {
         pushToTalk: undefined,
         terminal: undefined,
         dictionary: undefined,
+        staleDays: undefined,
+        cleanFillers: undefined,
+        autoList: undefined,
+        classifier: undefined,
       },
     });
     expect(JSON.parse(absent)).not.toHaveProperty("terminal");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — staleDays (stale-inbox-note badges)
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — staleDays", () => {
+  test("absent key defaults to DEFAULT_STALE_DAYS, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.staleDays).toBe(DEFAULT_STALE_DAYS);
+    expect(cfg.staleDaysOverride).toBeUndefined();
+  });
+
+  test("a positive integer override round-trips", () => {
+    const cfg = parseConfig(JSON.stringify({ staleDays: 7 }));
+    expect(cfg.staleDays).toBe(7);
+    expect(cfg.staleDaysOverride).toBe(7);
+  });
+
+  test("staleDays: 0 is honored explicitly (feature off) and still recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ staleDays: 0 }));
+    expect(cfg.staleDays).toBe(0);
+    expect(cfg.staleDaysOverride).toBe(0);
+  });
+
+  test("a negative or non-integer staleDays value is ignored (treated as absent)", () => {
+    expect(
+      parseConfig(JSON.stringify({ staleDays: -1 })).staleDaysOverride,
+    ).toBeUndefined();
+    expect(
+      parseConfig(JSON.stringify({ staleDays: 2.5 })).staleDaysOverride,
+    ).toBeUndefined();
+  });
+
+  test("a non-numeric staleDays value is ignored (treated as absent, defaults to DEFAULT_STALE_DAYS)", () => {
+    const cfg = parseConfig(JSON.stringify({ staleDays: "3" }));
+    expect(cfg.staleDays).toBe(DEFAULT_STALE_DAYS);
+    expect(cfg.staleDaysOverride).toBeUndefined();
   });
 });
 
@@ -292,6 +366,10 @@ describe("parseConfig — dictionary", () => {
         pushToTalk: undefined,
         terminal: undefined,
         dictionary: undefined,
+        staleDays: undefined,
+        cleanFillers: undefined,
+        autoList: undefined,
+        classifier: undefined,
       },
     };
     expect(JSON.parse(serializeConfig(base))).toEqual({
@@ -307,6 +385,74 @@ describe("parseConfig — dictionary", () => {
       "hotkeys",
       "dictionary",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — classifier
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — classifier", () => {
+  test("absent classifier key resolves to provider off and the default url", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.classifier).toEqual(DEFAULT_CLASSIFIER);
+    expect(cfg.classifierOverride).toBeUndefined();
+  });
+
+  test("a valid provider and url are read through", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        classifier: { provider: "local", url: "http://127.0.0.1:9999" },
+      }),
+    );
+    expect(cfg.classifier).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
+    expect(cfg.classifierOverride).toEqual({
+      provider: "local",
+      url: "http://127.0.0.1:9999",
+    });
+  });
+
+  test("an invalid provider falls back to off; a blank url falls back to the default", () => {
+    const cfg = parseConfig(
+      JSON.stringify({ classifier: { provider: "bogus", url: "   " } }),
+    );
+    expect(cfg.classifier).toEqual(DEFAULT_CLASSIFIER);
+    // The raw override still round-trips the on-disk value verbatim, even
+    // though it's invalid — same tolerance as claudeOverride/pushToTalk.
+    expect(cfg.classifierOverride).toEqual({ provider: "bogus", url: "   " });
+  });
+
+  test("a non-object classifier value is treated as absent", () => {
+    const cfg = parseConfig(JSON.stringify({ classifier: "local" }));
+    expect(cfg.classifier).toEqual(DEFAULT_CLASSIFIER);
+    expect(cfg.classifierOverride).toBeUndefined();
+  });
+});
+
+describe("mergeClassifier", () => {
+  test("undefined override falls back to the defaults entirely", () => {
+    expect(mergeClassifier(undefined)).toEqual(DEFAULT_CLASSIFIER);
+  });
+
+  test("a partial override keeps the other field at its default", () => {
+    expect(mergeClassifier({ provider: "claude" })).toEqual({
+      provider: "claude",
+      url: DEFAULT_CLASSIFIER.url,
+    });
+    expect(mergeClassifier({ url: "http://localhost:5000" })).toEqual({
+      provider: DEFAULT_CLASSIFIER.provider,
+      url: "http://localhost:5000",
+    });
+  });
+
+  test("an invalid provider or blank url falls back to its default", () => {
+    expect(mergeClassifier({ provider: "bogus" as never }).provider).toBe(
+      DEFAULT_CLASSIFIER.provider,
+    );
+    expect(mergeClassifier({ url: "  " }).url).toBe(DEFAULT_CLASSIFIER.url);
   });
 });
 
@@ -499,6 +645,100 @@ describe("parseConfig — claude", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseConfig — cleanFillers (voice transcript filler-word cleanup)
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — cleanFillers", () => {
+  test("absent cleanFillers key defaults to true, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.cleanFillers).toBe(true);
+    expect(cfg.cleanFillersOverride).toBeUndefined();
+  });
+
+  test("cleanFillers: false is honored and recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ cleanFillers: false }));
+    expect(cfg.cleanFillers).toBe(false);
+    expect(cfg.cleanFillersOverride).toBe(false);
+  });
+
+  test("cleanFillers: true is honored explicitly and still recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ cleanFillers: true }));
+    expect(cfg.cleanFillers).toBe(true);
+    expect(cfg.cleanFillersOverride).toBe(true);
+  });
+
+  test("a non-boolean cleanFillers value is ignored (treated as absent, defaults to true)", () => {
+    const cfg = parseConfig(JSON.stringify({ cleanFillers: "false" }));
+    expect(cfg.cleanFillers).toBe(true);
+    expect(cfg.cleanFillersOverride).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseConfig — autoList (spoken-list bullet formatting)
+// ---------------------------------------------------------------------------
+
+describe("parseConfig — autoList", () => {
+  test("absent autoList key defaults to true, with no override recorded", () => {
+    const cfg = parseConfig(JSON.stringify({}));
+    expect(cfg.autoList).toBe(true);
+    expect(cfg.autoListOverride).toBeUndefined();
+  });
+
+  test("autoList: false is honored and recorded as an override", () => {
+    const cfg = parseConfig(JSON.stringify({ autoList: false }));
+    expect(cfg.autoList).toBe(false);
+    expect(cfg.autoListOverride).toBe(false);
+  });
+
+  test("a non-boolean autoList value is ignored (defaults to true)", () => {
+    const cfg = parseConfig(JSON.stringify({ autoList: "no" }));
+    expect(cfg.autoList).toBe(true);
+    expect(cfg.autoListOverride).toBeUndefined();
+  });
+
+  test("serializeConfig writes autoList only when overridden, after cleanFillers", () => {
+    const overrides = {
+      prompts: undefined,
+      models: undefined,
+      projects: undefined,
+      claude: undefined,
+      audio: undefined,
+      hotkeys: undefined,
+      overlay: undefined,
+      pushToTalk: undefined,
+      terminal: undefined,
+      dictionary: undefined,
+      staleDays: undefined,
+      cleanFillers: false,
+      autoList: false,
+      classifier: undefined,
+    };
+    const out = JSON.parse(
+      serializeConfig({ pinnedTags: [], hiddenTags: [], zoom: 1, overrides }),
+    );
+    expect(Object.keys(out)).toEqual([
+      "pinnedTags",
+      "cleanFillers",
+      "autoList",
+    ]);
+    const none = JSON.parse(
+      serializeConfig({
+        pinnedTags: [],
+        hiddenTags: [],
+        zoom: 1,
+        overrides: {
+          ...overrides,
+          cleanFillers: undefined,
+          autoList: undefined,
+        },
+      }),
+    );
+    expect(Object.keys(none)).toEqual(["pinnedTags"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // parseConfig — unknown keys preserved in the right override
 // ---------------------------------------------------------------------------
 
@@ -597,6 +837,10 @@ const noOverrides = {
   pushToTalk: undefined,
   terminal: undefined,
   dictionary: undefined,
+  staleDays: undefined,
+  cleanFillers: undefined,
+  autoList: undefined,
+  classifier: undefined,
 };
 
 describe("serializeConfig", () => {
@@ -647,7 +891,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers, classifier when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -663,6 +907,10 @@ describe("serializeConfig", () => {
         pushToTalk: true,
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
+        staleDays: 5,
+        cleanFillers: false,
+        autoList: undefined,
+        classifier: { provider: "local", url: "http://127.0.0.1:4410" },
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -679,10 +927,13 @@ describe("serializeConfig", () => {
       "pushToTalk",
       "terminal",
       "dictionary",
+      "staleDays",
+      "cleanFillers",
+      "classifier",
     ]);
   });
 
-  test("overlay, pushToTalk, and terminal land between hotkeys and dictionary when all four are present", () => {
+  test("overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers, and classifier land after hotkeys, in that order, when all seven are present", () => {
     const out = serializeConfig({
       pinnedTags: [],
       hiddenTags: [],
@@ -694,6 +945,10 @@ describe("serializeConfig", () => {
         pushToTalk: true,
         terminal: "iTerm",
         dictionary: { Tauri: ["towery"] },
+        staleDays: 5,
+        cleanFillers: false,
+        autoList: undefined,
+        classifier: { provider: "claude", url: "http://127.0.0.1:4410" },
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -703,6 +958,9 @@ describe("serializeConfig", () => {
       "pushToTalk",
       "terminal",
       "dictionary",
+      "staleDays",
+      "cleanFillers",
+      "classifier",
     ]);
   });
 
@@ -762,6 +1020,66 @@ describe("serializeConfig", () => {
     expect(JSON.parse(out)).toHaveProperty("claude", true);
   });
 
+  test("staleDays is omitted when undefined (key absent, not forced to the default)", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: noOverrides,
+    });
+    expect(JSON.parse(out)).not.toHaveProperty("staleDays");
+  });
+
+  test("staleDays: 0 round-trips as 0, not omitted as falsy", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, staleDays: 0 },
+    });
+    expect(JSON.parse(out)).toHaveProperty("staleDays", 0);
+  });
+
+  test("staleDays: 7 round-trips as 7", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, staleDays: 7 },
+    });
+    expect(JSON.parse(out)).toHaveProperty("staleDays", 7);
+  });
+
+  test("cleanFillers override is omitted when undefined (key absent, not forced to true)", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: noOverrides,
+    });
+    expect(JSON.parse(out)).not.toHaveProperty("cleanFillers");
+  });
+
+  test("cleanFillers: false round-trips as false, not omitted as falsy", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, cleanFillers: false },
+    });
+    expect(JSON.parse(out)).toHaveProperty("cleanFillers", false);
+  });
+
+  test("cleanFillers: true round-trips as true", () => {
+    const out = serializeConfig({
+      pinnedTags: [],
+      hiddenTags: [],
+      zoom: 1,
+      overrides: { ...noOverrides, cleanFillers: true },
+    });
+    expect(JSON.parse(out)).toHaveProperty("cleanFillers", true);
+  });
+
   test("is pretty-printed with a 2-space indent, matching the original writeConfigFile output", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
@@ -791,6 +1109,10 @@ describe("parseConfig -> serializeConfig round-trip", () => {
       hotkeys: { toggle: "alt+cmd+space" },
       pushToTalk: true,
       terminal: "iTerm",
+      staleDays: 5,
+      cleanFillers: false,
+      autoList: false,
+      classifier: { provider: "local", url: "http://127.0.0.1:4410" },
     };
     const cfg = parseConfig(JSON.stringify(original));
     const rewritten = JSON.parse(
@@ -809,6 +1131,10 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           pushToTalk: cfg.pushToTalkOverride,
           terminal: cfg.terminalOverride,
           dictionary: undefined,
+          staleDays: cfg.staleDaysOverride,
+          cleanFillers: cfg.cleanFillersOverride,
+          autoList: cfg.autoListOverride,
+          classifier: cfg.classifierOverride,
         },
       }),
     );
@@ -823,6 +1149,9 @@ describe("parseConfig -> serializeConfig round-trip", () => {
     expect(rewritten.hotkeys).toEqual(original.hotkeys);
     expect(rewritten.pushToTalk).toBe(original.pushToTalk);
     expect(rewritten.terminal).toBe(original.terminal);
+    expect(rewritten.staleDays).toBe(original.staleDays);
+    expect(rewritten.cleanFillers).toBe(original.cleanFillers);
+    expect(rewritten.classifier).toEqual(original.classifier);
   });
 });
 

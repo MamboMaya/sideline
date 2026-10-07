@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
@@ -26,6 +26,7 @@ import {
   writeTodos,
   writeTriaged,
 } from "../lib/commands";
+import { type ListEntry, copyBody, listKey } from "../lib/listFormat";
 import type { MergedRow } from "./useTodosData";
 
 type TodosState = { project: string; entries: TodoEntry[] }[];
@@ -50,6 +51,9 @@ export interface UseTodosActionsParams {
   generateTitles: (
     notesToTitle: { raw: string; body: string }[],
   ) => Promise<Map<string, string>>;
+  // Spoken-list sidecar entries (useLists) — copy follows the view, so a
+  // note whose list is shown copies as bullets (see copyBody).
+  lists: Record<string, ListEntry>;
 }
 
 // Every mutating action the Todos view can perform on a row: status flips,
@@ -68,7 +72,13 @@ export function useTodosActions({
   dismissToast,
   projectTags,
   generateTitles,
+  lists,
 }: UseTodosActionsParams) {
+  // Latest entries for the stable-identity copy callbacks below.
+  const listsRef = useRef(lists);
+  listsRef.current = lists;
+  const copyOf = (timestamp: string, body: string) =>
+    copyBody(body, listsRef.current[listKey(timestamp, body)]);
   // Optimistic in-place patch of one triaged note + its raw content, then
   // the file write. Every triaged mutation that keeps the file (status
   // flips, tag edits) goes through this — the patch is `{ status }` or
@@ -497,13 +507,13 @@ export function useTodosActions({
     if (row.kind === "todo") {
       const tagStr = tagString(row.entry.tags);
       const titlePart = row.entry.title ? `**${row.entry.title}**\n\n` : "";
-      md = `### ${row.entry.timestamp}${tagStr}\n\n${titlePart}${row.entry.body}\n`;
+      md = `### ${row.entry.timestamp}${tagStr}\n\n${titlePart}${copyOf(row.entry.timestamp, row.entry.body)}\n`;
     } else {
       const titlePart = row.note.title ? `**${row.note.title}**\n\n` : "";
       const replyPart = row.note.reply
         ? `\n\n## Claude\n\n${row.note.reply}`
         : "";
-      md = `${titlePart}${row.note.body}${replyPart}\n`;
+      md = `${titlePart}${copyOf(row.note.captured, row.note.body)}${replyPart}\n`;
     }
     try {
       await writeText(md);
@@ -594,7 +604,7 @@ export function useTodosActions({
         .map((e) => {
           const tagStr = tagString(e.tags);
           const titlePart = e.title ? `**${e.title}**\n\n` : "";
-          return `### ${e.timestamp}${tagStr}\n\n${titlePart}${e.body}`;
+          return `### ${e.timestamp}${tagStr}\n\n${titlePart}${copyOf(e.timestamp, e.body)}`;
         })
         .join("\n\n");
       const md = `# Sideline todos — ${project}\n\n${body}\n`;

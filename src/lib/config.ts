@@ -57,6 +57,13 @@ export const DEFAULT_MODELS: Models = {
   ask: "sonnet",
 };
 
+// `.sideline.json`'s `staleDays` field — an inbox note older than this many
+// days gets the amber age badge (InboxCard) and counts toward the header's
+// "N stale" badge (see src/lib/stale.ts). `0` turns the feature off
+// entirely — a meaningful non-default value, same as `claude: false` below,
+// so it round-trips explicitly rather than being omitted as falsy.
+export const DEFAULT_STALE_DAYS = 3;
+
 // `.sideline.json`'s `projects` field: either the original `{tag: path}` map
 // (paths are no longer used for anything — a repo just names itself in the
 // map to opt in) or a plain array of tags. Either shape round-trips
@@ -218,6 +225,21 @@ export interface HotkeysConfig {
 // list_terminals. No merged/resolved twin like `pushToTalk`'s boolean: the
 // override string IS the value; "auto" is simply undefined.
 
+// `.sideline.json`'s top-level `cleanFillers` boolean — Settings → Voice →
+// "Remove filler words (um, uh, repeats)". Default `true`: audio.rs strips
+// hesitation words, discourse fillers, and stutter repeats from every
+// in-app transcript (see src-tauri/src/cleanup.rs) before the Note/Dictate/
+// Ask hand-off. Read Rust-side fresh on every recording, same
+// failure-tolerant shape as `audio`; `capture/voice-note.sh` does NOT read
+// this key, so external Raycast captures are never cleaned up.
+
+// `.sideline.json`'s top-level `autoList` boolean — Settings → Voice →
+// "Format spoken lists as bullets". Default `true`: useInbox.ts sends each
+// new long voice note to Claude once to see whether it is a spoken list and,
+// if so, stores split offsets in `.sideline-lists.json` (the note itself is
+// never changed — see src/lib/listFormat.ts). Needs `claude` on. Frontend-
+// only: nothing Rust-side reads this key.
+
 // `.sideline.json`'s `dictionary` field — the transcription vocabulary:
 // correctly-spelled term → the mis-hearings whisper produces for it (may be
 // empty; a bare term still biases whisper's initial prompt). Read Rust-side
@@ -296,12 +318,57 @@ export function addToDictionary(
   };
 }
 
+// `.sideline.json`'s `classifier` field — the optional auto-tagger that
+// picks a type (bug/todo/idea) and a project tag for new inbox notes on
+// reload (see src/lib/classify.ts). `provider: "off"` (the default, also
+// what an absent/invalid key means) leaves today's behavior exactly alone:
+// only the keyword auto-tagger (autotag.ts) runs. `"claude"` reuses the
+// existing `send_to_claude` CLI path (models.triage), so it's off whenever
+// no-Claude-mode (`claude: false`) is; `"local"` calls an HTTP classifier at
+// `url` (see classify.rs / docs/backend.md) — loopback-only, enforced both
+// here and Rust-side, so a note never leaves the machine.
+export interface ClassifierConfig {
+  provider: "off" | "claude" | "local";
+  url: string;
+}
+
+const CLASSIFIER_PROVIDERS: ReadonlySet<string> = new Set([
+  "off",
+  "claude",
+  "local",
+]);
+
+export const DEFAULT_CLASSIFIER: ClassifierConfig = {
+  provider: "off",
+  url: "http://127.0.0.1:4410",
+};
+
+// Merges a raw `classifier` override against the defaults — same
+// tolerance/shape as mergePrompts/mergeModels above: an invalid provider or
+// blank url falls back rather than erroring.
+export function mergeClassifier(
+  raw: Partial<ClassifierConfig> | undefined,
+): ClassifierConfig {
+  return {
+    provider:
+      typeof raw?.provider === "string" &&
+      CLASSIFIER_PROVIDERS.has(raw.provider)
+        ? (raw.provider as ClassifierConfig["provider"])
+        : DEFAULT_CLASSIFIER.provider,
+    url:
+      typeof raw?.url === "string" && raw.url.trim()
+        ? raw.url
+        : DEFAULT_CLASSIFIER.url,
+  };
+}
+
 // Everything loadConfig produces from `.sideline.json` — one field per
-// App.tsx config state slice, including the 10 opaque per-key overrides
+// App.tsx config state slice, including the 13 opaque per-key overrides
 // (promptsOverride, modelsOverride, projectsOverride, claudeOverride,
 // audioOverride, hotkeysOverride, overlayOverride, pushToTalkOverride,
-// dictionaryOverride, terminalOverride) kept around purely so a pin/zoom/hide
-// write doesn't clobber hand-edited config it didn't touch.
+// dictionaryOverride, terminalOverride, staleDaysOverride,
+// cleanFillersOverride, autoListOverride, classifierOverride) kept around purely so a
+// pin/zoom/hide write doesn't clobber hand-edited config it didn't touch.
 export interface SidelineConfig {
   pinnedTags: string[];
   hiddenTags: string[];
@@ -336,6 +403,36 @@ export interface SidelineConfig {
   // Raw `terminal` value as it appeared in the file (undefined = auto) — see
   // its declaration comment above.
   terminalOverride: string | undefined;
+  // Resolved stale-note threshold in days, merged against DEFAULT_STALE_DAYS
+  // (absent/invalid = default). `0` means the feature is off.
+  staleDays: number;
+  // Raw `staleDays` value as it appeared in the file (undefined when the key
+  // is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited value, same as `claudeOverride`.
+  staleDaysOverride: number | undefined;
+  // Resolved filler-word cleanup switch: `.sideline.json`'s `cleanFillers`
+  // key, merged against the default of `true` (absent/invalid = cleanup
+  // enabled). `false` leaves the raw whisper transcript untouched — see
+  // src-tauri/src/cleanup.rs and docs/data-model.md.
+  cleanFillers: boolean;
+  // Raw `cleanFillers` value as it appeared in the file (undefined when the
+  // key is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited `false` back to the default `true`, same as `claudeOverride`.
+  cleanFillersOverride: boolean | undefined;
+  // Resolved spoken-list auto-format switch: `.sideline.json`'s `autoList`
+  // key, merged against the default of `true` (absent/invalid = enabled).
+  autoList: boolean;
+  // Raw `autoList` value as it appeared in the file (undefined when the key
+  // is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited `false`, same as `cleanFillersOverride`.
+  autoListOverride: boolean | undefined;
+  // Resolved classifier config, merged against DEFAULT_CLASSIFIER (absent/
+  // invalid = provider "off") — see ClassifierConfig's declaration above.
+  classifier: ClassifierConfig;
+  // Raw `classifier` object as it appeared in the file (undefined when the
+  // key is absent) — kept only so a pin/zoom/hide write doesn't clobber a
+  // hand-edited value, same as the other overrides above.
+  classifierOverride: Partial<ClassifierConfig> | undefined;
 }
 
 const EMPTY_CONFIG: SidelineConfig = {
@@ -357,6 +454,14 @@ const EMPTY_CONFIG: SidelineConfig = {
   pushToTalkOverride: undefined,
   dictionaryOverride: undefined,
   terminalOverride: undefined,
+  staleDays: DEFAULT_STALE_DAYS,
+  staleDaysOverride: undefined,
+  cleanFillers: true,
+  cleanFillersOverride: undefined,
+  autoList: true,
+  autoListOverride: undefined,
+  classifier: DEFAULT_CLASSIFIER,
+  classifierOverride: undefined,
 };
 
 // Validates a raw `dictionary` value into DictionaryConfig: an object whose
@@ -443,6 +548,23 @@ export function parseConfig(raw: string): SidelineConfig {
       typeof parsed?.terminal === "string" && parsed.terminal.trim()
         ? parsed.terminal
         : undefined;
+    const staleDaysOverride =
+      typeof parsed?.staleDays === "number" &&
+      Number.isInteger(parsed.staleDays) &&
+      parsed.staleDays >= 0
+        ? parsed.staleDays
+        : undefined;
+    const cleanFillersOverride =
+      typeof parsed?.cleanFillers === "boolean"
+        ? parsed.cleanFillers
+        : undefined;
+    const autoListOverride =
+      typeof parsed?.autoList === "boolean" ? parsed.autoList : undefined;
+    const classifierOverride =
+      parsed?.classifier && typeof parsed.classifier === "object"
+        ? (parsed.classifier as Partial<ClassifierConfig>)
+        : undefined;
+    const classifier = mergeClassifier(classifierOverride);
     return {
       pinnedTags: sanitized.slice(0, 6),
       hiddenTags: hidden,
@@ -462,6 +584,14 @@ export function parseConfig(raw: string): SidelineConfig {
       dictionaryOverride,
       terminalOverride,
       zoom,
+      staleDays: staleDaysOverride ?? DEFAULT_STALE_DAYS,
+      staleDaysOverride,
+      cleanFillers: cleanFillersOverride ?? true,
+      cleanFillersOverride,
+      autoList: autoListOverride ?? true,
+      autoListOverride,
+      classifier,
+      classifierOverride,
     };
   } catch {
     return EMPTY_CONFIG;
@@ -482,7 +612,7 @@ export async function loadConfig(): Promise<SidelineConfig> {
   }
 }
 
-// The 10 opaque per-key overrides from `.sideline.json` — round-tripped
+// The 13 opaque per-key overrides from `.sideline.json` — round-tripped
 // verbatim (whatever the user hand-edited, including unknown keys within
 // each) so a pin/zoom/hide write never clobbers a value it didn't touch.
 export interface ConfigOverrides {
@@ -503,6 +633,21 @@ export interface ConfigOverrides {
   // see its declaration comment above SidelineConfig.terminalOverride.
   terminal: string | undefined;
   dictionary: DictionaryConfig | undefined;
+  // Raw `staleDays` number as read from the file — `undefined` means the
+  // key is absent (stays omitted on write, not forced to the default).
+  // Unlike `pushToTalk`, `0` IS a meaningful value here (feature off), so
+  // serializeConfig checks `!== undefined`, same as `claude`.
+  staleDays: number | undefined;
+  // Raw `cleanFillers` boolean as read from the file — `undefined` means the
+  // key is absent (so it stays omitted on write, not forced to `true`),
+  // same convention as `claude` above.
+  cleanFillers: boolean | undefined;
+  // Raw `autoList` boolean as read from the file — `undefined` means the key
+  // is absent (stays omitted on write), same convention as `cleanFillers`.
+  autoList: boolean | undefined;
+  // Raw `classifier` object as read from the file — see
+  // SidelineConfig.classifierOverride above.
+  classifier: Partial<ClassifierConfig> | undefined;
 }
 
 export interface ConfigWrite {
@@ -515,7 +660,8 @@ export interface ConfigWrite {
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
 // projects?, claude?, zoom?, audio?, hotkeys?, overlay?, pushToTalk?,
-// terminal?, dictionary? (omitted when falsy/empty/default) —
+// terminal?, dictionary?, staleDays?, cleanFillers?, autoList?, classifier? (omitted
+// when falsy/empty/default) —
 // .sideline.json is read by capture/ tooling too, so this order is contract
 // (see docs/data-model.md). Object spread preserves insertion order for
 // these string keys, so the order below is exactly the emitted order.
@@ -544,6 +690,23 @@ export function serializeConfig(cfg: ConfigWrite): string {
       ...(cfg.overrides.terminal ? { terminal: cfg.overrides.terminal } : {}),
       ...(cfg.overrides.dictionary
         ? { dictionary: cfg.overrides.dictionary }
+        : {}),
+      // Numeric override, same shape as `claude` above: `0` (feature off)
+      // is meaningful, so this checks `!== undefined` rather than truthiness.
+      ...(cfg.overrides.staleDays !== undefined
+        ? { staleDays: cfg.overrides.staleDays }
+        : {}),
+      // Boolean override — like `claude` above (default `true`), so this
+      // checks `!== undefined` rather than truthiness.
+      ...(cfg.overrides.cleanFillers !== undefined
+        ? { cleanFillers: cfg.overrides.cleanFillers }
+        : {}),
+      // Boolean override, default `true` — same `!== undefined` check.
+      ...(cfg.overrides.autoList !== undefined
+        ? { autoList: cfg.overrides.autoList }
+        : {}),
+      ...(cfg.overrides.classifier
+        ? { classifier: cfg.overrides.classifier }
         : {}),
     },
     null,

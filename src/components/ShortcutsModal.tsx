@@ -93,6 +93,9 @@ export function ShortcutsModal({
           <div className="shortcut">
             <kbd>T</kbd> triage all (press twice to confirm)
           </div>
+          <div className="shortcut">
+            <kbd>l</kbd> list ↔ original
+          </div>
         </div>
         <div className="shortcuts-col">
           <div className="shortcuts-title">Todos</div>
@@ -113,6 +116,9 @@ export function ShortcutsModal({
           </div>
           <div className="shortcut">
             <kbd>a</kbd> add tag
+          </div>
+          <div className="shortcut">
+            <kbd>l</kbd> list ↔ original
           </div>
           <div className="shortcut">
             <kbd>⧉</kbd> copy whole tag

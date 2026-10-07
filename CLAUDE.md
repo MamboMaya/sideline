@@ -33,7 +33,10 @@ entry = `### <icon> YYYY-MM-DD HH:MM #tags` + body (🎙️/🔗/📸).
 `todos/<project>.md`: routed project todos, `### ⬜|✅|🧊 <timestamp> #tags`,
 never deleted, the ONLY record of a routed note; long entries may lead with a
 `**title**` body line, re-routed ones may embed a `## Claude` reply.
-`archive.md`: append-only deleted notes. `.sideline.json`: frontend config
+`archive.md`: append-only deleted notes.
+`.sideline-reminders.json`: reminders auto-detected in note bodies (text,
+due time, fired/dismissed). `.sideline-lists.json`: display-only spoken-list
+split offsets per note (note text is never modified). `.sideline.json`: frontend config
 (pinnedTags, hiddenTags, zoom, prompts, models, projects → routing tags).
 Exact rules: docs/data-model.md.
 
@@ -71,6 +74,11 @@ Exact rules: docs/data-model.md.
 - The only subprocesses besides `open` are the `claude` CLI calls from
   `send_to_claude` (absolute-path candidates, since Finder-launched apps
   don't inherit the shell PATH; non-interactive `-p` mode).
+- The only network calls are the Whisper model download and the optional
+  auto-classifier's local HTTP request (`classifier.provider: "local"`,
+  loopback-only — `127.0.0.1`/`localhost`/`::1`, enforced both in the
+  Settings pane and Rust-side by `classify_local`/`classifier_health`).
+  Never widen either.
 - All notes file access is confined to `~/notes` (see `validate_component`
   for single-component names, `confine` for the multi-component asset-ref
   case). The one path outside it is the Whisper model dir

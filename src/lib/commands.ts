@@ -196,3 +196,98 @@ export function readAsset(rel: string): Promise<ArrayBuffer> {
 export function openAsset(rel: string): Promise<void> {
   return invoke<void>("open_asset", { rel });
 }
+
+// Wire shape of src-tauri/src/reminders.rs's `Reminder` — one entry in
+// ~/notes/.sideline-reminders.json (field names as Rust/serde emit them,
+// same convention as AskReply's `session_id` above). `fired` flips true on
+// the background tick once `due_ms` has passed, `dismissed` once the
+// banner's Dismiss is clicked.
+export interface Reminder {
+  id: string;
+  text: string;
+  due_ms: number;
+  note_timestamp: string;
+  fired: boolean;
+  dismissed: boolean;
+}
+
+// Registers a reminder detected in a note (see src/lib/reminders.ts). `id`
+// must be stable across re-scans of the same note (backend upserts by it —
+// see docs/backend.md), so a rescan of an unchanged note is a no-op and a
+// rescan of an EDITED note updates that same reminder in place.
+export function addReminder(
+  id: string,
+  text: string,
+  dueMs: number,
+  noteTimestamp: string,
+): Promise<void> {
+  return invoke<void>("add_reminder", {
+    id,
+    text,
+    due_ms: dueMs,
+    note_timestamp: noteTimestamp,
+  });
+}
+
+// Drops a reminder. useInbox.ts calls this when a note that previously
+// produced a reminder is edited and no longer parses as one
+// (`includeFired` false — one that already fired stays for the banner), or
+// when the note is deleted (`includeFired` true — nothing survives). Never
+// called for triage: the note lives on, so its reminder stands.
+export function removeReminder(
+  id: string,
+  includeFired: boolean,
+): Promise<void> {
+  return invoke<void>("remove_reminder", { id, include_fired: includeFired });
+}
+
+// Undismissed reminders, soonest due first — the banner's (fired) and
+// header hint's (upcoming) one source of truth.
+export function listReminders(): Promise<Reminder[]> {
+  return invoke<Reminder[]>("list_reminders");
+}
+
+export function dismissReminder(id: string): Promise<void> {
+  return invoke<void>("dismiss_reminder", { id });
+}
+
+// The banner's "+10 min" button: re-fires `minutes` from now.
+export function snoozeReminder(id: string, minutes: number): Promise<void> {
+  return invoke<void>("snooze_reminder", { id, minutes });
+}
+
+// Posts `payload` to the local classifier's `POST /decide` (see
+// src/lib/classify.ts) — Rust does the actual HTTP call and rejects any
+// non-loopback `url` (see docs/backend.md).
+export function classifyLocal(url: string, payload: unknown): Promise<unknown> {
+  return invoke<unknown>("classify_local", { url, payload });
+}
+
+// Settings pane's classifier "Test" button: `GET <url>/healthz`, rejects on
+// any non-2xx response or non-loopback `url`.
+export function classifierHealth(url: string): Promise<void> {
+  return invoke<void>("classifier_health", { url });
+}
+
+// The spoken-list display sidecar (`~/notes/.sideline-lists.json`, see
+// src/lib/listFormat.ts): `readLists` returns the raw JSON text (`{}` when
+// absent; rejects if the file is corrupt) for parseLists to validate;
+// `setListEntry` stores one note's entry, or removes it when `entry` is null;
+// `ifAbsent` makes it a no-op when the key already exists (the
+// auto-formatter's write, so it never clobbers an `l` press that finished
+// first). Never touches a note file.
+export function readLists(): Promise<string> {
+  return invoke<string>("read_lists");
+}
+
+export function setListEntry(
+  key: string,
+  entry: { starts: number[] | null; show: boolean } | null,
+  ifAbsent = false,
+): Promise<void> {
+  return invoke<void>("set_list_entry", {
+    key,
+    entry,
+    if_absent: ifAbsent,
+  });
+}

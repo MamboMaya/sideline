@@ -2,15 +2,45 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { type Note, parseInbox, serializeInbox } from "../inbox";
 import { autoTag } from "../lib/autotag";
+import {
+  type ClassifyPick,
+  Limiter,
+  applyClassifierPicksToFreshNotes,
+  buildClassifyRequest,
+  buildClaudePrompt,
+  parseClaudeReply,
+  parseLocalResponse,
+  runClassifyBatch,
+  selectForClassification,
+  withinClassifyWindow,
+} from "../lib/classify";
+import { autoListPlan, listKey, parseLists } from "../lib/listFormat";
+import { detectListViaClaude } from "../lib/listRun";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
+import { parseReminder, reminderId } from "../lib/reminders";
 import {
   INBOX_CONFLICT,
   readInbox,
   writeInbox,
   readArchive,
+  addReminder,
+  removeReminder,
+  classifyLocal,
+  sendToClaude,
+  readLists,
+  setListEntry,
 } from "../lib/commands";
 import { insertNoteAt } from "../lib/undo";
 import { loadConfig, type SidelineConfig } from "../lib/config";
+
+// Module-level (not per-hook-instance, though there's only ever one
+// useInbox call site) so that two overlapping runClassifier calls — e.g.
+// two `inbox-changed` events firing in quick succession, each starting its
+// own reload()/runClassifier() — still share one cap of 2 concurrent
+// classify calls total, rather than 2 each.
+const classifierLimiter = new Limiter(2);
+// Same shape for the spoken-list formatter (runListFormatter below).
+const listLimiter = new Limiter(2);
 
 export interface UseInboxParams {
   // Current config state App.tsx owns — read here only for the `knownTags`
@@ -87,6 +117,37 @@ export function useInbox({
   // edit causes) — the auto-tagger skips these so a removed tag never
   // comes back just because the body still mentions it.
   const removedTagsRef = useRef<Set<string>>(new Set());
+  // Notes already scanned for a reminder this app run, keyed by `note.raw`
+  // — same once-per-note-per-run shape as autoTaggedRef above, and for the
+  // same reason: a note that keeps its raw unchanged across reloads (the
+  // common case) must not be re-registered every time inbox.md is re-read.
+  const remindersScannedRef = useRef<Set<string>>(new Set());
+  // Whether the last scan of a given reminder id (see reminderId) actually
+  // registered a reminder — so a later scan that finds the SAME note edited
+  // to no longer parse as a reminder knows to call removeReminder instead
+  // of silently doing nothing. Only meaningful for ids this run has scanned
+  // at least once; an id never seen this run is assumed not registered,
+  // which is fine — the note it belonged to hasn't changed, so there is
+  // nothing to remove.
+  const remindersRegisteredRef = useRef<Map<string, boolean>>(new Map());
+  // note.raw → the reminder id registered for it this run, so deleting a
+  // note (see remove) can cancel its reminder with the exact id the scan
+  // used (timestamp, or timestamp+icon on a same-minute collision).
+  const reminderIdByRawRef = useRef<Map<string, string>>(new Map());
+  // Notes already scanned for classification this app run, keyed by
+  // note.timestamp (NOT raw, unlike autoTaggedRef) — a note's raw changes on
+  // every tag edit and on the classifier's own write, and re-scanning either
+  // would break the "classified at most once per session" contract; the
+  // timestamp is stable across both. Reset only on app restart.
+  const classifiedRef = useRef<Set<string>>(new Set());
+  // Notes already scanned by the spoken-list formatter this app run, keyed by
+  // listKey (timestamp + body hash). Every scanned note is marked, eligible
+  // or not, BEFORE any await — the formatter's own sidecar write fires
+  // `inbox-changed`, which re-runs reload() and must find nothing new to do.
+  const listCheckedRef = useRef<Set<string>>(new Set());
+  // True once the local-classifier-unreachable toast has fired this app
+  // run — see runClassifier below: one toast per app run, not one per note.
+  const classifierToastedRef = useRef(false);
 
   const loadArchiveTags = async (): Promise<string[]> => {
     try {
@@ -98,6 +159,181 @@ export function useInbox({
     } catch {
       return [];
     }
+  };
+
+  // Persists one note's classifier pick: freshly reads inbox.md (never the
+  // component's own notes state, which can be stale relative to disk by the
+  // time a classify network call resolves), matches the pick against that
+  // fresh read by timestamp+body (see applyClassifierPicksToFreshNotes), and
+  // writes back only if that produced a change. Resolves normally (never
+  // rejects) on every outcome including an INBOX_CONFLICT — a conflict here
+  // means something else wrote to inbox.md between this read and this
+  // write, so the write is silently dropped (no toast: this is a background
+  // pass, not a user action to redo) rather than risk clobbering that other
+  // change; other errors are logged, not thrown, so a run of concurrent
+  // per-note write-backs can never produce an unhandled rejection.
+  const writeBackClassifierPick = async (
+    note: Note,
+    pick: ClassifyPick,
+    config: SidelineConfig,
+  ): Promise<void> => {
+    try {
+      const [text, version] = await readInbox();
+      const { preamble: freshPreamble, notes: freshNotes } = parseInbox(text);
+      const { changed, nextNotes } = applyClassifierPicksToFreshNotes(
+        freshNotes,
+        [{ timestamp: note.timestamp, body: note.body, pick }],
+        {
+          removedTags: removedTagsRef.current,
+          projectTags: config.projectTags,
+          hiddenTags: new Set(config.hiddenTags),
+        },
+      );
+      if (!changed) return;
+      versionRef.current = await writeInbox(
+        serializeInbox(freshPreamble, nextNotes),
+        version,
+      );
+      setPreamble(freshPreamble);
+      setNotes(nextNotes);
+    } catch (e) {
+      if (String(e).includes(INBOX_CONFLICT)) return;
+      console.error("classifier write-back failed:", e);
+    }
+  };
+
+  // Classifier pass: kicked off (not awaited) by reload() below, after
+  // notes/preamble already went into state, so a slow or unreachable
+  // classifier never delays the notes list from showing. Every eligible
+  // note is marked processed regardless of outcome (see
+  // selectForClassification) so a persistently unreachable local classifier
+  // is tried once per note per app run, not retried every reload. Each
+  // note's result is written back as soon as it's ready
+  // (writeBackClassifierPick above), not batched into one write after the
+  // whole pass — see runClassifyBatch. Concurrency is capped by the
+  // module-level classifierLimiter, shared across every runClassifier call
+  // this session, not just this one.
+  const runClassifier = async (
+    currentNotes: Note[],
+    config: SidelineConfig,
+  ) => {
+    const provider = config.classifier.provider;
+    if (provider === "off") return;
+    // No-Claude-mode disables the claude provider the same way it disables
+    // every other send_to_claude call — silent fallback to "off" behavior.
+    if (provider === "claude" && !config.claude) return;
+
+    const { eligible, processedKeys } = selectForClassification(currentNotes, {
+      alreadyProcessed: classifiedRef.current,
+      projectTags: config.projectTags,
+      now: new Date(),
+    });
+    for (const key of processedKeys) classifiedRef.current.add(key);
+    if (eligible.length === 0) return;
+
+    let localUnreachable = false;
+    await runClassifyBatch(
+      eligible,
+      {
+        classify: async (note) => {
+          try {
+            if (provider === "local") {
+              const payload = buildClassifyRequest(note, config.projectTags);
+              const resp = await classifyLocal(config.classifier.url, payload);
+              return parseLocalResponse(resp, config.projectTags);
+            }
+            const prompt = buildClaudePrompt(note, config.projectTags);
+            const reply = await sendToClaude(prompt, config.models.triage);
+            return parseClaudeReply(reply, config.projectTags);
+          } catch (e) {
+            // claude errors are silent per-note; a local error also stays
+            // silent per-note, but flags the one-time toast below.
+            if (provider === "local") localUnreachable = true;
+            throw e;
+          }
+        },
+        writeBack: (note, pick) => writeBackClassifierPick(note, pick, config),
+      },
+      classifierLimiter,
+    );
+
+    if (localUnreachable && !classifierToastedRef.current) {
+      classifierToastedRef.current = true;
+      showToastRef.current("Classifier unreachable — using keyword tags only");
+    }
+  };
+
+  // Auto-formats new long voice notes that are spoken lists (display layer
+  // only — see src/lib/listFormat.ts; the note on disk is never modified).
+  // Fire-and-forget from reload(), like runClassifier: never delays the
+  // list. Only the sidecar entry is written: validated starts + show, or
+  // `starts: null` for "not a list" / failed validation. Explicit
+  // enumerations ("first, second…", "one, two, three…") are formatted
+  // instantly by rules — any length, no Claude, not counted against the
+  // limiter; only longer notes the rules didn't catch go to Claude (and
+  // only with `claude` on). A thrown Claude error writes nothing, so the
+  // note is tried again next launch. Silent on errors.
+  const runListFormatter = async (
+    currentNotes: Note[],
+    config: SidelineConfig,
+  ) => {
+    if (!config.autoList) return;
+    const now = new Date();
+    const pending: {
+      key: string;
+      body: string;
+      plan: Exclude<ReturnType<typeof autoListPlan>, "skip">;
+    }[] = [];
+    for (const n of currentNotes) {
+      const key = listKey(n.timestamp, n.body);
+      if (listCheckedRef.current.has(key)) continue;
+      listCheckedRef.current.add(key);
+      if (!withinClassifyWindow(n.timestamp, now)) continue;
+      const plan = autoListPlan(n.body);
+      if (plan === "skip") continue;
+      if (plan === "claude" && !config.claude) continue;
+      pending.push({ key, body: n.body, plan });
+    }
+    if (pending.length === 0) return;
+    // Fresh read (not hook state, which may be stale): a note formatted by
+    // `l`, or by an earlier launch, already has an entry and is skipped.
+    let existing: ReturnType<typeof parseLists>;
+    try {
+      existing = parseLists(await readLists());
+    } catch (e) {
+      console.error("list sidecar read failed:", e);
+      return;
+    }
+    await Promise.all(
+      pending
+        .filter((p) => !(p.key in existing))
+        .map(async (p) => {
+          // if_absent on every write: an `l` press that finished first wins.
+          if (p.plan !== "claude") {
+            await setListEntry(
+              p.key,
+              { starts: p.plan.starts, show: true },
+              true,
+            ).catch((e) => console.error("list sidecar write failed:", e));
+            return;
+          }
+          await listLimiter.run(async () => {
+            try {
+              const starts = await detectListViaClaude(
+                p.body,
+                config.models.triage,
+              );
+              await setListEntry(
+                p.key,
+                { starts, show: starts !== null },
+                true,
+              );
+            } catch (e) {
+              console.error("list formatting failed:", e);
+            }
+          });
+        }),
+    );
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
@@ -152,6 +388,61 @@ export function useInbox({
     // never mutates alreadyProcessed — it only reports what it newly saw.
     for (const key of processedKeys) autoTaggedRef.current.add(key);
 
+    // Reminders: scan each not-yet-scanned note for a detected reminder
+    // (same once-per-note-per-run shape as auto-tagging, keyed by raw) and
+    // register hits with the backend — covers in-app voice, typed notes,
+    // and external Raycast captures alike, since they all land in
+    // inbox.md and this scans whatever read_inbox just returned.
+    // Fire-and-forget: a failed add_reminder/removeReminder call just means
+    // that note's reminder is missed (or not removed) for now — no toast,
+    // since a failed add would otherwise fire on every offline reload.
+    //
+    // A note's reminder id is its timestamp alone, unless another note in
+    // THIS batch shares that timestamp (two notes captured in the same
+    // minute) — then both fall back to timestamp+icon so they don't
+    // collide. See reminderId.
+    const timestampCounts = new Map<string, number>();
+    for (const n of taggedNotes) {
+      timestampCounts.set(
+        n.timestamp,
+        (timestampCounts.get(n.timestamp) ?? 0) + 1,
+      );
+    }
+    for (const n of taggedNotes) {
+      if (remindersScannedRef.current.has(n.raw)) continue;
+      remindersScannedRef.current.add(n.raw);
+      const id =
+        (timestampCounts.get(n.timestamp) ?? 0) > 1
+          ? reminderId(n.timestamp, n.icon)
+          : reminderId(n.timestamp);
+      const capturedAt = new Date(n.timestamp.replace(" ", "T"));
+      const detected = Number.isNaN(capturedAt.getTime())
+        ? null
+        : parseReminder(n.body, capturedAt);
+      // An old note seen for the first time whose due time is already more
+      // than 12h in the past — treat it as undetected rather than firing
+      // it immediately looking wrong.
+      const stale =
+        detected !== null &&
+        Date.now() - detected.due.getTime() > 12 * 60 * 60 * 1000;
+      if (detected && !stale) {
+        addReminder(
+          id,
+          detected.text,
+          detected.due.getTime(),
+          n.timestamp,
+        ).catch(() => {});
+        remindersRegisteredRef.current.set(id, true);
+        reminderIdByRawRef.current.set(n.raw, id);
+      } else if (remindersRegisteredRef.current.get(id)) {
+        // The note previously parsed as a reminder (this run) and was
+        // edited to no longer — drop the not-yet-fired reminder. Triage
+        // never cancels (the note lives on); delete does — see remove.
+        removeReminder(id, false).catch(() => {});
+        remindersRegisteredRef.current.set(id, false);
+      }
+    }
+
     if (changed) {
       try {
         versionRef.current = await writeInbox(
@@ -168,6 +459,10 @@ export function useInbox({
     }
     setPreamble(parsedPreamble);
     setNotes(taggedNotes);
+    // Fire-and-forget: see runClassifier's own comment for why this must
+    // not be awaited here.
+    runClassifier(taggedNotes, config);
+    runListFormatter(taggedNotes, config);
   }, []);
 
   useEffect(() => {
@@ -273,6 +568,14 @@ export function useInbox({
     // Remove from the CURRENT list, not a render-scoped snapshot: the
     // awaited archive round-trip above is a window for appends to land.
     persist(notesRef.current.filter((n) => n !== note));
+    // A deleted note takes its reminder with it — pending or already
+    // fired (clears a banner/pill it left up), so no alert ever fires for
+    // a note that's gone.
+    const reminderIdForNote = reminderIdByRawRef.current.get(note.raw);
+    if (reminderIdForNote) {
+      removeReminder(reminderIdForNote, true).catch(() => {});
+      remindersRegisteredRef.current.set(reminderIdForNote, false);
+    }
     showToast("Archived", () => {
       // Inverse ops against live state, not snapshot restores: a snapshot
       // would erase anything captured or changed since the archive.
@@ -280,6 +583,25 @@ export function useInbox({
         showToastRef.current("Undo: archive.md could not be rewritten");
       });
       persist(insertNoteAt(notesRef.current, note, idx));
+      // Re-register the reminder only if it's still ahead: one whose due
+      // time passed meanwhile would fire the instant it came back.
+      const capturedAt = new Date(note.timestamp.replace(" ", "T"));
+      const detected = Number.isNaN(capturedAt.getTime())
+        ? null
+        : parseReminder(note.body, capturedAt);
+      if (
+        reminderIdForNote &&
+        detected &&
+        detected.due.getTime() > Date.now()
+      ) {
+        addReminder(
+          reminderIdForNote,
+          detected.text,
+          detected.due.getTime(),
+          note.timestamp,
+        ).catch(() => {});
+        remindersRegisteredRef.current.set(reminderIdForNote, true);
+      }
       dismissToast();
     });
   };

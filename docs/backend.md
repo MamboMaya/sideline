@@ -6,15 +6,19 @@ delegates to `paths.rs` (notes-dir helpers, `validate_component()`, `confine()`)
 `commands/assets.rs` (the IPC
 commands below, grouped by concern), `claude.rs` (`send_to_claude`, `ask_claude`), `archive.rs` (purge-archive flow),
 `window.rs` (popover positioning + the recording-pill overlay window),
-`hotkeys.rs` (config + registration),
+`hotkeys.rs` (config + registration), `reminders.rs` (reminder storage,
+background ticker, firing), `lists.rs` (the spoken-list display sidecar),
+`classifier.rs` (the optional local
+auto-classifier's HTTP call + host/scheme validation — see below),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
 watcher), and `autostart.rs` (one-time launch-at-login consent: a native
 dialog on first run — "Launch at Login" enables, "Not Now" disables, either
 answer writes an `autostart-prompted` sentinel to Application Support so the
 question never returns, and System Settings > Login Items is authoritative
-from then on) — plus `audio.rs`, `whisper.rs`, and `dictate.rs` for in-app
-voice recording (note capture and dictation-to-clipboard), documented
-separately below.
+from then on) — plus `audio.rs`, `whisper.rs`, `cleanup.rs` (rule-based
+filler-word stripping), `listrules.rs` (dictation's numbered-list
+formatting), and `dictate.rs` for in-app voice recording (note
+capture and dictation-to-clipboard), documented separately below.
 
 Quit path: the run-loop callback in lib.rs handles `RunEvent::Exit` with
 `libc::_exit(0)`, skipping C-runtime exit finalizers — ggml (whisper's Metal
@@ -47,7 +51,7 @@ docs/ui.md's Quick question section), fs watcher on `~/notes` emitting
   toggles start/stop and `Released` is a no-op. ON, a `Pressed` starts a
   session — via the same `toggle_recording`/`toggle_dictation` calls as
   before — ONLY if the recorder can currently start (`RecState::can_start`:
-  Idle or the Copied notice), and remembers which of the two shortcuts
+  Idle or the Copied/Failed notice), and remembers which of the two shortcuts
   (`HeldShortcut::Record`/`Dictate`) is the one holding it open, in a small
   `Arc<Mutex<Option<HeldShortcut>>>` local to `run()`; a `Pressed` while a
   session is already running instead calls the same toggle function so it
@@ -210,6 +214,106 @@ session_id }`: the session id is what `open_ask_session` resumes)
   `list_audio_devices` (enumerates input device names — the Settings pane's
   Voice section device picker is its one caller)
 - `apply_hotkeys` (hotkeys.rs) — see the hotkeys bullet above
+- `add_reminder` (`id`/`text`/`due_ms`/`note_timestamp` args; frontend calls
+  it once per not-yet-scanned note per app run, mirroring the auto-tagger's
+  dedup shape — see docs/ui.md's Reminders section. `id` is the note's own
+  timestamp, so it's an UPSERT (`reminders::upsert`): an unchanged `id` with
+  the same `due_ms`/`text` is a no-op, a changed `text` updates in place, and
+  a changed `due_ms` updates AND re-arms — clears `fired`/`dismissed`, so an
+  edited due time actually fires again), `remove_reminder(id, include_fired)`
+  (drops the entry — useInbox.ts's call when an edited note no longer
+  parses as a reminder, `include_fired` false so an already-fired one stays
+  for the banner, or when the note is deleted from the inbox,
+  `include_fired` true so nothing survives; triage never removes — the
+  note lives on), `list_reminders` (undismissed, sorted by
+  `due_ms`), `dismiss_reminder(id)`, `snooze_reminder(id, minutes)` (sets a
+  new `due_ms` `minutes` from now and clears `fired`; the popover's "+10
+  min" button is the one caller). `dismiss_reminder`/`snooze_reminder` also
+  call `audio::refresh_tray_title` after writing, since dismissing/snoozing
+  the last fired reminder can clear the tray's ⏰. Every mutating command
+  emits `reminders-changed` after a successful write, so `useReminders.ts`'s
+  list reloads on every registration/removal/dismiss/snooze, not just a
+  fire. All of them persist through `reminders::write_all` (prunes, then a
+  write with its own uniquely-named temp file — pid + a counter, not the
+  shared `write_file` helper's fixed name — since the background ticker can
+  write concurrently with a command).
+  A module-level `LOCK: Mutex<()>` is held across every command's and
+  `tick`'s full read-modify-write span, so a command and the ticker landing
+  at the same moment can't interleave and clobber each other's write. A
+  reminders file that fails to parse (corrupt/truncated, as opposed to
+  simply missing, which reads as empty) is a hard error: every read path
+  propagates it instead of treating it as "no reminders" and writing that
+  empty list back over whatever was actually on disk; `tick` specifically
+  logs and skips the tick rather than writing.
+
+- `read_lists()` / `set_list_entry(key, entry, if_absent)` (`lists.rs`) — the spoken-list
+  display sidecar `~/notes/.sideline-lists.json`; see docs/data-model.md for
+  the shape and docs/ui.md's List formatting section for the behavior.
+  `read_lists` returns the file as a raw JSON string (`{}` only when the file
+  is missing — `ErrorKind::NotFound`; any other read error, or a corrupt
+  file, is an error) and the frontend parses/validates it
+  (`parseLists`). `set_list_entry` validates strictly — key non-empty, at
+  most 200 chars, no newline; entry an object with exactly `starts` (null,
+  or at most 100 strictly ascending u32 offsets) and `show` (bool) — then
+  inserts, replaces, or (`entry` null) removes the key, skipping the write
+  when nothing changed. With `if_absent` true a set is a no-op when the key
+  already exists — the auto-formatter's slow Claude call must not clobber an
+  entry an `l` press stored meanwhile (`l` passes false). Same discipline as `reminders.rs`: a module-level
+  `LOCK` held across every read-modify-write, a corrupt file is an error
+  instead of being read as empty and overwritten, and each write goes to a
+  uniquely-named temp file (pid + a counter) renamed into place. It never
+  touches a note file. Like any write under `~/notes`, it fires the
+  watcher's `inbox-changed`; the auto-formatter's once-per-session set
+  (useInbox.ts) keeps that from looping.
+
+`reminders.rs` also runs a background thread (`spawn_ticker`, started from
+`.setup()` alongside the inbox watcher), sleeping 5s between ticks: each
+tick marks any unfired reminder whose `due_ms` has passed as fired,
+persists, emits `reminder-fired` (the fired `Reminder` as payload — Overlay.tsx
+reads its `text` for the pill notice) once per newly-fired reminder, then
+`audio::show_reminder_notice` and `audio::refresh_tray_title`.
+`show_reminder_notice` puts the pill's "⏰ <text>" notice up ONLY when the
+recorder `can_start()` (Idle/Copied/Failed/Reminder) — a live recording/
+transcribing/downloading session keeps showing its own state, and the tray
+⏰ plus the popover's banner (once opened) still cover the reminder either
+way. Firing a reminder deliberately never raises or focuses the popover
+(`window::show_or_focus_window` is NOT called here) — that would steal
+keyboard focus from whatever the user is typing into, or interrupt a
+mid-dictation ⌘V paste, for a background event the user didn't ask for. A
+reminder due while the app wasn't running (overdue at launch) fires on the
+very first tick after launch — `due_now` treats "unfired and due_ms in the
+past" the same as "due now", it doesn't require an exact match.
+`audio::set_tray_title`'s Idle/Copied/Failed/Reminder arm shows ⏰ when
+`reminders::any_fired_pending()` is true; a recording/transcribing title
+always takes priority and `refresh_tray_title` re-applies the ⏰ (or clears
+it) the moment the recorder returns to one of those four states, so the two
+indicators never fight over the title. No system notification, no sound —
+the pill, tray title, and (once opened) popover banner are the only alert
+surfaces (see CLAUDE.md's "no new macOS permission surfaces" convention;
+this feature adds none).
+
+`RecState` gained a `Reminder` variant for exactly this notice: idle-
+equivalent everywhere `Copied`/`Failed` are (`can_start`, the push-to-talk
+hotkey check in `lib.rs`, `set_tray_title`, and the frontend's own idle-
+equivalence checks in Header.tsx/AskView.tsx/Overlay.tsx), held for
+`REMINDER_NOTICE` (~8s, vs. `COPIED_NOTICE`/`FAILED_NOTICE`) before
+`start_notice`'s hide timer drops it back to `Idle` — same generation-
+counter guard (`Inner::notice_gen`) as the other notices, so a newer state
+change (a fresh recording, or a second reminder firing) isn't clobbered by
+an older notice's stale hide timer.
+
+- `classify_local` (`classifier.rs`; `url` + `payload` args — POSTs `payload`
+  as JSON to `<url>/decide` with a 5s timeout via `reqwest::blocking`, and
+  returns the parsed JSON response; the frontend's `src/lib/classify.ts`
+  builds `payload` and parses the response) and `classifier_health` (same
+  file; `url` arg — `GET <url>/healthz`, used by the Settings pane's
+  "Local classifier" Test button). Both call `validate_url` first and
+  reject any URL whose scheme isn't `http`/`https` or whose host isn't
+  `127.0.0.1`/`localhost`/`::1` (bracketed IPv6 handled defensively) — the
+  real enforcement of the classifier's loopback-only contract; the
+  frontend's own `validateClassifierUrl` (src/lib/classify.ts) applies the
+  same rule only as an earlier, non-authoritative check so a bad Settings
+  URL toasts immediately instead of only failing at the next classify call.
 
 `append_inbox_text` (`commands/notes.rs`) is an O_APPEND write of one
 voice-note block — not an IPC command, just a plain fn the native recording
@@ -239,19 +343,41 @@ rate; a linear-interpolation resample to 16 kHz happens after handoff, off
 the audio thread. Device selection: the system default input, unless
 `~/notes/.sideline.json` has `audio: { "device": "<substring>" }` (see
 docs/data-model.md), matched case-insensitively against `list_audio_devices`.
+If the device dies mid-recording (unplug, Bluetooth drop), its stream is
+invalidated, or its buffer stops growing for `STALL_TIMEOUT` (2s; `FIRST_AUDIO_TIMEOUT`, 5s, before the first samples — catches a stream opened on an already-dead device; a stall retries the same device first), `capture_thread` doesn't fail
+the session: it keeps the samples captured so far as one segment and
+`reopen_after_loss` reopens — same device first if it's still there (e.g.
+a sample-rate change), else whatever `select_device` now resolves to (the
+configured device if present, else the system default), retried for up to
+`FAILOVER_WAIT` (2s), skipping the dead device (by cpal device id or name) while
+macOS still reports it as default, and checking `stop_rx` between attempts
+so a stop press isn't held up. A switch to a different mic emits
+`mic-switched` (device name; the frontend toasts it). Segments are
+resampled to 16 kHz individually and joined. If nothing reopens (or after
+`MAX_FAILOVERS`, 5, in one session), audio captured so far is still
+transcribed — `stop_if_recording` ends the session as if stop were pressed,
+with a "Mic disconnected — transcribing what was recorded" `capture-error`
+toast; only a session with no audio at all fails ("Recording stopped: …").
 
 State machine (`audio::RecState`: Idle → Recording → Transcribing, plus a
-DownloadingModel sub-state of Transcribing and a terminal Copied notice
-state — dictation-only, see below) is managed via
+DownloadingModel sub-state of Transcribing, a terminal Copied notice
+state — dictation-only, see below — and a terminal Failed notice state)
+is managed via
 `app.manage(AudioState::default())`. Every transition emits
 `recording-state` (string payload) and updates the tray title via
 `app.tray_by_id("main")` — `🔴 m:ss` while recording (1 Hz ticker, same
 thread also emits `audio-level` at ~20 Hz, a 0..1 RMS float from the
-capture callback), `…` while transcribing or downloading, cleared at idle.
-Title only, no icon swap. A transcript that comes back empty (or any
-failure — no input device, model download error, etc.) emits
-`capture-error` (string payload) and the state machine still lands back on
-Idle.
+capture callback; the frontend dB-scales it for the bars — see
+`src/lib/meter.ts`), `…` while transcribing or downloading, cleared at
+idle. Title only, no icon swap. A transcript that comes back empty (or any
+failure — no input device, no speech, model download error, etc.) goes
+through `audio::fail`: it emits `capture-error` (string payload), then
+enters the Failed notice, so the pill shows the error text for ~3s
+(`FAILED_NOTICE`) before a timer drops back to Idle — the error is
+visible even with the popover closed, where the toast can't be seen.
+Copied and Failed share one notice mechanism (`show_notice`/
+`start_notice`, with `Inner::notice_gen` so a stale hide timer never
+cuts a newer notice short).
 
 Orthogonal to `RecState` is `audio::RecMode` (`Note` | `Dictate` | `Ask`), carried on
 the same managed `Inner` alongside the state — which pipeline a session
@@ -262,7 +388,7 @@ starts a session and records `mode`; a same-mode press while Recording stops
 it exactly as before; a press in the OTHER mode while a session is already
 active is ignored outright and emits `capture-error` "Already recording" —
 the recorder never silently switches modes mid-recording. The transient
-Copied notice counts as idle for all of this (`RecState::can_start`):
+Copied, Failed, and Reminder notices count as idle for all of this (`RecState::can_start`):
 either hotkey during it starts a fresh session, and the notice's hide
 timer stands down when it sees the state has moved on. `emit_state`
 additionally emits `recording-mode` (`"note"`/`"dictate"`/`"ask"` string
@@ -272,13 +398,26 @@ payload shape. `Ask` mode's finished transcript is emitted as
 `ask-transcript` (string payload) rather than feeding `append_inbox_text`
 or the clipboard — see docs/ui.md's Quick question section.
 
+For dictation, unless `autoList` is false, `listrules::number_list` turns an
+explicitly enumerated dictation (the "bullet" / "bullet point" keyword before
+each item — tried first, `bullet_list`; "First, … Second, …", "one … two …
+three …", "number one …", or a mix) — or an announced one (a lead-in like
+"three things for tomorrow" followed by exactly that many sentences) — — or a lead-in list whose items mix signals ("bullet", counting words
+like "One,", and glue like "and also"; `signal_list` with `require_explicit`,
+so connectors alone never split a paste, unlike the notes path, which needs no
+explicit signal) — into a lead line plus
+`1. item` lines — a Rust port of the frontend's `rulesStarts` (same marker rules,
+same no-word-lost check; anything else pastes unchanged). Rules only: a
+Claude call would delay every paste, and pasted text can't be switched
+back like a card.
+
 Every transition also drives the recording-pill overlay: `sync_overlay`
 (window.rs), called from the same `emit_state` choke point, shows the
 `overlay` window (declared hidden in tauri.conf.json — 340×48, transparent,
 no decorations, always-on-top, `focusable: false`) bottom-center of the
 monitor holding the cursor (its bottom edge 20% up the screen, mirroring
 the popover's 20%-down top edge) while recording, keeps it up through
-transcribing/downloading and dictation's Copied notice, and hides it at
+transcribing/downloading and the Copied/Failed notices, and hides it at
 idle — UNLESS `overlay.hidden` is `true` in `~/notes/.sideline.json`
 (Settings → Voice → "Show recording pill"), read fresh on every call
 (`window::overlay_hidden`, same failure-tolerant shape as
@@ -297,7 +436,7 @@ event grant fails `listen()` silently: the window shows but never hears
 `recording-state`. Both invariants are locked by
 `src/overlay-config.test.ts`. Its frontend is the tiny Overlay root (src/main.tsx
 branches on `?window=overlay` before importing App) listening only to
-`recording-state`/`audio-level`. Window transparency on macOS requires
+`recording-state`/`audio-level`/`capture-error`. Window transparency on macOS requires
 Tauri's `macos-private-api` cargo feature + `macOSPrivateApi` config flag —
 enabled deliberately: it affects compositing only and is NOT a TCC
 permission surface (no prompt, no System Settings entry); the only cost is
@@ -307,7 +446,9 @@ app.
 Silence gate: before transcription, the post-resample buffer is scanned in
 100 ms RMS windows (`max_window_rms`); if no window reaches
 `SPEECH_RMS_FLOOR` (0.01), the recording is rejected with a
-`capture-error` of "No speech detected" instead of being transcribed —
+`capture-error` of "No speech detected — check mic input level" instead
+of being transcribed (the usual cause is the mic, not the speaker: an
+audio interface whose input gain reset to zero after a replug) —
 whisper hallucinates caption-like text ("Don't forget to subscribe…") on
 non-speech audio, so silent recordings must never reach it.
 
@@ -330,10 +471,32 @@ regexes as capture/voice-note.sh's perl pass (`clod`/`claw(ed)`/`clawd`/
 (`build_corrections`: per term, one `(?i)\b(?:…)\b` alternation of its
 regex-escaped mis-hearings, interior whitespace → `\s+`; a term with no
 mis-hearings only biases the prompt) before `whisper::transcribe` returns —
-this runs for BOTH modes, so `audio::finish_recording` branches
-purely on destination: `RecMode::Note` appends via `append_inbox_text` as
-before; `RecMode::Dictate` hands the corrected text to
-`dictate::finish_dictation` and never touches inbox.md.
+this runs for BOTH modes.
+
+Filler-word cleanup (`cleanup.rs`'s `strip_fillers`): the next step in
+`audio::finish_recording`, after `whisper::transcribe` returns and before the
+mode hand-off, gated by `.sideline.json`'s `cleanFillers` key (default
+`true`, read fresh per recording by `clean_fillers_enabled()` — same
+failure-tolerant shape as `configured_device_name`, opposite default). Purely
+rule-based (regex + word-level passes, no network call, no LLM, so no added
+latency): removes standalone hesitation tokens (um, uh, erm, hmm, ...,
+whole-word only — never touches "umbrella" — nor an ALL-CAPS one, kept as an
+acronym ("ER"), nor one directly after a number, kept as a unit ("5 mm")),
+comma-delimited or sentence-initial discourse fillers ("you know", "I mean",
+"like", "sort of", "kind of" — never a bare mid-sentence "like"), and
+collapses immediate stutter repeats ("I I think" → "I think" — never across
+a `. ! ? , ; :` boundary, never two repeated numbers, never a word on
+`STUTTER_ALLOWLIST`), then tidies up leftover punctuation and
+re-capitalizes. If cleanup empties the transcript, that's
+treated the same as an empty whisper result — the existing "Transcription
+came back empty" `capture-error`. Disabled via Settings → Voice → "Remove
+filler words (um, uh, repeats)". `capture/voice-note.sh` (external Raycast
+capture) does NOT call this — untouched.
+
+`audio::finish_recording` then branches purely on destination:
+`RecMode::Note` appends via `append_inbox_text` as before; `RecMode::Dictate`
+hands the cleaned text to `dictate::finish_dictation` and never touches
+inbox.md; `RecMode::Ask` emits it as `ask-transcript`.
 
 Dictation mode (`dictate.rs`): the clipboard write happens first and
 unconditionally (`app.clipboard().write_text(...)` via the
@@ -359,7 +522,7 @@ needed for Accessibility — macOS gates it entirely through System
 Settings > Privacy & Security > Accessibility plus this API.
 
 Either way `finish_dictation` returns `DictationOutcome::Copied`, which
-routes to `audio::show_copied_notice`: the pill shows "Copied — ⌘V
+routes to `audio::show_notice`: the pill shows "Copied — ⌘V
 to paste" for ~1.5s (`COPIED_NOTICE`) before a timer drops the state
 machine back to Idle. EVERY dictation gets that notice — Sideline never
 inspects the frontmost app or what it has focused. An AX focused-element

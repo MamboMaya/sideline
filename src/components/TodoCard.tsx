@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { type TodoEntry, todoRowDisplay } from "../inbox";
+import { type ListEntry, displayBody } from "../lib/listFormat";
 import { tagChipClass, tagLabel } from "../lib/format";
 import type { TagEditorHook } from "../hooks/useTagEditor";
 import { BodyImages } from "./BodyImages";
@@ -11,6 +12,10 @@ interface TodoCardProps {
   // card's iced styling — see the variant-diff table in the Task 14 report.
   variant: "normal" | "iced";
   entry: TodoEntry;
+  // This note's spoken-list sidecar entry (App.tsx looks it up by
+  // listKey) — when it says show, the body renders as bullets; see
+  // src/lib/listFormat.ts. Display only, the stored body never changes.
+  listEntry?: ListEntry;
   isSelected: boolean;
   isExpanded: boolean;
   isEditing: boolean;
@@ -39,6 +44,7 @@ interface TodoCardProps {
 export function TodoCard({
   variant,
   entry,
+  listEntry,
   isSelected,
   isExpanded,
   isEditing,
@@ -60,7 +66,7 @@ export function TodoCard({
   const isDone = entry.status === "done";
   const isIced = entry.status === "iced";
   const {
-    body: displayBody,
+    body: plainBody,
     reply: replyText,
     images,
     expandable,
@@ -181,7 +187,7 @@ export function TodoCard({
                 : "body"
           }
         >
-          {displayBody}
+          {displayBody(plainBody, listEntry)}
         </div>
       )}
       {!isEditing && <BodyImages images={images} />}

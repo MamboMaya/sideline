@@ -13,6 +13,7 @@ import {
 import { QUICK_TAGS, tagLabel } from "./lib/format";
 import { addToDictionary } from "./lib/config";
 import { appendToArchive } from "./lib/archive";
+import { isStale } from "./lib/stale";
 import {
   NO_IMAGE,
   pasteClipboardImage,
@@ -24,6 +25,7 @@ import {
 } from "./lib/commands";
 import { useToast } from "./hooks/useToast";
 import { useRecorder } from "./hooks/useRecorder";
+import { useReminders } from "./hooks/useReminders";
 import { useAsk } from "./hooks/useAsk";
 import { useConfig } from "./hooks/useConfig";
 import { useSearch } from "./hooks/useSearch";
@@ -32,9 +34,12 @@ import { useTagEditor } from "./hooks/useTagEditor";
 import { useTodosData } from "./hooks/useTodosData";
 import { useTriage } from "./hooks/useTriage";
 import { useTodosActions } from "./hooks/useTodosActions";
+import { useLists } from "./hooks/useLists";
+import { listKey } from "./lib/listFormat";
 import { useEditRow } from "./hooks/useEditRow";
 import { useKeyboard } from "./keys/useKeyboard";
 import { Toast } from "./components/Toast";
+import { ReminderBanner } from "./components/ReminderBanner";
 import { ShortcutsModal } from "./components/ShortcutsModal";
 import { AddProjectModal } from "./components/AddProjectModal";
 import { SettingsPane } from "./components/SettingsPane";
@@ -50,6 +55,12 @@ export default function App() {
   const { toast, showToast, dismissToast, runUndo } = useToast();
   const { recState, recMode, audioLevel, recElapsed, toggleRecording } =
     useRecorder(showToast);
+  const {
+    fired: firedReminders,
+    upcoming: upcomingReminders,
+    dismiss: dismissReminder,
+    snooze: snoozeReminder,
+  } = useReminders();
   // Three views — Inbox/Todos/Ask (header tabs, or ⌘1/⌘2/⌘3 — see
   // src/keys/types.ts's `View`). The Todos view is refetched fresh on every
   // switch into it — the fs watcher only covers ~/notes NonRecursive, so
@@ -97,8 +108,13 @@ export default function App() {
     audioOverride,
     overlayOverride,
     pushToTalk,
+    cleanFillers,
+    autoList,
     dictionaryOverride,
     terminalOverride,
+    staleDays,
+    classifier,
+    classifierOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -106,12 +122,25 @@ export default function App() {
     setAudioDevice,
     setOverlayHidden,
     setPushToTalk,
+    setCleanFillersEnabled,
+    setAutoListEnabled,
     setDictionary,
     setTerminal,
+    setStaleDays,
+    setClassifierProvider,
+    setClassifierUrl,
     addProject,
     removeProject,
     updateConfig,
   } = useConfig({ showToast, dismissToast });
+
+  // Spoken-list display sidecar (`l` key, card bullets, copy-follows-view) —
+  // see src/lib/listFormat.ts. Display only; notes on disk are never touched.
+  const { lists, toggleList } = useLists({
+    claude,
+    triageModel: models.triage,
+    showToast,
+  });
 
   // "Add project…" (tray menu, or Settings' "Choose folder…"): the picked
   // folder, while the AddProjectModal is up; null = closed. The tray path
@@ -294,6 +323,24 @@ export default function App() {
     })();
   }, []);
 
+  // Wall clock for the stale-inbox-note badges (InboxCard's age badge,
+  // Header's "N stale" count — see src/lib/stale.ts). Recomputed whenever
+  // `notes` reloads (a freshly-loaded list may already be past the
+  // threshold) and at least hourly, so a note that ages past the threshold
+  // while the popover sits open in the background still gets flagged.
+  const [now, setNow] = useState(() => new Date());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reruns on every notes reload, not just mount
+  useEffect(() => {
+    setNow(new Date());
+  }, [notes]);
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  const staleCount = notes.filter((n) =>
+    isStale(n.timestamp, staleDays, now),
+  ).length;
+
   // Reopening the popover is a fresh glance: jump back to the top with a
   // clean slate (selection, search, modal). Tab switches within one open
   // session keep their place. Focus-gain ≡ reopen, since the popover hides
@@ -385,6 +432,7 @@ export default function App() {
     dismissToast,
     projectTags,
     generateTitles,
+    lists,
   });
 
   // Edit-in-place (`e`): which row is being edited, keyed per kind — inbox
@@ -500,6 +548,8 @@ export default function App() {
     // leaves the typed value and suggestion index alone.
     dismissTagInput: () => tagEditor.setTagInputOpen(false),
     openEdit,
+    lists,
+    toggleList,
     notes,
     filteredNotes,
     selected,
@@ -533,15 +583,22 @@ export default function App() {
 
   return (
     <div className="app">
+      <ReminderBanner
+        fired={firedReminders}
+        onDismiss={dismissReminder}
+        onSnooze={snoozeReminder}
+      />
       <Header
         view={view}
         onChangeView={setView}
         notesCount={notes.length}
         todosPending={todosPending}
+        staleCount={staleCount}
         askPending={askThreads.filter((t) => t.pending).length}
         recState={recState}
         audioLevel={audioLevel}
         recElapsed={recElapsed}
+        upcomingReminders={upcomingReminders}
         showDone={showDone}
         onToggleShowDone={() => setShowDone((s) => !s)}
         searchOpen={searchOpen}
@@ -585,12 +642,20 @@ export default function App() {
           setOverlayHidden={setOverlayHidden}
           pushToTalk={pushToTalk}
           setPushToTalk={setPushToTalk}
+          cleanFillers={cleanFillers}
+          setCleanFillersEnabled={setCleanFillersEnabled}
+          autoList={autoList}
+          setAutoListEnabled={setAutoListEnabled}
           dictionaryOverride={dictionaryOverride}
           setDictionary={setDictionary}
           claude={claude}
           setClaudeEnabled={setClaudeEnabled}
           modelsOverride={modelsOverride}
           setModelOverride={setModelOverride}
+          classifier={classifier}
+          classifierOverride={classifierOverride}
+          setClassifierProvider={setClassifierProvider}
+          setClassifierUrl={setClassifierUrl}
           terminalOverride={terminalOverride}
           setTerminal={setTerminal}
           prompts={prompts}
@@ -605,6 +670,8 @@ export default function App() {
           addProject={addProject}
           removeProject={removeProject}
           onChooseFolder={chooseProjectFolder}
+          staleDays={staleDays}
+          setStaleDays={setStaleDays}
           zoom={zoom}
           adjustZoom={adjustZoom}
           updateConfig={updateConfig}
@@ -667,10 +734,13 @@ export default function App() {
                   <InboxCard
                     key={idx}
                     note={note}
+                    listEntry={lists[listKey(note.timestamp, note.body)]}
                     isSelected={isSelected}
                     isSending={isSending}
                     isEditing={isEditingThis}
                     editArea={editArea}
+                    now={now}
+                    staleDays={staleDays}
                     cardRef={(el) => {
                       cardRefs.current[revIdx] = el;
                     }}
@@ -761,6 +831,11 @@ export default function App() {
                               key={`${row.project}::${row.entryIndex}`}
                               variant="normal"
                               entry={row.entry}
+                              listEntry={
+                                lists[
+                                  listKey(row.entry.timestamp, row.entry.body)
+                                ]
+                              }
                               isSelected={isSelected}
                               isExpanded={isExpanded}
                               isEditing={isEditingThis}
@@ -868,6 +943,9 @@ export default function App() {
                               key={note.filename}
                               variant="normal"
                               note={note}
+                              listEntry={
+                                lists[listKey(note.captured, note.body)]
+                              }
                               isSelected={isSelected}
                               isExpanded={isExpanded}
                               isEditing={isEditingThis}
@@ -962,6 +1040,11 @@ export default function App() {
                                 key={`iced::${row.project}::${row.entryIndex}`}
                                 variant="iced"
                                 entry={row.entry}
+                                listEntry={
+                                  lists[
+                                    listKey(row.entry.timestamp, row.entry.body)
+                                  ]
+                                }
                                 isSelected={isSelected}
                                 isExpanded={isExpanded}
                                 isEditing={isEditingThis}
@@ -1028,6 +1111,9 @@ export default function App() {
                                 key={`iced::${note.filename}`}
                                 variant="iced"
                                 note={note}
+                                listEntry={
+                                  lists[listKey(note.captured, note.body)]
+                                }
                                 isSelected={isSelected}
                                 isExpanded={triagedExpanded.has(note.filename)}
                                 isEditing={isEditingThis}

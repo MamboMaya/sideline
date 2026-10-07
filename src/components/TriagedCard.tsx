@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { type TriagedNote, splitBodyImages } from "../inbox";
+import { type ListEntry, displayBody } from "../lib/listFormat";
 import { tagChipClass, tagLabel } from "../lib/format";
 import type { TagEditorHook } from "../hooks/useTagEditor";
 import { BodyImages } from "./BodyImages";
@@ -19,6 +20,10 @@ interface TriagedCardProps {
   //      decision logic lives, not as a new branch here.
   variant: "normal" | "iced";
   note: TriagedNote;
+  // This note's spoken-list sidecar entry (App.tsx looks it up by
+  // listKey) — when it says show, the body renders as bullets; see
+  // src/lib/listFormat.ts. Display only, the stored body never changes.
+  listEntry?: ListEntry;
   isSelected: boolean;
   isExpanded: boolean;
   isEditing: boolean;
@@ -49,6 +54,7 @@ interface TriagedCardProps {
 export function TriagedCard({
   variant,
   note,
+  listEntry,
   isSelected,
   isExpanded,
   isEditing,
@@ -194,7 +200,9 @@ export function TriagedCard({
         editArea
       ) : (
         <>
-          {text && <div className={bodyClassName}>{text}</div>}
+          {text && (
+            <div className={bodyClassName}>{displayBody(text, listEntry)}</div>
+          )}
           <BodyImages images={images} />
         </>
       )}

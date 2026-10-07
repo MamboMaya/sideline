@@ -4,13 +4,17 @@ import {
   DEFAULT_PROMPTS,
   type Models,
   DEFAULT_MODELS,
+  DEFAULT_STALE_DAYS,
   type ProjectsConfig,
   type HotkeysConfig,
   type DictionaryConfig,
+  type ClassifierConfig,
+  DEFAULT_CLASSIFIER,
   type SidelineConfig,
   type ConfigOverrides,
   mergeModels,
   mergePrompts,
+  mergeClassifier,
   projectTagsFrom,
   projectsAdd,
   projectsRemove,
@@ -110,11 +114,52 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [terminalOverride, setTerminalOverride] = useState<string | undefined>(
     undefined,
   );
+  // Resolved stale-note threshold in days (InboxCard's age badge, Header's
+  // "N stale" count — see src/lib/stale.ts), merged against
+  // DEFAULT_STALE_DAYS. `0` turns the feature off.
+  const [staleDays, setStaleDaysState] = useState(DEFAULT_STALE_DAYS);
+  // Raw `staleDays` value as read from the file (undefined = key absent) —
+  // kept only so a pin/zoom/hide write doesn't clobber a hand-edited value,
+  // same as `claudeOverride` (0 is meaningful here too).
+  const [staleDaysOverride, setStaleDaysOverride] = useState<
+    number | undefined
+  >(undefined);
+  // Filler-word cleanup switch: `.sideline.json`'s `cleanFillers` key, merged
+  // against the default of `true`. `false` leaves the raw whisper transcript
+  // untouched; read Rust-side fresh per recording (audio.rs) — see
+  // src-tauri/src/cleanup.rs and docs/data-model.md.
+  const [cleanFillers, setCleanFillers] = useState(true);
+  // Raw `cleanFillers` value as read from the file (undefined = key absent) —
+  // kept only so a pin/zoom/hide write doesn't clobber a hand-edited `false`.
+  const [cleanFillersOverride, setCleanFillersOverride] = useState<
+    boolean | undefined
+  >(undefined);
+  // Spoken-list auto-format switch: `.sideline.json`'s `autoList` key,
+  // merged against the default of `true` (useInbox.ts reads it fresh from
+  // loadConfig; this slice just backs the Settings toggle and the override
+  // round-trip). See src/lib/listFormat.ts.
+  const [autoList, setAutoList] = useState(true);
+  // Raw `autoList` value as read from the file (undefined = key absent).
+  const [autoListOverride, setAutoListOverride] = useState<boolean | undefined>(
+    undefined,
+  );
+  // Resolved classifier config (Settings' "Auto-classify new notes"
+  // dropdown + URL field): `.sideline.json`'s `classifier` key, merged
+  // against DEFAULT_CLASSIFIER (absent/invalid = provider "off", today's
+  // exact behavior — see src/lib/classify.ts).
+  const [classifier, setClassifier] =
+    useState<ClassifierConfig>(DEFAULT_CLASSIFIER);
+  // Raw `classifier` value as read from the file (undefined = key absent) —
+  // kept only so a pin/zoom/hide write doesn't clobber a hand-edited value.
+  const [classifierOverride, setClassifierOverride] = useState<
+    Partial<ClassifierConfig> | undefined
+  >(undefined);
 
-  // The 10 opaque `.sideline.json` overrides, read from current state —
+  // The 13 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
   // clobbers a hand-edited prompts/models/projects/claude/audio/hotkeys/
-  // overlay/pushToTalk/dictionary/terminal value.
+  // overlay/pushToTalk/dictionary/terminal/staleDays/cleanFillers/autoList/classifier
+  // value.
   const currentOverrides = (): ConfigOverrides => ({
     prompts: promptsOverride,
     models: modelsOverride,
@@ -126,6 +171,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     pushToTalk: pushToTalkOverride,
     terminal: terminalOverride,
     dictionary: dictionaryOverride,
+    staleDays: staleDaysOverride,
+    cleanFillers: cleanFillersOverride,
+    autoList: autoListOverride,
+    classifier: classifierOverride,
   });
 
   const persistZoom = (next: number) => {
@@ -161,6 +210,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     pushToTalk?: boolean | undefined;
     dictionary?: DictionaryConfig | undefined;
     terminal?: string | undefined;
+    staleDays?: number | undefined;
+    cleanFillers?: boolean | undefined;
+    autoList?: boolean | undefined;
+    classifier?: Partial<ClassifierConfig> | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
     const nextHidden = patch.hiddenTags ?? hiddenTags;
@@ -184,6 +237,14 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "dictionary" in patch ? patch.dictionary : dictionaryOverride;
     const nextTerminalOverride =
       "terminal" in patch ? patch.terminal : terminalOverride;
+    const nextStaleDaysOverride =
+      "staleDays" in patch ? patch.staleDays : staleDaysOverride;
+    const nextCleanFillersOverride =
+      "cleanFillers" in patch ? patch.cleanFillers : cleanFillersOverride;
+    const nextAutoListOverride =
+      "autoList" in patch ? patch.autoList : autoListOverride;
+    const nextClassifierOverride =
+      "classifier" in patch ? patch.classifier : classifierOverride;
 
     setPinnedTags(nextPinned);
     setHiddenTags(nextHidden);
@@ -203,6 +264,14 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalkState(nextPushToTalkOverride ?? false);
     setDictionaryOverride(nextDictionaryOverride);
     setTerminalOverride(nextTerminalOverride);
+    setStaleDaysOverride(nextStaleDaysOverride);
+    setStaleDaysState(nextStaleDaysOverride ?? DEFAULT_STALE_DAYS);
+    setCleanFillersOverride(nextCleanFillersOverride);
+    setCleanFillers(nextCleanFillersOverride ?? true);
+    setAutoListOverride(nextAutoListOverride);
+    setAutoList(nextAutoListOverride ?? true);
+    setClassifierOverride(nextClassifierOverride);
+    setClassifier(mergeClassifier(nextClassifierOverride));
 
     await writeConfig({
       pinnedTags: nextPinned,
@@ -219,6 +288,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         pushToTalk: nextPushToTalkOverride,
         terminal: nextTerminalOverride,
         dictionary: nextDictionaryOverride,
+        staleDays: nextStaleDaysOverride,
+        cleanFillers: nextCleanFillersOverride,
+        autoList: nextAutoListOverride,
+        classifier: nextClassifierOverride,
       },
     });
   };
@@ -267,6 +340,20 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     updateConfig({ claude: enabled ? undefined : false });
   };
 
+  // The Voice section's "Remove filler words" toggle. Same omit-at-default
+  // convention as `setClaudeEnabled` above (default `true`): `enabled`
+  // clears the override entirely rather than writing an explicit
+  // `"cleanFillers": true`.
+  const setCleanFillersEnabled = (enabled: boolean) => {
+    updateConfig({ cleanFillers: enabled ? undefined : false });
+  };
+
+  // The Voice section's "Format spoken lists as bullets" toggle. Same
+  // omit-at-default convention as `setCleanFillersEnabled` (default `true`).
+  const setAutoListEnabled = (enabled: boolean) => {
+    updateConfig({ autoList: enabled ? undefined : false });
+  };
+
   // The Voice section's "Hold to record" toggle. `enabled` writes an
   // explicit `pushToTalk: true`; `false` (the default) clears the override
   // entirely rather than writing `"pushToTalk": false` — same
@@ -285,6 +372,46 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     const trimmed = name?.trim();
     updateConfig({
       terminal: trimmed && trimmed !== "auto" ? trimmed : undefined,
+    });
+  };
+
+  // Settings' "Flag inbox notes N or more days old" number input. Clamped to
+  // a non-negative integer client-side; `DEFAULT_STALE_DAYS` (the default)
+  // clears the override entirely rather than writing it explicitly, same
+  // omit-at-default convention as `setClaudeEnabled` — `0` (feature off) is
+  // NOT the default here, so it's written explicitly like `claude: false`.
+  const setStaleDays = (days: number) => {
+    const clamped = Math.max(0, Math.floor(days) || 0);
+    updateConfig({
+      staleDays: clamped === DEFAULT_STALE_DAYS ? undefined : clamped,
+    });
+  };
+
+  // Settings' "Auto-classify new notes" dropdown (SettingsPane.tsx).
+  // Deliberately NOT the omit-at-default convention setTerminal above uses:
+  // switching to "off" writes `provider: "off"` rather than deleting the
+  // override, so a custom url survives a detour through Off and back to
+  // Local. Spreads the existing raw `classifierOverride` first so an
+  // unknown sub-key a hand-edit added (anything outside the ClassifierConfig
+  // type) survives too, same as every other opaque-override setter.
+  const setClassifierProvider = (provider: ClassifierConfig["provider"]) => {
+    updateConfig({
+      classifier: { ...classifierOverride, provider, url: classifier.url },
+    });
+  };
+
+  // Settings' classifier URL text field, only shown/editable when the
+  // provider is "local". Blank falls back to DEFAULT_CLASSIFIER.url via
+  // mergeClassifier, same tolerance as every other text override. Spreads
+  // classifierOverride first for the same unknown-sub-key reason as
+  // setClassifierProvider above.
+  const setClassifierUrl = (url: string) => {
+    updateConfig({
+      classifier: {
+        ...classifierOverride,
+        provider: classifier.provider,
+        url: url.trim(),
+      },
     });
   };
 
@@ -380,6 +507,14 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalkOverride(config.pushToTalkOverride);
     setDictionaryOverride(config.dictionaryOverride);
     setTerminalOverride(config.terminalOverride);
+    setStaleDaysState(config.staleDays);
+    setStaleDaysOverride(config.staleDaysOverride);
+    setCleanFillers(config.cleanFillers);
+    setCleanFillersOverride(config.cleanFillersOverride);
+    setAutoList(config.autoList);
+    setAutoListOverride(config.autoListOverride);
+    setClassifier(config.classifier);
+    setClassifierOverride(config.classifierOverride);
   };
 
   const persistPinnedTags = async (next: string[]) => {
@@ -445,6 +580,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     claude,
     hotkeysOverride,
     pushToTalk,
+    staleDays,
+    cleanFillers,
+    autoList,
+    classifier,
     applyConfig,
     togglePin,
     hideTag,
@@ -462,6 +601,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     overlayOverride,
     dictionaryOverride,
     terminalOverride,
+    staleDaysOverride,
+    cleanFillersOverride,
+    autoListOverride,
+    classifierOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -471,6 +614,11 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setPushToTalk,
     setDictionary,
     setTerminal,
+    setStaleDays,
+    setCleanFillersEnabled,
+    setAutoListEnabled,
+    setClassifierProvider,
+    setClassifierUrl,
     addProject,
     removeProject,
     updateConfig,

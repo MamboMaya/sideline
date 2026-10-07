@@ -14,7 +14,16 @@ export type RecState =
   // Dictation finished with the transcript on the clipboard — the pill
   // shows "Copied — ⌘V to paste" until Rust's hide timer drops back
   // to idle (~1.5s).
-  | "copied";
+  | "copied"
+  // The session ended in an error (no speech detected, device died,
+  // transcription failed…) — the pill shows the `capture-error` text until
+  // Rust's hide timer drops back to idle (~3s).
+  | "failed"
+  // A reminder fired while idle (or already showing Copied/Failed) — the
+  // pill shows "⏰ <text>" until Rust's hide timer drops back to idle
+  // (~8s). Idle-equivalent everywhere Copied/Failed are (see audio.rs's
+  // can_start) — never entered while a recording session is live.
+  | "reminder";
 
 // Mirrors audio.rs's `RecMode` — which pipeline a recording session feeds:
 // `note` appends the transcript to inbox.md, `dictate` copies it to the
@@ -48,7 +57,9 @@ export function useRecorderStatus() {
         s === "recording" ||
         s === "transcribing" ||
         s === "downloading-model" ||
-        s === "copied"
+        s === "copied" ||
+        s === "failed" ||
+        s === "reminder"
       ) {
         setRecState(s);
         if (s !== "recording") setAudioLevel(0);
@@ -118,10 +129,16 @@ export function useRecorder(
         "File watching stopped — restart Sideline to see external edits",
       ),
     );
+    // The mic vanished mid-recording and capture failed over to the
+    // system default — the recording keeps going on the named device.
+    const unMic = listen<string>("mic-switched", (e) =>
+      showToast(`Mic disconnected — recording continues on ${e.payload}`),
+    );
     return () => {
       unError.then((f) => f());
       unHotkey.then((f) => f());
       unWatcher.then((f) => f());
+      unMic.then((f) => f());
     };
   }, []);
 

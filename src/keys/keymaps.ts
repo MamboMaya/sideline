@@ -1,6 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { todoRowDisplay } from "../inbox";
 import { QUICK_TAGS } from "../lib/format";
+import { copyBody, listKey } from "../lib/listFormat";
 import { openInboxInVscode, openTriaged, openTodos } from "../lib/commands";
 import type {
   CommandKeymap,
@@ -190,10 +191,18 @@ export const inboxKeymap: Keymap = {
   }),
   // `c` copies in the Inbox too — same key as the Todos view's
   // copy-selected-row, here it's the note body.
+  // Copies what the card shows: the bullets while a note's list is on.
   c: withSelectedNote((ctx, idx) => {
-    writeText(ctx.notes[idx].body)
+    const { timestamp, body } = ctx.notes[idx];
+    writeText(copyBody(body, ctx.lists[listKey(timestamp, body)]))
       .then(() => ctx.showToast("Copied note"))
       .catch((err) => ctx.showToast(`Copy failed: ${String(err)}`));
+  }),
+  // `l` flips the selected note between its spoken-list bullets and the
+  // original text (formatting it first if it was never checked).
+  l: withSelectedNote((ctx, idx) => {
+    const { timestamp, body } = ctx.notes[idx];
+    ctx.toggleList(timestamp, body);
   }),
 };
 
@@ -269,6 +278,13 @@ export const todosKeymap: Keymap = {
     else openTodos(row.project);
   }),
   c: withCard((ctx, row) => ctx.copyRow(row)),
+  l: withCard((ctx, row) => {
+    if (row.kind === "todo") {
+      ctx.toggleList(row.entry.timestamp, row.entry.body);
+    } else {
+      ctx.toggleList(row.note.captured, row.note.body);
+    }
+  }),
   e: withCard((ctx, row, e) => {
     e.preventDefault();
     if (row.kind === "todo") {

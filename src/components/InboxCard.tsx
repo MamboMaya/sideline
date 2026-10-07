@@ -1,17 +1,28 @@
 import type { ReactNode } from "react";
 import { type Note, splitBodyImages } from "../inbox";
 import { tagChipClass, tagLabel } from "../lib/format";
+import { type ListEntry, displayBody } from "../lib/listFormat";
+import { ageDays, isStale } from "../lib/stale";
 import type { TagEditorHook } from "../hooks/useTagEditor";
 import { BodyImages } from "./BodyImages";
 import { TagEditor } from "./TagEditor";
 
 interface InboxCardProps {
   note: Note;
+  // This note's spoken-list sidecar entry (App.tsx looks it up by
+  // listKey) — when it says show, the body renders as bullets; see
+  // src/lib/listFormat.ts. Display only, the stored body never changes.
+  listEntry?: ListEntry;
   isSelected: boolean;
   isSending: boolean;
   isEditing: boolean;
   editArea: ReactNode;
   cardRef: (el: HTMLDivElement | null) => void;
+  // Current time and the configured stale-note threshold, threaded down
+  // from App.tsx (see src/lib/stale.ts) — used to show an age badge on
+  // notes that have sat in the inbox too long.
+  now: Date;
+  staleDays: number;
   // Card-level click: selects this card so the keyboard layer (`t`/`d`/`e`,
   // arrows) acts on whatever was just clicked, not whatever was selected
   // before. See the root `onClick` below for why click over mousedown.
@@ -39,11 +50,14 @@ interface InboxCardProps {
 // generalized.
 export function InboxCard({
   note,
+  listEntry,
   isSelected,
   isSending,
   isEditing,
   editArea,
   cardRef,
+  now,
+  staleDays,
   onSelect,
   onEdit,
   onTriage,
@@ -58,6 +72,7 @@ export function InboxCard({
   tagEditor,
 }: InboxCardProps) {
   const { text, images } = splitBodyImages(note.body);
+  const stale = isStale(note.timestamp, staleDays, now);
   return (
     <div
       className={
@@ -80,6 +95,14 @@ export function InboxCard({
       <div className="card-head">
         <span>{note.icon}</span>
         <span className="ts">{note.timestamp}</span>
+        {stale && (
+          <span
+            className="stale-badge"
+            title={`Captured ${ageDays(note.timestamp, now)} days ago — flag is ${staleDays}+ days`}
+          >
+            {ageDays(note.timestamp, now)}d
+          </span>
+        )}
         {isSending ? (
           <span className="sending-badge">✨ Triaging…</span>
         ) : (
@@ -115,7 +138,7 @@ export function InboxCard({
         editArea
       ) : (
         <>
-          {text && <div className="body">{text}</div>}
+          {text && <div className="body">{displayBody(text, listEntry)}</div>}
           <BodyImages images={images} />
         </>
       )}

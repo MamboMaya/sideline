@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { RecBars } from "./components/RecBars";
 import { useRecorderStatus } from "./hooks/useRecorder";
+import type { Reminder } from "./lib/commands";
 
 // Root of the recording-pill overlay window (mounted instead of App — see
 // main.tsx's `?window=overlay` branch). Deliberately tiny: no notes/config
-// loading, no IPC beyond the two recorder events (granted by
+// loading, no IPC beyond the recorder events (granted by
 // capabilities/overlay.json — without that grant listen() fails silently),
 // no keyboard handling — the native window is focusable:false, so it can
 // never become key or receive keystrokes. Rust shows/hides/positions the window
@@ -11,6 +14,24 @@ import { useRecorderStatus } from "./hooks/useRecorder";
 // this component only has to render the right thing for the current state.
 export default function Overlay() {
   const { recState, recMode, audioLevel, recElapsed } = useRecorderStatus();
+  // Last `capture-error` text, shown during the Failed notice. Rust emits
+  // the error before flipping to "failed", so it's already here by then.
+  const [error, setError] = useState("");
+  // Last fired reminder's text, shown during the Reminder notice. Rust
+  // emits `reminder-fired` (with the full Reminder) before flipping to
+  // "reminder", same ordering as capture-error/failed above.
+  const [reminderText, setReminderText] = useState("");
+
+  useEffect(() => {
+    const un = listen<string>("capture-error", (e) => setError(e.payload));
+    const unReminder = listen<Reminder>("reminder-fired", (e) =>
+      setReminderText(e.payload.text),
+    );
+    return () => {
+      un.then((f) => f());
+      unReminder.then((f) => f());
+    };
+  }, []);
 
   if (recState === "idle") return null;
 
@@ -39,12 +60,15 @@ export default function Overlay() {
           while they're still in flight — the terminal clipboard notice
           below answers it outright, so the badge steps aside there;
           capture/ask have no such terminal state, so their badge just
-          stays up throughout. */}
-      {recState !== "copied" && (
-        <span className="rec-mode-badge">
-          {dictating ? "Dictate" : asking ? "Ask" : "Capture"}
-        </span>
-      )}
+          stays up throughout. The Failed/Reminder notices drop it too, to
+          leave room for the error/reminder text. */}
+      {recState !== "copied" &&
+        recState !== "failed" &&
+        recState !== "reminder" && (
+          <span className="rec-mode-badge">
+            {dictating ? "Dictate" : asking ? "Ask" : "Capture"}
+          </span>
+        )}
       {recState === "recording" && (
         <>
           <span className="rec-dot" />
@@ -63,6 +87,16 @@ export default function Overlay() {
       )}
       {recState === "copied" && (
         <span className="rec-status">Copied — ⌘V to paste</span>
+      )}
+      {recState === "failed" && (
+        <span className="rec-status rec-status-failed" title={error}>
+          {error || "Recording failed"}
+        </span>
+      )}
+      {recState === "reminder" && (
+        <span className="rec-status rec-status-reminder" title={reminderText}>
+          ⏰ {reminderText}
+        </span>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import {
+  type ClassifierConfig,
   type DictionaryConfig,
   type DictionaryRow,
   type HotkeysConfig,
@@ -10,7 +11,13 @@ import {
   dictionaryFromRows,
   dictionaryRows,
 } from "../lib/config";
-import { applyHotkeys, listAudioDevices, listTerminals } from "../lib/commands";
+import {
+  applyHotkeys,
+  classifierHealth,
+  listAudioDevices,
+  listTerminals,
+} from "../lib/commands";
+import { validateClassifierUrl } from "../lib/classify";
 import {
   HOTKEY_MOD_SYMBOLS,
   comboFromKeyEvent,
@@ -30,6 +37,10 @@ export interface SettingsPaneProps {
   setOverlayHidden: (hidden: boolean) => void;
   pushToTalk: boolean;
   setPushToTalk: (enabled: boolean) => void;
+  cleanFillers: boolean;
+  setCleanFillersEnabled: (enabled: boolean) => void;
+  autoList: boolean;
+  setAutoListEnabled: (enabled: boolean) => void;
   dictionaryOverride: DictionaryConfig | undefined;
   setDictionary: (dict: DictionaryConfig | undefined) => void;
   // Claude
@@ -37,6 +48,12 @@ export interface SettingsPaneProps {
   setClaudeEnabled: (enabled: boolean) => void;
   modelsOverride: Partial<Models> | undefined;
   setModelOverride: (key: keyof Models, value: string) => void;
+  // Auto-classify: "off" leaves today's keyword-only auto-tagging alone —
+  // see src/lib/classify.ts.
+  classifier: ClassifierConfig;
+  classifierOverride: Partial<ClassifierConfig> | undefined;
+  setClassifierProvider: (provider: ClassifierConfig["provider"]) => void;
+  setClassifierUrl: (url: string) => void;
   // "Continue in" dropdown (Ask's `o` — see useAsk.ts's continueThread):
   // the app name `.sideline.json`'s `terminal` key holds, undefined = auto.
   terminalOverride: string | undefined;
@@ -55,6 +72,9 @@ export interface SettingsPaneProps {
   removeProject: (tag: string) => void;
   // "Choose folder…": native folder picker → AddProjectModal (App.tsx).
   onChooseFolder: () => void;
+  // Inbox
+  staleDays: number;
+  setStaleDays: (days: number) => void;
   // Zoom
   zoom: number;
   adjustZoom: (delta: number) => void;
@@ -549,12 +569,20 @@ export function SettingsPane({
   setOverlayHidden,
   pushToTalk,
   setPushToTalk,
+  cleanFillers,
+  setCleanFillersEnabled,
+  autoList,
+  setAutoListEnabled,
   dictionaryOverride,
   setDictionary,
   claude,
   setClaudeEnabled,
   modelsOverride,
   setModelOverride,
+  classifier,
+  classifierOverride,
+  setClassifierProvider,
+  setClassifierUrl,
   terminalOverride,
   setTerminal,
   prompts,
@@ -569,6 +597,8 @@ export function SettingsPane({
   addProject,
   removeProject,
   onChooseFolder,
+  staleDays,
+  setStaleDays,
   zoom,
   adjustZoom,
   updateConfig,
@@ -599,6 +629,58 @@ export function SettingsPane({
     triage: promptsOverride?.triage ?? "",
     batch: promptsOverride?.batch ?? "",
   });
+
+  // Inbox's stale-days input: same commit-on-blur/Enter shape as the prompt
+  // drafts above, kept as a string so the field can sit empty mid-edit
+  // without immediately committing 0. Blur/Enter with a non-negative
+  // integer commits it; anything else (empty, negative, non-numeric)
+  // reverts the draft back to the current value instead of writing 0.
+  const [staleDaysDraft, setStaleDaysDraft] = useState(String(staleDays));
+  const commitStaleDays = () => {
+    const parsed = Number(staleDaysDraft);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      setStaleDaysDraft(String(parsed));
+      setStaleDays(parsed);
+    } else {
+      setStaleDaysDraft(String(staleDays));
+    }
+  };
+
+  // Classifier URL: same commit-on-blur/Enter draft shape as promptDraft
+  // above, but validated on commit with validateClassifierUrl (the same
+  // loopback-only rule classifier.rs's validate_url enforces server-side) —
+  // an invalid URL toasts the reason and is not written to the file.
+  const [classifierUrlDraft, setClassifierUrlDraft] = useState(
+    classifierOverride?.url ?? classifier.url,
+  );
+  const [classifierUrlError, setClassifierUrlError] = useState<string | null>(
+    null,
+  );
+  const [classifierTesting, setClassifierTesting] = useState(false);
+
+  const commitClassifierUrl = () => {
+    const trimmed = classifierUrlDraft.trim();
+    const err = validateClassifierUrl(trimmed);
+    setClassifierUrlError(err);
+    if (err) return;
+    setClassifierUrl(trimmed);
+  };
+
+  const testClassifier = async () => {
+    const trimmed = classifierUrlDraft.trim();
+    const err = validateClassifierUrl(trimmed);
+    setClassifierUrlError(err);
+    if (err) return;
+    setClassifierTesting(true);
+    try {
+      await classifierHealth(trimmed);
+      showToast("Classifier reachable");
+    } catch (e) {
+      showToast(`Classifier unreachable: ${e}`);
+    } finally {
+      setClassifierTesting(false);
+    }
+  };
 
   // Writes `.sideline.json`'s `hotkeys` key AND syncs the live OS
   // registration in one commit — called on Enter/blur of any ONE of the
@@ -808,6 +890,36 @@ export function SettingsPane({
           transcribe. Off: press once to start, again to stop. The tray menu
           always toggles.
         </div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="clean-fillers-toggle">
+            Remove filler words (um, uh, repeats)
+          </label>
+          <Switch
+            id="clean-fillers-toggle"
+            checked={cleanFillers}
+            onChange={setCleanFillersEnabled}
+          />
+        </div>
+        <div className="settings-hint">
+          Strips hesitation words, discourse fillers, and stutter repeats from
+          in-app transcripts before they're handed off. Applies to the next
+          recording; the external Raycast capture script is unaffected.
+        </div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="auto-list-toggle">
+            Format spoken lists as bullets
+          </label>
+          <Switch
+            id="auto-list-toggle"
+            checked={autoList}
+            onChange={setAutoListEnabled}
+          />
+        </div>
+        <div className="settings-hint">
+          New long voice notes that are spoken lists show as bullets. Your words
+          are never changed or dropped — press l on a note to switch back to the
+          original. Numbered lists format instantly; looser ones use Claude.
+        </div>
       </section>
 
       {/* ── 3. Claude ──────────────────────────────────────────────── */}
@@ -893,6 +1005,60 @@ export function SettingsPane({
             />
           </div>
         ))}
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="classifier-provider">
+            Auto-classify new notes
+          </label>
+          <select
+            id="classifier-provider"
+            className="settings-input"
+            value={classifier.provider}
+            onChange={(e) =>
+              setClassifierProvider(
+                e.target.value as ClassifierConfig["provider"],
+              )
+            }
+          >
+            <option value="off">Off</option>
+            <option value="claude" disabled={!claude}>
+              {claude ? "Claude" : "Claude (off)"}
+            </option>
+            <option value="local">Local classifier</option>
+          </select>
+        </div>
+        {classifier.provider === "local" && (
+          <div className="settings-row">
+            <label className="settings-label" htmlFor="classifier-url">
+              Classifier URL
+            </label>
+            <input
+              id="classifier-url"
+              type="text"
+              className="settings-input"
+              value={classifierUrlDraft}
+              onChange={(e) => setClassifierUrlDraft(e.target.value)}
+              onBlur={commitClassifierUrl}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") e.currentTarget.blur();
+              }}
+            />
+            <button
+              type="button"
+              className="ghost"
+              onClick={testClassifier}
+              disabled={classifierTesting}
+            >
+              {classifierTesting ? "Testing…" : "Test"}
+            </button>
+          </div>
+        )}
+        {classifier.provider === "local" && classifierUrlError && (
+          <div className="settings-row">
+            <span className="settings-label" />
+            <span className="settings-error">{classifierUrlError}</span>
+          </div>
+        )}
         <div className="settings-hint">
           Model changes apply immediately. Prompts save when you click away from
           the field; blank restores the built-in default.
@@ -937,7 +1103,39 @@ export function SettingsPane({
         </div>
       </section>
 
-      {/* ── 5. Zoom ────────────────────────────────────────────────── */}
+      {/* ── 5. Inbox ───────────────────────────────────────────────── */}
+      <section className="settings-section">
+        <div className="settings-section-title">Inbox</div>
+        <div className="settings-row">
+          <label className="settings-label" htmlFor="stale-days">
+            Flag inbox notes N or more days old (0 = off)
+          </label>
+          <input
+            id="stale-days"
+            type="number"
+            min={0}
+            step={1}
+            className="settings-input settings-input-number"
+            value={staleDaysDraft}
+            onChange={(e) => setStaleDaysDraft(e.target.value)}
+            onBlur={commitStaleDays}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              } else {
+                blurOnEscape(e);
+              }
+            }}
+          />
+        </div>
+        <div className="settings-hint">
+          Notes captured at least this long ago get an amber age badge, and
+          count toward the header's stale total, as a nudge to triage them.
+        </div>
+      </section>
+
+      {/* ── 6. Zoom ────────────────────────────────────────────────── */}
       <section className="settings-section">
         <div className="settings-section-title">Zoom</div>
         <div className="settings-row">

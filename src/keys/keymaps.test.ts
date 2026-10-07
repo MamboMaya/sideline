@@ -9,7 +9,9 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
   writeText: vi.fn(() => Promise.resolve()),
 }));
 
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openInboxInVscode, openTriaged, openTodos } from "../lib/commands";
+import { findStarts, listKey } from "../lib/listFormat";
 import {
   askKeymap,
   commandKeymap,
@@ -84,6 +86,8 @@ function makeCtx(overrides: Partial<KeyContext> = {}): KeyContext {
     openTagEditor: vi.fn(),
     dismissTagInput: vi.fn(),
     openEdit: vi.fn(),
+    lists: {},
+    toggleList: vi.fn(),
     notes: [],
     filteredNotes: [],
     selected: 0,
@@ -176,6 +180,7 @@ describe("keymap tables", () => {
         "a",
         "c",
         "e",
+        "l",
         "o",
         "t",
         "x",
@@ -196,6 +201,7 @@ describe("keymap tables", () => {
         "d",
         "e",
         "i",
+        "l",
         "o",
         "x",
       ].sort(),
@@ -303,27 +309,24 @@ describe("dispatchKey — guards", () => {
 });
 
 describe("dispatchKey — Settings gate", () => {
-  it("suppresses every key except a non-field Escape while Settings is open", () => {
+  it("suppresses plain keys (letters, arrows, `?`) while Settings is open", () => {
     const ctx = makeCtx({ view: "todos", mergedFlat: [], settingsOpen: true });
     press("r", ctx);
     press("t", ctx);
     press("ArrowDown", ctx);
     press("?", ctx);
-    press("z", ctx, { metaKey: true });
     expect(ctx.toggleRecording).not.toHaveBeenCalled();
     expect(ctx.setShowShortcuts).not.toHaveBeenCalled();
     expect(ctx.setTodosSelected).not.toHaveBeenCalled();
-    expect(ctx.runUndo).not.toHaveBeenCalled();
     expect(ctx.closeSettings).not.toHaveBeenCalled();
   });
 
-  it("lets ⌘= / ⌘+ / ⌘− / ⌘0 zoom through the gate, even from a field, but not ⌘1/⌘2", () => {
+  it("lets ⌘= / ⌘+ / ⌘− / ⌘0 zoom through the gate, even from a field", () => {
     const ctx = makeCtx({ settingsOpen: true });
     const e = press("=", ctx, { metaKey: true, tagName: "INPUT" });
     press("+", ctx, { metaKey: true });
     press("-", ctx, { metaKey: true });
     press("0", ctx, { metaKey: true });
-    press("1", ctx, { metaKey: true });
     expect(e.preventDefault).toHaveBeenCalled();
     expect((ctx.adjustZoom as ReturnType<typeof vi.fn>).mock.calls).toEqual([
       [0.1],
@@ -331,8 +334,43 @@ describe("dispatchKey — Settings gate", () => {
       [-0.1],
       [0],
     ]);
-    expect(ctx.setView).not.toHaveBeenCalled();
     expect(ctx.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it("lets ⌘1/⌘2/⌘3 through the gate, closing Settings then switching view", () => {
+    for (const [key, view] of [
+      ["1", "inbox"],
+      ["2", "todos"],
+      ["3", "ask"],
+    ] as const) {
+      const ctx = makeCtx({ settingsOpen: true });
+      const e = press(key, ctx, { metaKey: true });
+      expect(e.preventDefault).toHaveBeenCalled();
+      expect(ctx.closeSettings).toHaveBeenCalledTimes(1);
+      expect(ctx.setView).toHaveBeenCalledWith(view);
+    }
+  });
+
+  it("⌘1/⌘2/⌘3 still switch view from inside a field while Settings is open", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    press("2", ctx, { metaKey: true, tagName: "INPUT" });
+    expect(ctx.closeSettings).toHaveBeenCalledTimes(1);
+    expect(ctx.setView).toHaveBeenCalledWith("todos");
+  });
+
+  it("lets ⌘Z undo through the gate outside a field", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    const e = press("z", ctx, { metaKey: true });
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(ctx.runUndo).toHaveBeenCalledTimes(1);
+    expect(ctx.closeSettings).not.toHaveBeenCalled();
+  });
+
+  it("does NOT let ⌘Z through the gate while a field has focus — native undo wins", () => {
+    const ctx = makeCtx({ settingsOpen: true });
+    const e = press("z", ctx, { metaKey: true, tagName: "INPUT" });
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(ctx.runUndo).not.toHaveBeenCalled();
   });
 
   it("closes Settings on Escape when focus is outside a field", () => {
@@ -604,6 +642,54 @@ describe("inbox keymap", () => {
     ]);
   });
 
+  it("`l` toggles the selected note's list by its timestamp and stored body", () => {
+    const ctx = inboxCtx({ selected: 0 });
+    press("l", ctx);
+    expect(ctx.toggleList).toHaveBeenCalledWith("2026-01-01 09:00", "c");
+
+    const second = inboxCtx({ selected: 2 });
+    press("l", second);
+    expect(second.toggleList).toHaveBeenCalledWith("2026-01-01 09:00", "a");
+  });
+
+  it("`l` does nothing when the list is empty", () => {
+    const ctx = makeCtx({ view: "inbox", notes, filteredNotes: [] });
+    press("l", ctx);
+    expect(ctx.toggleList).not.toHaveBeenCalled();
+  });
+
+  it("`c` copies the stored body, or the bullets while the note's list is shown", () => {
+    const body = "Buy milk today. Call the dentist tomorrow";
+    const n = note("raw", body);
+    const plain = makeCtx({ view: "inbox", notes: [n], filteredNotes: [n] });
+    press("c", plain);
+    expect(writeText).toHaveBeenLastCalledWith(body);
+
+    const starts = findStarts(body, [
+      "Buy milk",
+      "Call the dentist",
+    ]) as number[];
+    const listed = makeCtx({
+      view: "inbox",
+      notes: [n],
+      filteredNotes: [n],
+      lists: { [listKey(n.timestamp, body)]: { starts, show: true } },
+    });
+    press("c", listed);
+    expect(writeText).toHaveBeenLastCalledWith(
+      "- Buy milk today.\n- Call the dentist tomorrow",
+    );
+
+    const hidden = makeCtx({
+      view: "inbox",
+      notes: [n],
+      filteredNotes: [n],
+      lists: { [listKey(n.timestamp, body)]: { starts, show: false } },
+    });
+    press("c", hidden);
+    expect(writeText).toHaveBeenLastCalledWith(body);
+  });
+
   it("runs o/T without a selection, and T only with notes and no batch", () => {
     const ctx = makeCtx({ view: "inbox", notes, filteredNotes: [] });
     press("o", ctx);
@@ -684,9 +770,20 @@ describe("todos keymap", () => {
     expect(openTriaged).toHaveBeenCalledWith("n.md");
   });
 
+  it("`l` toggles the list of a todo row (its timestamp + stored body) and of a triaged row (captured + body)", () => {
+    const todo = todosCtx(1);
+    press("l", todo);
+    expect(todo.toggleList).toHaveBeenCalledWith("2026-01-01 09:00", "short");
+
+    const triaged = todosCtx(2);
+    press("l", triaged);
+    expect(triaged.toggleList).toHaveBeenCalledWith("2026-01-01 09:00", "body");
+  });
+
   it("makes every action key inert on a collapsed section's header row", () => {
     const ctx = todosCtx(0);
-    for (const key of ["d", "i", "x", "o", "c", "e", "a"]) press(key, ctx);
+    for (const key of ["d", "i", "x", "o", "c", "e", "a", "l"]) press(key, ctx);
+    expect(ctx.toggleList).not.toHaveBeenCalled();
     expect(ctx.toggleTodoEntry).not.toHaveBeenCalled();
     expect(ctx.toggleTriagedDone).not.toHaveBeenCalled();
     expect(ctx.deleteTodoEntry).not.toHaveBeenCalled();

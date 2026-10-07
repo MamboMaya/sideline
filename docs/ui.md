@@ -37,7 +37,8 @@ otherwise pushes the bottom of the popover off the clipped body at any zoom
 the same action as the ⌥⌘R global hotkey, but only while the popover has
 focus (and always a toggle, even in push-to-talk mode — see Settings below;
 only the ⌥⌘R/⌥⌘V global hotkeys themselves hold-to-record). While recording, a small pill HUD (🔴 elapsed m:ss + live level
-bars, then "Transcribing…"/"Downloading model…") floats bottom-center of
+bars — dB-scaled, so normal speech swings them and a dead mic stays
+flat — then "Transcribing…"/"Downloading model…") floats bottom-center of
 the monitor holding the cursor, 20% up the screen — mirroring the popover's
 20%-down spot — always on top, never focused, visible whether
 or not the popover is open — and disappears at idle; the popover header
@@ -54,7 +55,21 @@ dropping away and the pill showing "Copied
 dictation that went nowhere is visibly recoverable instead of silently
 gone. The popover header deliberately does NOT mirror that notice (the
 pill owns it), and pressing either record hotkey during the notice starts
-a fresh session immediately.
+a fresh session immediately. A session that fails in any mode (no speech
+detected, device lost, transcription error) likewise ends with the badge
+dropping away and the pill showing the error in red for ~3s before
+hiding, alongside the popover's toast — so a failed recording is never
+silent.
+
+STALE NOTES: an inbox note at least `.sideline.json`'s `staleDays` days old
+(default 3, 0 = off — see Settings) gets a small amber age badge next to its
+timestamp (`"4d"`, whole days since capture; see `src/lib/stale.ts`), a
+nudge to triage it. The header shows an amber "N stale" badge, next to the
+view tabs, counting every such note regardless of which view is active;
+clicking it jumps to the Inbox view (same as `⌘1`). Both recompute on every
+inbox reload and at least hourly, so a note that crosses the threshold while
+the popover sits open in the background still gets flagged without a
+reopen.
 
 ## Quick question
 
@@ -106,6 +121,181 @@ docs/data-model.md) — and is a no-op on a thread with no answer yet
 first, same convention as the header search input; a second `Esc` then
 hides the popover as usual.
 
+## Reminders
+
+Reminders auto-detected in note bodies — no explicit reminder feature, no
+new tag, nothing to trigger by hand. On every inbox reload, each not-yet-
+scanned note (same once-per-note-per-run tracking as auto-tagging, keyed by
+`note.raw` — see Tags above) is checked by `parseReminder`
+(`src/lib/reminders.ts`) for one of two shapes: the body says "remind me" or
+"reminder" AND names a time anywhere in it ("remind me to call my mom in 15
+minutes"), or the body simply STARTS with a relative time expression ("in
+15 minutes I've got to go — alert me then"), no trigger phrase needed — but
+only when that leading time is immediately followed by a comma or an
+obligation/intent clause ("I've got to", "I need to", "gotta", ...); a
+sentence that merely starts with a duration ("In 2 hours of debugging I
+found a bug") is not a reminder. Relative times: "in 15 minutes", "in an
+hour", "in half an hour", "in a minute", "in a couple minutes", digits or
+number words one through sixty ("forty-five minutes"). Absolute times: "at
+3pm", "at 3:30 pm", "at 15:00", "at noon" — rolled to tomorrow if that time
+already passed today; a bare "at 3" with no am/pm picks whichever of the two
+12h-apart candidates comes next, and only counts as a time at all when
+nothing else immediately follows it ("look at 2 bugs", "deploy at 5 failed",
+"at 2024", "at 50%" are not times). A hit registers with the backend (`add_reminder`, keyed by
+`reminderId` — the note's own timestamp, or timestamp+icon on the rare
+collision of two notes captured in the same minute) — this covers in-app
+voice notes, typed notes, and external Raycast captures alike, since all
+three land in inbox.md and the scan runs over whatever `read_inbox` just
+returned. A note whose detected time is already more than 12h in the past
+the first time it's seen is skipped, so an old note scanned for the first
+time never fires immediately looking wrong. Because the id is the note's
+own timestamp, editing a note that already has a reminder UPDATES that same
+reminder (backend upserts by id — see docs/backend.md) rather than
+registering a second one; if the edit removes whatever made it parse as a
+reminder, and it hasn't fired yet, the not-yet-fired reminder is dropped
+(`remove_reminder`). Deleting the note (`x`) cancels its reminder, pending
+or already fired — clearing any banner/pill it left up; undo re-registers
+it if the due time is still ahead. Triage does NOT cancel: the note lives
+on in notes/ or todos/, so its reminder stands. No new keyboard shortcut, no system notification, no
+sound — see CLAUDE.md's "no new macOS permission surfaces" convention; this
+feature adds none.
+
+Firing a reminder never steals focus or opens the popover. Instead, the
+always-on-top recording-pill overlay (the same non-focusable HUD the
+recorder uses — see Settings' "Show recording pill" switch below and
+docs/backend.md) shows "⏰ <text>" for about 8 seconds — the same
+non-focusable, non-stealing notice mechanism as the pill's Copied/Failed
+notices — and the tray title shows ⏰, both regardless of whether the
+popover is open. Once the popover IS opened (or
+already was), a fired-and-undismissed reminder also shows as a banner strip
+at the very top of the popover, above the header, visible from every view:
+"⏰ <text> · <time>" plus a "+10 min" snooze button and a Dismiss button
+(`ReminderBanner`, `src/hooks/useReminders.ts`). Not-yet-fired reminders
+show as a compact "⏰ N" hint in the header, its tooltip listing
+each one's text and due time. The banner and hint both load on mount
+(`list_reminders`) and refresh on the backend's `reminders-changed` event
+(emitted on every add/remove/dismiss/snooze, and by the background tick
+firing one), so the list never goes stale — including reminders registered
+by a plain inbox reload, with no fire involved. While the popover is
+closed, the tray title shows ⏰ for any fired-and-undismissed reminder —
+unless a recording/transcribing session is active, whose own title always
+takes priority; the ⏰ re-applies the moment the recorder returns to idle
+(see docs/backend.md).
+
+## List formatting
+
+A long voice note that is really a spoken list ("pick up milk, and grab
+some eggs, call the dentist, and also email Sam the slides") shows as
+bullets — a display layer only: the note's text on disk is NEVER modified.
+Two paths, both a once-per-session pass over inbox notes captured in the
+last 24 hours without screenshots (`useInbox.ts`'s `runListFormatter`,
+fire-and-forget from `reload()`, silent on errors — same shape as the
+classifier; skipped when `autoList` is off). (1) INSTANT RULES, no Claude, any
+note length, never counted against the 2-concurrent Claude limiter: an
+explicit numbered enumeration — "first, second, …" (≥2 markers), "number
+one, number two, …" (≥2) or bare "one, two, three, …" (≥3) — is split on
+its markers (`rulesStarts`). Markers must be a consecutive in-order chain
+starting at 1 from ONE family, each a whole word at the start of the text or
+a line or right after `.,;:!?` + whitespace, so "I have one idea and two
+questions" and "one two three four" never match; anything ambiguous (a
+repeated marker, two families at once) is skipped. The same
+`validateList` proof applies. The most explicit signal is the spoken keyword
+**"bullet"** (or "bullet point") before each item (`bulletStarts`, port of
+`bullet_list` in `listrules.rs`; works in notes and dictation): two or more
+of them make a list, the text before the first is the lead, and the keyword
+itself is dropped from the bullets (the validator may skip "bullet" and
+"point"). It was chosen because it never occurred in 170 scanned voice
+notes, so it can't split a note by accident; "bulletin" is not the keyword
+and a single "bullet" is not a list. Rule order: bullet keyword, then number
+markers, then lead-in lists, then natural glue. If there are no markers, the
+rules also recognize an UNNUMBERED list the speaker announces (`leadInStarts`, a port
+of `lead_in_list` in `src-tauri/src/listrules.rs`): the first sentence of the
+note must be a lead-in — "a few / some / several / a couple of / a bunch of
+things | ideas | tasks | points | …", a stated count ("three things…"),
+"to-do list", "here's what…" — and the items come from either line breaks
+in the text (typed or edited notes: "A few things for tomorrow.⏎Renew the
+car registration⏎book the flights⏎call mom back" gives a lead and one bullet
+per line; the first item may share the lead's line after its comma or
+colon) or a
+stated count ("Three things for tomorrow. Renew…. Book…. Call….": the
+sentences, only when there are exactly that many). With a stated count only a
+split yielding exactly that many items qualifies; without one, at least two
+lines. A lead-in alone ("a few thoughts on the design: it's too blue")
+is never a list. MIXED SIGNALS (`signalStarts`, the union rule — port of `signal_list` in
+`listrules.rs`): after a lead-in first sentence, ANY mix of item signals
+starts an item — the "bullet" keyword, a counting word followed by a comma
+or colon at a clause start ("One, …", "first: …", "and number two, …"; a
+"number N" label also counts after a bare "and": "call mom back and number
+three, walk the dog"), and
+the speaker's own glue: a sentence opening with "Also", "And also", "And then
+also", "Another thing", "One more thing", "On top of that" or "Plus," (comma
+required), or a mid-sentence "and also" / "and then also". So "A few things
+for tomorrow. One, let's find a new cat and also find a new insurance
+provider. Bullet, take out the garbage." gives the lead and three bullets
+("Let's find a new cat", "Find a new insurance provider.", "Take out the
+garbage."). The text after the lead clause is item 1; bare "and then" and
+plain sentence boundaries never cut, so one item can span several sentences.
+A cut at glue starts at the glue phrase: "also" / "and also" / "and then
+also" are stripped as connectors, while "Another thing…" etc. stay as
+spoken. At least two items are needed ("Some things never change. Also the
+sky is blue." is one item → plain text), a stated count ("Three things…")
+must equal the item count, and no lead-in means no list. NOTES
+need no explicit signal — glue alone splits after a lead-in. DICTATION
+(`require_explicit`) needs at least one "bullet" or counting word, because
+pasted text can't be switched back the way a card can and connectors alone
+must never split a paste. (2) CLAUDE, for looser lists the rules didn't catch, when
+the note passes `needsListCheck` (same length rule as headers) — or is a
+short note whose first sentence is a lead-in (`hasLeadIn`) — and `claude` is
+on: Claude (`models.triage`) is asked only WHERE
+each item starts: one line per item, the first few words copied
+verbatim (a first reply line ending in ":" is treated as preamble and
+dropped). Detection runs on `listText(body)` — the text the cards show — so
+stored offsets index the same string everywhere. Sideline then builds the
+bullets from the user's own words (`src/lib/listFormat.ts`): the text before
+the first item becomes a lead line, and spoken glue is trimmed off each
+item. A phrase is located only at a word boundary (never inside "2.5" or
+"plus-one"), must be at least 2 words, and must match exactly once in the
+remaining text — anything doubtful means plain text. Glue trimming is
+conservative so it never eats content: a leading "and then also" / "and" /
+"also" / "then" is dropped only as a whole word followed by space, comma or
+the end ("And-or" stays); a trailing connector run is dropped only if it
+contains "and" or follows a comma ("…the icon and then" → "…the icon", but
+"finish the slides by then" keeps "then"; `plus` is never glue). Spoken
+ordinals (first, second, third, … next, lastly, finally) and counting
+markers (one–ten, "number two") left at the end of the previous item or the
+lead are handled too: a trailing one right after punctuation ("…before
+Friday. Second", "…for tomorrow, one") is dropped — a period is kept, a
+comma removed — and a leading ordinal only with a comma/colon ("First,
+renew…"; "First thing tomorrow, call mom" stays). `validateList` proves nothing was lost or
+reworded — every word of the bullets must be the next word of the original,
+an original word may be skipped only if it is a connector (and/then/also),
+an ordinal or a counting marker (one–ten, "number"), and every bullet must contain a word. Any failure (NONE, a
+phrase that isn't found or is ambiguous, a failed proof) shows the note as
+plain text. The result is stored in `~/notes/.sideline-lists.json` (see
+docs/data-model.md); a note recorded as "not a list" is never sent again.
+
+`l` toggles the selected note between list and original, in the Inbox and
+on any Todos row (todo or triaged), remembered per note, with an undo toast
+("Showing list" / "Showing original"). A note already checked and found not
+to be a list is checked AGAIN (pressing `l` is an explicit request); so is a
+note with no entry yet (older than 24h, short, triaged, a todo) — it is
+formatted on the spot: the instant rules first ("Showing list" immediately,
+no Claude needed), otherwise "Formatting…" and Claude, then "Showing list"
+or "No list found in this note". With `claude` off and no rules hit the
+toast is "List formatting needs Claude (Settings → Claude)". The automatic pass writes its result only if the note
+still has no entry (`if_absent`), so a slow auto check can't overwrite what
+an `l` press stored first. Cards (inbox, triaged, todo) render `displayBody`; copy follows
+the view: `c` in the Inbox, `c` in Todos (`copyRow`) and the per-project ⧉
+bundle (`copyProjectTodos`) all copy the bullets while a note's list is
+shown, the stored text otherwise. The entry is keyed by timestamp + a hash
+of the stored body, which survives triage (the body is copied verbatim);
+editing a note's text gives it a new key, so an old entry just stops
+matching. Settings → Voice has a **Format spoken lists as bullets** switch
+for `autoList` (default on) — it controls the automatic pass and
+dictation's numbered-list paste (an explicitly enumerated dictation pastes
+as `1.`/`2.` lines — rules only, see docs/backend.md); `l` always works. Rule-based formatting needs no Claude; only the Claude path
+needs `claude` on.
+
 ## Settings
 
 The header's ⚙ button (`src/components/Header.tsx`) or `⌘,` (the standard
@@ -121,10 +311,15 @@ Settings is open, none of the app's list/card keymap
 actions fire — `src/keys/useKeyboard.ts`'s `dispatchKey` gates on
 `ctx.settingsOpen` before anything else runs, so a stray `t`/`d`/arrow key
 landing on a focused dropdown or button inside the pane can never triage,
-delete, or navigate the list underneath. The one ⌘ binding that still
-fires through the gate is zoom (`⌘+`/`⌘−`/`⌘0`): the pane's own Zoom
-section sits at the very bottom, and a too-large zoom is exactly when the
-shortcut is needed to reach it. One consolidated surface over every
+delete, or navigate the list underneath. A handful of `⌘` bindings still
+fire through the gate: zoom (`⌘+`/`⌘−`/`⌘0`, from anywhere including a
+focused field) — the pane's own Zoom section sits at the very bottom, and a
+too-large zoom is exactly when the shortcut is needed to reach it; `⌘1`/
+`⌘2`/`⌘3` (view switch, also from a focused field) — these close Settings
+and then switch view, so the shortcut both dismisses the pane and takes you
+where you asked; and `⌘Z` (undo), except with focus inside an input/
+textarea, where native text undo wins instead, same exception it has
+everywhere else. One consolidated surface over every
 key `.sideline.json` knows about (see docs/data-model.md); no new keys, no
 format change.
 
@@ -132,11 +327,11 @@ SAVE MODEL: there is no Save button. Every control writes the full config
 file on change/commit — same read-modify-write path pinned-tag toggles and
 every other existing config write already use (`useConfig`'s `updateConfig`
 in `src/hooks/useConfig.ts`, feeding `writeConfig`). A pane write always
-round-trips the 9 opaque overrides (`prompts`, `models`, `projects`,
-`claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`) it
-isn't touching, so a key the pane doesn't render — or an unknown key
-hand-edited into one it does — survives untouched. Five sections, one
-scrollable pane:
+round-trips the 13 opaque overrides (`prompts`, `models`, `projects`,
+`claude`, `audio`, `hotkeys`, `overlay`, `pushToTalk`, `dictionary`,
+`terminal`, `staleDays`, `cleanFillers`, `autoList`, `classifier`) it isn't touching, so
+a key the pane doesn't render — or an unknown key hand-edited into one it
+does — survives untouched. Six sections, one scrollable pane:
 
 1. **Hotkeys** — press-to-record capture fields for `hotkeys.toggle`/
    `record`/`dictate`/`ask` (`HotkeyCaptureField` in
@@ -209,7 +404,18 @@ scrollable pane:
    record/dictate items always toggle either way. lib.rs's global-shortcut
    handler reads the key fresh on every keypress, so toggling it takes
    effect on the very next press, no restart (see
-   docs/data-model.md, docs/backend.md).
+   docs/data-model.md, docs/backend.md). Below that, a **Remove filler
+   words (um, uh, repeats)** on/off switch for `cleanFillers` (On is
+   default): On strips hesitation words, discourse fillers ("you know", "I
+   mean", "like", ...), and stutter repeats from in-app voice transcripts,
+   purely rule-based, no added latency (see `src-tauri/src/cleanup.rs`); Off
+   leaves the raw (dictionary-corrected) transcript untouched.
+   audio.rs reads the key fresh on every recording, so toggling it applies
+   to the next recording, no restart; `capture/voice-note.sh` (external
+   Raycast capture) is unaffected either way (see
+   docs/data-model.md, docs/backend.md). Below that, a **Format spoken lists
+   as bullets** on/off switch for `autoList` (On is default): see List
+   formatting above — frontend-only, nothing Rust-side reads the key.
 3. **Claude** — an on/off switch for `claude` (default on; off is
    no-Claude mode, see the Triage section below), plus dropdowns for `models.triage`/`models.batch`/`models.ask`
    ("Question model" — see the Quick question section above; default
@@ -229,6 +435,15 @@ scrollable pane:
    in a model dropdown — removes that key from the override entirely so
    the built-in default applies again — the one write path in the app that
    can put a key back to "unset" rather than just changing its value.
+   Below the prompts, an **Auto-classify new notes** dropdown for
+   `classifier.provider` (Off/Claude/Local classifier; default Off — see
+   the Tags section's Classifier paragraph below for what each does).
+   Choosing "Local classifier" reveals a `classifier.url` text field
+   (default `http://127.0.0.1:4410`, committed on blur/Enter after the same
+   loopback-only http/https validation the Rust side enforces — an invalid
+   URL shows an inline error and is not written) and a **Test** button that
+   calls `classifier_health` (`GET <url>/healthz`) and toasts reachable/
+   unreachable.
 4. **Tags** — three chip lists, each with a trailing add-input: pinned tags
    (max 6, same `togglePin` used everywhere a pinned-tag chip is clicked),
    hidden tags (excluded from autocomplete — adding here is `hideTag`,
@@ -263,7 +478,15 @@ scrollable pane:
    on the Settings pane with the panel open (`project-picked` event), so
    the new chip is visible once added. Esc closes the panel (its own
    handler, before the app's Esc layering).
-5. **Zoom** — the current `zoom` value as a percentage, with −/+ steppers
+5. **Inbox** — a number input for `staleDays` ("Flag inbox notes N or more
+   days old (0 = off)"; default 3), the threshold behind the age badge
+   on inbox cards and the header's "N stale" count (see Views &
+   navigation above and `src/lib/stale.ts`). Clamped to a non-negative
+   integer client-side; writing the default value removes the key from
+   the override (same omit-at-default convention as the Claude switch
+   above), writing `0` writes it explicitly since `0` (feature off) is
+   not the default.
+6. **Zoom** — the current `zoom` value as a percentage, with −/+ steppers
    and a Reset button (all three just call the existing `adjustZoom`, so
    they toast and clamp exactly like ⌘+/⌘−/⌘0 do) plus a hint pointing at
    those same shortcuts, since they already own this and the pane doesn't
@@ -301,6 +524,37 @@ note per app run (tracked by `note.raw` in a `useRef` Set) — and a tag the
 user manually removes is remembered (`removedTagsRef`, keyed timestamp::tag)
 so the auto-tagger never re-adds it that session, even though removal changes
 `note.raw`.
+
+**Classifier** — when `classifier.provider` isn't `off` (Settings → Claude,
+see above), a second pass runs after the keyword auto-tagger, once per note
+timestamp per app run (`classifiedRef`, its own `useRef` Set — keyed by
+`note.timestamp`, not `note.raw`, so an edit or the classifier's own write
+never re-triggers it), for notes captured within the last 24 hours that are
+still missing a type tag (bug/todo/idea) and/or a project tag (the project
+question, and the "missing a project tag" eligibility check, are both
+skipped entirely when no projects are configured). `"claude"` sends one
+`send_to_claude` call per note (`models.triage`; a no-op if `claude` is
+off); `"local"` POSTs to `classifier.url`'s `/decide` (`classify_local`,
+docs/backend.md). Either provider's answer is only accepted if it's an
+exact (case-insensitive) match for one of the offered choices — for
+`"local"`, additionally at or above a 0.6 confidence; the claude provider
+has no confidence score, so any matching non-"none" answer is accepted.
+A matched tag is only added if the note doesn't already carry one of that
+kind, it isn't in `hiddenTags`, and the user hasn't removed ANY tag of that
+kind (type or project) from the note this session — removing one type tag
+blocks every future type addition to that note, and likewise for project
+tags (same `removedTagsRef` as the keyword auto-tagger, checked per
+category rather than per exact tag). Every eligible note is classified with
+at most 2 requests in flight at once (one limiter shared across every
+reload, not 2 per reload), and each note's tag is written back on its own
+as soon as its answer arrives, not batched until the whole pass finishes;
+never blocks the initial notes render. Fails quietly: a local classifier
+that's unreachable or errors shows one toast ("Classifier unreachable —
+using keyword tags only") for the whole app run, then keeps trying every
+new eligible note silently; a claude-provider error is always silent
+(already covered by Claude's existing triage-failure handling elsewhere).
+See `src/lib/classify.ts` for the pure decision logic and `src/hooks/
+useInbox.ts`'s `runClassifier` for the orchestration.
 
 `a` opens the tag editor in BOTH views (Todos: on the selected row of either
 kind; chips on Todos cards are click-to-remove) — the shared autocomplete
@@ -428,8 +682,10 @@ the Inbox (`open_inbox_in_vscode`; Finder-reveal lives in the tray menu),
 the selected row's file in Todos
 (`open_triaged` / `open_todos` for a todo row's project file); `c` copies the
 SELECTED row in both views (inbox note body; todo entry; triaged note
-body+reply); the per-section `⧉` button copies a whole project's pending
-entries. Per-card ghost buttons mirror `d`/`x` for mouse use; the triaged
+body+reply — the bullets instead of the text while a note's list is shown,
+see List formatting); the per-section `⧉` button copies a whole project's
+pending entries. `l` flips a note between its spoken-list bullets and the
+original text, in the Inbox and on todo/triaged rows alike. Per-card ghost buttons mirror `d`/`x` for mouse use; the triaged
 card additionally still expands on click. Cards also grow a hover-only ✎
 button mirroring `e`.
 

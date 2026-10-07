@@ -3,6 +3,7 @@ import type { Note, TriagedNote } from "../inbox";
 import type { AskThread } from "../hooks/useAsk";
 import type { EditTarget } from "../hooks/useEditRow";
 import type { MergedRow } from "../hooks/useTodosData";
+import type { ListEntry } from "../lib/listFormat";
 
 // The slice of a keyboard event a handler may touch. BOTH event flavors
 // satisfy it — the window listener's native `KeyboardEvent` and the search
@@ -127,6 +128,14 @@ export interface KeyContext {
   // value or suggestion index — matching useTagEditor's raw `setTagInputOpen`
   // setter rather than its `close()`.
   dismissTagInput: () => void;
+
+  // ── Spoken-list display (`l`, both views; copy follows the view) ─────
+  // The sidecar entries (see src/lib/listFormat.ts), read by Inbox `c` so a
+  // copy matches what the card shows.
+  lists: Record<string, ListEntry>;
+  // Flips the note with this timestamp + stored body between list and
+  // original — or formats it first when it has no entry (useLists.ts).
+  toggleList: (timestamp: string, body: string) => void;
 
   // ── Edit in place (`e`, all three row kinds) ─────────────────────────
   openEdit: (edit: EditTarget, body: string) => void;

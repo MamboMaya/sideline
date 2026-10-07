@@ -16,18 +16,23 @@ import type { DispatchableKeyEvent, KeyContext } from "./types";
 //      pane is open, none of the app's own keymap actions may fire (it has
 //      real controls — dropdowns, toggles, chip buttons — that aren't all
 //      INPUT/TEXTAREA, so the in-field guard in step 2 alone wouldn't catch
-//      a stray `t`/`d`/arrow landing on, say, a focused <select>). TWO
-//      things still get through this layer: Escape closes Settings, unless
-//      focus is inside an INPUT/TEXTAREA (where the field's own onKeyDown
-//      blurs first — a second Escape then lands here with a non-field
-//      target); and ⌘, (see commandKeymap) closes it regardless of focus,
-//      mirroring the ⌘ layer's firesInFields:true for the SAME key's
-//      closed→open direction below. Every other key is left completely
-//      alone (no preventDefault), so native input/select/button behavior
-//      inside the pane is unaffected. While `ctx.hotkeyCapturing` is true
-//      (a hotkey field is mid-capture), this layer does nothing at all —
-//      not even Escape/⌘, — since the field itself owns Escape-cancels and
-//      Delete-clears for that keystroke.
+//      a stray `t`/`d`/arrow landing on, say, a focused <select>). A
+//      HANDFUL of things still get through this layer: Escape closes
+//      Settings, unless focus is inside an INPUT/TEXTAREA (where the
+//      field's own onKeyDown blurs first — a second Escape then lands here
+//      with a non-field target); ⌘, (see commandKeymap) closes it
+//      regardless of focus, mirroring the ⌘ layer's firesInFields:true for
+//      the SAME key's closed→open direction below; ⌘=/⌘−/⌘0 zoom, also
+//      regardless of focus (see the ZOOM_KEYS comment below); ⌘1/⌘2/⌘3
+//      close Settings and THEN switch view, so the shortcut both dismisses
+//      the pane and lands you where you asked to go; and ⌘Z runs undo,
+//      except with focus inside an INPUT/TEXTAREA, where native text undo
+//      must win instead (same exception the ⌘ layer applies below). Every
+//      other key is left completely alone (no preventDefault), so native
+//      input/select/button behavior inside the pane is unaffected. While
+//      `ctx.hotkeyCapturing` is true (a hotkey field is mid-capture), this
+//      layer does nothing at all — not even Escape/⌘, — since the field
+//      itself owns Escape-cancels and Delete-clears for that keystroke.
 //   1. ⌘ layer — BEFORE the in-field guard, so ⌘1/⌘2/⌘3, ⌘=/⌘−/⌘0 and ⌘Z
 //      work with the search input (or the Ask input) focused (⌘Z excepted:
 //      it yields to the field's native text undo). ⌘S is Ask-only — see
@@ -41,8 +46,12 @@ import type { DispatchableKeyEvent, KeyContext } from "./types";
 //      modifier here: `?` and `T` are shifted keys.
 //   3. Global keys first, then the active view's map.
 // ⌘= / ⌘+ / ⌘− / ⌘0 — the commandKeymap entries dispatchKey lets through
-// its Settings gate (see the settingsOpen branch below).
+// its Settings gate (see the settingsOpen branch below). ⌘1/⌘2/⌘3 and ⌘Z
+// get through the same gate too, but each needs its own branch (view switch
+// closes Settings first; undo yields to a focused field) rather than a
+// shared Set.
 const ZOOM_KEYS = new Set(["=", "+", "-", "0"]);
+const VIEW_KEYS = new Set(["1", "2", "3"]);
 
 export function dispatchKey(e: DispatchableKeyEvent, ctx: KeyContext): void {
   const target = e.target as HTMLElement | null;
@@ -63,14 +72,38 @@ export function dispatchKey(e: DispatchableKeyEvent, ctx: KeyContext): void {
       ctx.closeSettings();
       return;
     }
-    // Zoom is the one ⌘ binding that still fires inside Settings — the
-    // pane's own Zoom section is at the very bottom, and a too-large zoom
-    // is exactly when you most need the shortcut to reach it. Everything
-    // else in commandKeymap (view switch, undo) stays gated.
+    // Zoom fires inside Settings regardless of focus — the pane's own Zoom
+    // section is at the very bottom, and a too-large zoom is exactly when
+    // you most need the shortcut to reach it.
     if (e.metaKey && !e.ctrlKey && !e.altKey && ZOOM_KEYS.has(e.key)) {
       e.preventDefault();
       commandKeymap[e.key]?.run(ctx, e);
+      return;
     }
+    // ⌘1/⌘2/⌘3 close Settings, then switch view — the bug this fixes was
+    // that Settings being open silently ate the view-switch shortcut too.
+    if (e.metaKey && !e.ctrlKey && !e.altKey && VIEW_KEYS.has(e.key)) {
+      e.preventDefault();
+      ctx.closeSettings();
+      commandKeymap[e.key]?.run(ctx, e);
+      return;
+    }
+    // ⌘Z — same exception as the ⌘ layer below: a focused field's native
+    // text undo wins over the app's undo.
+    if (
+      e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      e.key.toLowerCase() === "z" &&
+      !inField
+    ) {
+      e.preventDefault();
+      commandKeymap.z?.run(ctx, e);
+      return;
+    }
+    // Every other key — plain letters (j/k/t/x/…) included — is left
+    // completely alone while Settings is open, so native input/select/
+    // button behavior inside the pane is unaffected.
     return;
   }
 

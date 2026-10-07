@@ -54,6 +54,8 @@ body.overlay {
    OVERLAY_WIDTH fallback). */
 .overlay-pill {
   height: 34px;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -114,6 +116,28 @@ header {
 .header-spacer {
   flex: 1;
   min-width: 0;
+}
+/* "N stale" badge — visible from any view (unlike the todos-only show-done
+   button above), so it lives right after the tabs rather than inside the
+   .ghost cluster on the right. Outline style, same shape as InboxCard's
+   .stale-badge, just clickable. */
+.stale-count {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.stale-count:hover {
+  background: var(--accent);
+  color: var(--bg);
 }
 .tab {
   background: none;
@@ -213,6 +237,25 @@ header .ghost.gear {
   color: var(--accent);
   font-style: italic;
 }
+/* The pill's Failed notice: error text in red, ellipsized if it outgrows
+   the fixed-width overlay window. The right padding keeps overflow:hidden
+   from shaving the italic overhang off the last glyph. */
+.rec-status-failed {
+  color: var(--danger);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2px;
+}
+/* The pill's Reminder notice: same ellipsis handling as Failed, but stays
+   the normal/accent color (inherited from .rec-status) rather than danger —
+   a fired reminder isn't an error. */
+.rec-status-reminder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2px;
+}
 /* flex: 1 keeps the toast bar pinned to the window bottom even when the
    card list is short. */
 .cards {
@@ -269,6 +312,18 @@ header .ghost.gear {
   font-weight: 600;
   font-size: 11px;
   padding: 2px 8px;
+  border-radius: 10px;
+}
+/* Age badge on stale inbox cards (InboxCard) — outline rather than filled
+   like .sending-badge, so it reads as a quiet flag, not an active status. */
+.stale-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 10px;
+  padding: 1px 6px;
   border-radius: 10px;
 }
 .body {
@@ -825,6 +880,13 @@ header .ghost.gear {
 .settings-input.error {
   border-color: var(--danger);
 }
+/* Stale-days number field (SettingsPane's Inbox section) — narrow instead
+   of the default flex:1, since a 1-2 digit day count doesn't need the
+   full row width the popover otherwise reserves for text/path inputs. */
+.settings-input-number {
+  flex: none;
+  width: 50px;
+}
 /* Press-to-record hotkey fields (SettingsPane.tsx's HotkeyCaptureField) are
    <button>s, not text inputs — reset the button chrome .settings-input
    doesn't already cover, then layer on the idle-placeholder and
@@ -1107,6 +1169,59 @@ header .ghost.gear {
 }
 .toast-dismiss {
   font-size: 13px;
+}
+
+/* Reminder banner: same "strip under/over the header" look as .toast, but
+   stacked (one .reminder-row per fired-and-undismissed reminder) and at
+   the TOP of the popover — visible from every view, unlike .toast which
+   is scoped to the action that triggered it. */
+.reminder-banner {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-bottom: 2px solid var(--accent);
+}
+.reminder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+.reminder-row + .reminder-row {
+  border-top: 1px solid var(--border);
+}
+.reminder-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reminder-snooze {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.reminder-snooze:hover {
+  text-decoration: underline;
+}
+.reminder-dismiss {
+  font-size: 13px;
+}
+
+/* Header's compact "⏰ N" hint — a not-yet-fired reminder count, title
+   tooltip lists them (see Header.tsx). Kept plain-text (no chip
+   background) so it doesn't compete with the rec indicator in the same
+   narrow strip, and kept to "⏰ N" (no "upcoming" word): next to the
+   stale badge a longer label squeezed the tabs to ellipses at 380px. */
+.reminder-hint {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
 }
 
 /* "Add project" panel (AddProjectModal): a strip under the header like

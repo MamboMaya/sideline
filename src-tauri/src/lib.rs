@@ -5,11 +5,16 @@ use tauri_plugin_global_shortcut::ShortcutState;
 mod archive;
 mod audio;
 mod autostart;
+mod classifier;
 mod claude;
+mod cleanup;
 mod commands;
 mod dictate;
 mod hotkeys;
+mod listrules;
+mod lists;
 mod paths;
+mod reminders;
 mod tray;
 mod watcher;
 mod whisper;
@@ -125,8 +130,8 @@ pub fn run() {
                         return;
                     }
 
-                    // Push-to-talk: a Pressed on an idle (or Copied-notice)
-                    // recorder starts a session and remembers THIS shortcut
+                    // Push-to-talk: a Pressed on an idle (or Copied/Failed/
+                    // Reminder-notice) recorder starts a session and remembers THIS shortcut
                     // as the one holding it open. A Pressed while a session
                     // is already running — started from the tray, or
                     // started in toggle mode before the setting flipped —
@@ -146,7 +151,7 @@ pub fn run() {
                         ShortcutState::Pressed => {
                             let can_start = matches!(
                                 audio::get_recording_state(app.clone()).as_str(),
-                                "idle" | "copied"
+                                "idle" | "copied" | "failed" | "reminder"
                             );
                             if can_start {
                                 *handler_held.lock().unwrap() = Some(held_variant);
@@ -200,7 +205,16 @@ pub fn run() {
             commands::projects::setup_project_repo,
             commands::assets::paste_clipboard_image,
             commands::assets::read_asset,
-            commands::assets::open_asset
+            commands::assets::open_asset,
+            reminders::add_reminder,
+            reminders::remove_reminder,
+            reminders::list_reminders,
+            reminders::dismiss_reminder,
+            reminders::snooze_reminder,
+            classifier::classify_local,
+            classifier::classifier_health,
+            lists::read_lists,
+            lists::set_list_entry
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,
@@ -240,6 +254,7 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             window::hide_on_focus_loss(app.handle());
             watcher::spawn_inbox_watcher(app.handle().clone());
+            reminders::spawn_ticker(app.handle().clone());
 
             // Menu-bar app: no Dock icon.
             #[cfg(target_os = "macos")]

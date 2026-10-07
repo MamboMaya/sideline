@@ -1,6 +1,8 @@
 import type { KeyboardEvent } from "react";
 import type { useRecorder } from "../hooks/useRecorder";
 import type { useSearch } from "../hooks/useSearch";
+import type { Reminder } from "../lib/commands";
+import { formatReminderTime } from "../lib/format";
 import { RecBars } from "./RecBars";
 
 interface HeaderProps {
@@ -8,6 +10,10 @@ interface HeaderProps {
   onChangeView: (view: "inbox" | "todos" | "ask") => void;
   notesCount: number;
   todosPending: number;
+  // Inbox notes older than the configured staleDays threshold (see
+  // src/lib/stale.ts) — shown as an amber "N stale" badge, visible from
+  // any view, unlike the todos-only "Show done" button below. 0 hides it.
+  staleCount: number;
   // Threads still awaiting an answer — shown on the Ask tab as "Ask (N…)"
   // so a question asked from another view doesn't go unnoticed.
   askPending: number;
@@ -17,6 +23,10 @@ interface HeaderProps {
   recState: ReturnType<typeof useRecorder>["recState"];
   audioLevel: number;
   recElapsed: number;
+  // Not-yet-fired reminders — a compact "⏰ N" hint, title tooltip
+  // listing them (see useReminders.ts). Fired ones show in ReminderBanner
+  // instead, above this header.
+  upcomingReminders: Reminder[];
   showDone: boolean;
   onToggleShowDone: () => void;
   searchOpen: boolean;
@@ -43,10 +53,12 @@ export function Header({
   onChangeView,
   notesCount,
   todosPending,
+  staleCount,
   askPending,
   recState,
   audioLevel,
   recElapsed,
+  upcomingReminders,
   showDone,
   onToggleShowDone,
   searchOpen,
@@ -88,29 +100,54 @@ export function Header({
           {askPending > 0 ? `Ask (${askPending}…)` : "Ask"}
         </button>
       </div>
-      <div className="header-spacer" />
-      {/* "copied" is dictation's terminal pill notice — idle as far as the
-          popover is concerned (the pill overlay owns that message). */}
-      {recState !== "idle" && recState !== "copied" && (
-        <div className="rec-indicator" title="Voice note recording (r)">
-          {recState === "recording" && (
-            <>
-              <span className="rec-dot" />
-              <span className="rec-elapsed">
-                {Math.floor(recElapsed / 60)}:
-                {String(recElapsed % 60).padStart(2, "0")}
-              </span>
-              <RecBars audioLevel={audioLevel} />
-            </>
-          )}
-          {recState === "transcribing" && (
-            <span className="rec-status">transcribing…</span>
-          )}
-          {recState === "downloading-model" && (
-            <span className="rec-status">downloading model…</span>
-          )}
-        </div>
+      {staleCount > 0 && (
+        <button
+          type="button"
+          className="stale-count"
+          title={`${staleCount} inbox note${staleCount === 1 ? "" : "s"} past the stale threshold — click to triage`}
+          onClick={() => onChangeView("inbox")}
+        >
+          {staleCount} stale
+        </button>
       )}
+      {upcomingReminders.length > 0 && (
+        <span
+          className="reminder-hint"
+          title={upcomingReminders
+            .map((r) => `${r.text} · ${formatReminderTime(r.due_ms)}`)
+            .join("\n")}
+        >
+          ⏰ {upcomingReminders.length}
+        </span>
+      )}
+      <div className="header-spacer" />
+      {/* "copied"/"failed"/"reminder" are the pill's terminal notices — idle
+          as far as the popover is concerned (the pill overlay owns those
+          messages; a failure also reaches the popover as a toast, and a
+          fired reminder reaches it via the banner once opened). */}
+      {recState !== "idle" &&
+        recState !== "copied" &&
+        recState !== "failed" &&
+        recState !== "reminder" && (
+          <div className="rec-indicator" title="Voice note recording (r)">
+            {recState === "recording" && (
+              <>
+                <span className="rec-dot" />
+                <span className="rec-elapsed">
+                  {Math.floor(recElapsed / 60)}:
+                  {String(recElapsed % 60).padStart(2, "0")}
+                </span>
+                <RecBars audioLevel={audioLevel} />
+              </>
+            )}
+            {recState === "transcribing" && (
+              <span className="rec-status">transcribing…</span>
+            )}
+            {recState === "downloading-model" && (
+              <span className="rec-status">downloading model…</span>
+            )}
+          </div>
+        )}
       {view === "todos" && (
         <button
           type="button"
