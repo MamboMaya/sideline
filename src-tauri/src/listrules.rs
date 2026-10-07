@@ -33,7 +33,8 @@ struct Marker {
 /// Finds an in-order chain of markers 1, 2, 3 … where step n accepts any
 /// alternative in `family[n]`. A marker counts only as a whole word at the
 /// start of the text or a line, or right after `[.,;:!?]` + whitespace
-/// (optionally + "and"/"and then": "…milk, and number two") — so "I have
+/// (optionally + "and"/"then"/"and then": "…milk, and number two",
+/// "…fine. Then number three") — so "I have
 /// one idea and two questions" never matches. A step with more than
 /// one candidate is ambiguous → None.
 fn marker_chain(text: &str, family: &[Vec<String>], min: usize) -> Option<Vec<Marker>> {
@@ -41,7 +42,7 @@ fn marker_chain(text: &str, family: &[Vec<String>], min: usize) -> Option<Vec<Ma
     let mut pos = 0;
     for alts in family {
         let re = Regex::new(&format!(
-            r"(?i)(?:^|\n[ \t]*|[.,;:!?]\s+(?:and\s+(?:then\s+)?)?)({})(?:[\s,:]|$)",
+            r"(?i)(?:^|\n[ \t]*|[.,;:!?]\s+(?:and\s+)?(?:then\s+)?)({})(?:[\s,:]|$)",
             alts.join("|")
         ))
         .ok()?;
@@ -111,8 +112,8 @@ fn find_markers(text: &str) -> Option<Vec<Marker>> {
 }
 
 /// Trims a lead/item: line breaks folded to spaces, then trailing commas,
-/// semicolons, and a dangling "and"/"and then" dropped (the next item's
-/// glue) — sentence punctuation stays.
+/// semicolons, and a dangling "and"/"and then" (or "then" after sentence
+/// punctuation) dropped (the next item's glue) — sentence punctuation stays.
 fn tidy(s: &str) -> String {
     let mut out = s.split_whitespace().collect::<Vec<_>>().join(" ");
     loop {
@@ -122,6 +123,14 @@ fn tidy(s: &str) -> String {
             if out.to_lowercase().ends_with(glue) {
                 out.truncate(out.len() - glue.len());
             }
+        }
+        // "…fine. Then" + next marker; "by then" keeps its "then".
+        let lower = out.to_lowercase();
+        if [". then", "! then", "? then"]
+            .iter()
+            .any(|g| lower.ends_with(g))
+        {
+            out.truncate(out.len() - " then".len());
         }
         if out.len() == before {
             return out;
@@ -303,7 +312,7 @@ fn lead_in_list(text: &str) -> Option<(String, Vec<String>)> {
 /// a mid-sentence "and also" / "and then also".
 static MARKER_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)(?:^\s*|[.,;:!?]\s+(?:and\s+(?:then\s+)?)?)(?P<w>(?:number\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten)|first(?:ly)?|second(?:ly)?|third(?:ly)?|fourth|fifth)\s*[,:]\s*",
+        r"(?i)(?:^\s*|[.,;:!?]\s+(?:and\s+)?(?:then\s+)?)(?P<w>(?:number\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten)|first(?:ly)?|second(?:ly)?|third(?:ly)?|fourth|fifth)\s*[,:]\s*",
     )
     .unwrap()
 });
@@ -627,6 +636,25 @@ mod tests {
         assert_eq!(
             signal_list("Find a cat. Also, bullet, take out the garbage.", false),
             None
+        );
+    }
+
+    #[test]
+    fn bare_then_before_a_marker() {
+        // The user's real dictation: "Then number three," after a period.
+        assert_eq!(
+            number_list(
+                "Okay, a few things. Number one, let's get rid of the demo view button that lives on projects. Number two, right next to that button there is a text that says two projects. We don't have to list the number of projects. That's fine. Then number three, I want the ability to search from not only each page, but a command K that will let me search through entire, like all the tables. Then number four, do we need a client's page? We have leads, we have projects, but we don't have clients. What do you think?"
+            )
+            .as_deref(),
+            Some(
+                "Okay, a few things.\n1. Let's get rid of the demo view button that lives on projects.\n2. Right next to that button there is a text that says two projects. We don't have to list the number of projects. That's fine.\n3. I want the ability to search from not only each page, but a command K that will let me search through entire, like all the tables.\n4. Do we need a client's page? We have leads, we have projects, but we don't have clients. What do you think?"
+            )
+        );
+        // "by then" at an item's end is content, not glue.
+        assert_eq!(
+            number_list("First, finish the slides by then. Second, send them.").as_deref(),
+            Some("1. Finish the slides by then.\n2. Send them.")
         );
     }
 

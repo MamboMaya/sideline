@@ -6,10 +6,13 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-07
+
 ### Added
 
 - Spoken lists show as bullets. A voice note becomes a list when you
-  number the items ("first… second…", "one… two… three…", "number one…"),
+  number the items ("first… second…", "one… two… three…", "number one…",
+  "…then number three"),
   say "bullet" before each item, or announce the list ("three things for
   tomorrow…" then three sentences; "a few things…" then items joined by
   "also" / "and then also" / "another thing"). The signals can be mixed:

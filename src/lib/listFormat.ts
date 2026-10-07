@@ -196,12 +196,12 @@ const CARDINAL_ALT = [...CARDINALS]
 // A trailing enumeration marker is the NEXT item's label ("…before Friday.
 // Second", "…for tomorrow, one", "…flights, number three"): an ordinal,
 // cardinal one–ten or "number <cardinal>", only when it follows punctuation +
-// whitespace (optionally + "and"/"and then", mirroring rulesStarts) or is the
+// whitespace (optionally + "and"/"then"/"and then", mirroring rulesStarts) or is the
 // whole text, and nothing but `,`/`:` follows. The
 // punctuation stays here (a period survives; a comma is removed by the comma
 // cleanup).
 const TRAILING_MARKER = new RegExp(
-  `(^|[.,;:!?]\\s+)(?:and\\s+(?:then\\s+)?)?(?:number\\s+(?:${CARDINAL_ALT})|${ORDINAL_ALT}|${CARDINAL_ALT})\\s*[,:]?\\s*$`,
+  `(^|[.,;:!?]\\s+)(?:and\\s+)?(?:then\\s+)?(?:number\\s+(?:${CARDINAL_ALT})|${ORDINAL_ALT}|${CARDINAL_ALT})\\s*[,:]?\\s*$`,
   "i",
 );
 // "… back and number three," — a "number N" label after a bare "and"
@@ -229,7 +229,8 @@ function stripLeadingGlue(text: string): string {
 
 // Drops trailing glue: commas/spaces, an enumeration marker after punctuation,
 // and a connector run (`…the slides, and also` → `…the slides`). A connector
-// run is only glue if it contains "and" or follows a comma, so "finish the
+// run is only glue if it contains "and" or follows a comma or sentence end
+// ("…fine. Then" before "number three"), so "finish the
 // slides by then" keeps its "then". Sentence punctuation stays.
 function stripTrailingGlue(text: string): string {
   let s = text;
@@ -244,7 +245,7 @@ function stripTrailingGlue(text: string): string {
       const run = m[1];
       const before = next.slice(0, next.length - run.length);
       const body = before.replace(/[\s,;]+$/, "");
-      if (/\band\b/i.test(run) || /,\s*$/.test(before)) next = body;
+      if (/\band\b/i.test(run) || /[,.!?]\s*$/.test(before)) next = body;
     }
     if (next === s) return s;
     s = next;
@@ -341,7 +342,7 @@ function markerChain(
   let pos = 0;
   for (const alts of family) {
     const re = new RegExp(
-      `(?:^|\\s*\\n\\s*|[.,;:!?]\\s+(?:and\\s+(?:then\\s+)?)?)(${alts.join("|")})(?=[\\s,:]|$)`,
+      `(?:^|\\s*\\n\\s*|[.,;:!?]\\s+(?:and\\s+)?(?:then\\s+)?)(${alts.join("|")})(?=[\\s,:]|$)`,
       "gi",
     );
     const found = [...text.matchAll(re)]
@@ -492,7 +493,7 @@ export function bulletStarts(text: string): number[] | null {
 // (`also-ran` is not "also").
 const NUM_WORDS = CARDINALS.join("|");
 const MARKER_ITEM_RE = new RegExp(
-  `(?:^\\s*|[.,;:!?]\\s+(?:and\\s+(?:then\\s+)?)?)(?<w>(?:number\\s+)?(?:${NUM_WORDS})|first(?:ly)?|second(?:ly)?|third(?:ly)?|fourth|fifth)\\s*[,:]\\s*`,
+  `(?:^\\s*|[.,;:!?]\\s+(?:and\\s+)?(?:then\\s+)?)(?<w>(?:number\\s+)?(?:${NUM_WORDS})|first(?:ly)?|second(?:ly)?|third(?:ly)?|fourth|fifth)\\s*[,:]\\s*`,
   "gi",
 );
 // "… and number three, …": a "number N" label is explicit enough to start
