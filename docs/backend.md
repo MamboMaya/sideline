@@ -8,6 +8,7 @@ commands below, grouped by concern), `claude.rs` (`send_to_claude`, `ask_claude`
 `window.rs` (popover positioning + the recording-pill overlay window),
 `hotkeys.rs` (config + registration), `reminders.rs` (reminder storage,
 background ticker, firing), `lists.rs` (the spoken-list display sidecar),
+`sweep.rs` (the done-todo sweep's dates sidecar and compare-and-swap move),
 `classifier.rs` (the optional local
 auto-classifier's HTTP call + host/scheme validation — see below),
 `tray.rs` (tray menu construction/events), `watcher.rs` (the inbox fs
@@ -246,6 +247,30 @@ session_id }`: the session id is what `open_ask_session` resumes)
   empty list back over whatever was actually on disk; `tick` specifically
   logs and skips the tick rather than writing.
 
+- `open_verify_session(path, tag, prompt, terminal)` (`commands/projects.rs`)
+  — the Todos view's Verify button. Expands a leading `~/` in `path`, runs
+  the same `validate_setup_args` check as `setup_project_repo`, caps
+  `prompt` at 50,000 bytes, writes it to `~/notes/.sideline-verify-<tag>.md`,
+  and opens `~/notes/.sideline-verify-<tag>.command` (`cd '<path>'`, then
+  `exec '<claude>' "$(cat '<prompt file>')"`) through `open_command_script`.
+  The prompt is read at run time, so its text never becomes shell syntax;
+  one file pair per project so two clicks can't swap prompts. The terminal,
+  not Sideline, enters the repo.
+- `read_done_dates()` / `write_done_dates(content)` / `sweep_todos(project,
+expected, live, done)` (`sweep.rs`) — the done-todo sweep (docs/ui.md's
+  Todos view section). The dates sidecar `~/notes/.sideline-done.json` reads
+  as `{}` when missing, errors when corrupt, and `write_done_dates` accepts
+  only an object of at most 20,000 keys (≤300 chars, no newline) mapped to
+  `YYYY-MM-DD` strings. `sweep_todos` validates `project` with
+  `validate_component`, then — under a module `LOCK` — stages both new
+  files as `*.sweep.tmp` (the done file = existing + `done`, one blank line
+  between entries), and only then compares: unless `todos/<project>.md`
+  still reads exactly `expected` it deletes the temps and returns false.
+  Otherwise two renames follow — the done file FIRST, so a failure between
+  them duplicates an entry rather than losing it — keeping the window an
+  outside edit could slip into to two renames. Which
+  entries move is decided in `src/lib/sweep.ts`; Rust never parses the
+  todo format. The purge-archive asset scan also reads `todos/done/`.
 - `read_lists()` / `set_list_entry(key, entry, if_absent)` (`lists.rs`) — the spoken-list
   display sidecar `~/notes/.sideline-lists.json`; see docs/data-model.md for
   the shape and docs/ui.md's List formatting section for the behavior.

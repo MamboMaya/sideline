@@ -16,10 +16,12 @@ import {
   tagString,
 } from "../inbox";
 import { needsTitle } from "../lib/format";
+import type { ProjectsConfig } from "../lib/config";
 import { appendToArchive, undoArchiveAppend } from "../lib/archive";
 import {
   NO_IMAGE,
   deleteTriaged,
+  openVerifySession,
   pasteClipboardImage,
   readTodos,
   triageNote,
@@ -27,6 +29,7 @@ import {
   writeTriaged,
 } from "../lib/commands";
 import { type ListEntry, copyBody, listKey } from "../lib/listFormat";
+import { looksDone, verifyPrompt } from "../lib/sweep";
 import type { MergedRow } from "./useTodosData";
 
 type TodosState = { project: string; entries: TodoEntry[] }[];
@@ -46,6 +49,10 @@ export interface UseTodosActionsParams {
   // Project tags a note can be routed on — adding one to a triaged card
   // re-routes it instead of just editing its frontmatter.
   projectTags: string[];
+  // `.sideline.json`'s `projects` (tag → repo folder when it's a map) and
+  // `terminal` — where Verify opens its Claude session.
+  projectsOverride: ProjectsConfig | undefined;
+  terminalOverride: string | undefined;
   // Stays in App.tsx (the inbox triage flow owns it) and is passed down:
   // re-routing a header-less note generates one on the way out.
   generateTitles: (
@@ -71,6 +78,8 @@ export function useTodosActions({
   showToast,
   dismissToast,
   projectTags,
+  projectsOverride,
+  terminalOverride,
   generateTitles,
   lists,
 }: UseTodosActionsParams) {
@@ -412,7 +421,15 @@ export function useTodosActions({
       if (!entry) return;
       const prevContent = serializeTodos(section.entries);
       const nextEntries = section.entries.filter((_, i) => i !== entryIndex);
-      const block = archiveBlock("📥", entry.timestamp, entry.tags, entry.body);
+      const heading = [entry.headerText, entry.title]
+        .filter(Boolean)
+        .join(" — ");
+      const block = archiveBlock(
+        "📥",
+        entry.timestamp,
+        entry.tags,
+        heading ? `**${heading}**\n\n${entry.body}` : entry.body,
+      );
       try {
         await appendToArchive(block);
         setTodos((prev) =>
@@ -618,6 +635,44 @@ export function useTodosActions({
     [todos],
   );
 
+  // Per-section Verify button: one prompt for a repo session to settle
+  // every ⬜ entry whose text says it's done (see src/lib/sweep.ts). Opens
+  // the session itself when the project has a repo folder; otherwise (or
+  // if that fails) the prompt goes to the clipboard.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
+  const verifyProjectTodos = useCallback(
+    async (project: string) => {
+      const section = todos.find((t) => t.project === project);
+      if (!section) return;
+      const flagged = section.entries.filter(looksDone);
+      if (flagged.length === 0) return;
+      const prompt = verifyPrompt(project, flagged);
+      const folder =
+        projectsOverride && !Array.isArray(projectsOverride)
+          ? projectsOverride[project]?.trim()
+          : "";
+      let why = `No repo folder set for ${project}`;
+      if (folder) {
+        try {
+          await openVerifySession(folder, project, prompt, terminalOverride);
+          showToast(
+            `Opened Claude in ${project} to verify ${flagged.length} todos`,
+          );
+          return;
+        } catch (e) {
+          why = String(e);
+        }
+      }
+      try {
+        await writeText(prompt);
+        showToast(`${why} — copied the verify prompt instead`);
+      } catch (e) {
+        showToast(`Copy failed: ${String(e)}`);
+      }
+    },
+    [todos, projectsOverride, terminalOverride],
+  );
+
   return {
     toggleTriagedDone,
     toggleTriagedIced,
@@ -632,6 +687,7 @@ export function useTodosActions({
     copyRow,
     pasteImageToRow,
     copyProjectTodos,
+    verifyProjectTodos,
   };
 }
 

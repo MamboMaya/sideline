@@ -18,6 +18,10 @@ import {
   projectsAdd,
   tagFromFolder,
   projectsRemove,
+  projectsSetFolder,
+  projectFolders,
+  aliasesFrom,
+  aliasesSet,
   dictionaryFromRows,
   dictionaryRows,
   splitMishears,
@@ -52,6 +56,7 @@ const DEFAULTS: SidelineConfig = {
   autoListOverride: undefined,
   classifier: DEFAULT_CLASSIFIER,
   classifierOverride: undefined,
+  aliasesOverride: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -244,6 +249,7 @@ describe("parseConfig — terminal", () => {
         cleanFillers: undefined,
         autoList: undefined,
         classifier: undefined,
+        aliases: undefined,
       },
     });
     expect(Object.keys(JSON.parse(withTerminal))).toEqual([
@@ -272,6 +278,7 @@ describe("parseConfig — terminal", () => {
         cleanFillers: undefined,
         autoList: undefined,
         classifier: undefined,
+        aliases: undefined,
       },
     });
     expect(JSON.parse(absent)).not.toHaveProperty("terminal");
@@ -370,6 +377,7 @@ describe("parseConfig — dictionary", () => {
         cleanFillers: undefined,
         autoList: undefined,
         classifier: undefined,
+        aliases: undefined,
       },
     };
     expect(JSON.parse(serializeConfig(base))).toEqual({
@@ -713,6 +721,7 @@ describe("parseConfig — autoList", () => {
       cleanFillers: false,
       autoList: false,
       classifier: undefined,
+      aliases: undefined,
     };
     const out = JSON.parse(
       serializeConfig({ pinnedTags: [], hiddenTags: [], zoom: 1, overrides }),
@@ -841,6 +850,7 @@ const noOverrides = {
   cleanFillers: undefined,
   autoList: undefined,
   classifier: undefined,
+  aliases: undefined,
 };
 
 describe("serializeConfig", () => {
@@ -891,7 +901,7 @@ describe("serializeConfig", () => {
     expect(JSON.parse(zoomed).zoom).toBe(1.2);
   });
 
-  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers, classifier when all are present", () => {
+  test("key order is pinnedTags, hiddenTags, prompts, models, projects, claude, zoom, audio, hotkeys, overlay, pushToTalk, terminal, dictionary, staleDays, cleanFillers, classifier, aliases when all are present", () => {
     const out = serializeConfig({
       pinnedTags: ["bug"],
       hiddenTags: ["junk"],
@@ -911,6 +921,7 @@ describe("serializeConfig", () => {
         cleanFillers: false,
         autoList: undefined,
         classifier: { provider: "local", url: "http://127.0.0.1:4410" },
+        aliases: { sideline: ["side line app"] },
       },
     });
     expect(Object.keys(JSON.parse(out))).toEqual([
@@ -930,6 +941,7 @@ describe("serializeConfig", () => {
       "staleDays",
       "cleanFillers",
       "classifier",
+      "aliases",
     ]);
   });
 
@@ -1135,6 +1147,7 @@ describe("parseConfig -> serializeConfig round-trip", () => {
           cleanFillers: cfg.cleanFillersOverride,
           autoList: cfg.autoListOverride,
           classifier: cfg.classifierOverride,
+          aliases: cfg.aliasesOverride,
         },
       }),
     );
@@ -1261,5 +1274,49 @@ describe("projectsRemove", () => {
 
   test("undefined input is returned as-is", () => {
     expect(projectsRemove(undefined, "a")).toBeUndefined();
+  });
+});
+
+describe("projectsSetFolder / projectFolders", () => {
+  test("sets a folder on a map entry", () => {
+    expect(projectsSetFolder({ a: "", b: "/x" }, "a", "/repo/a")).toEqual({
+      a: "/repo/a",
+      b: "/x",
+    });
+  });
+
+  test("upgrades the array shape to the map", () => {
+    expect(projectsSetFolder(["a", "b"], "b", "/repo/b")).toEqual({
+      a: "",
+      b: "/repo/b",
+    });
+  });
+
+  test("ignores a tag that isn't a project", () => {
+    const cur = { a: "" };
+    expect(projectsSetFolder(cur, "zzz", "/x")).toBe(cur);
+    expect(projectsSetFolder(undefined, "zzz", "/x")).toBeUndefined();
+  });
+
+  test("projectFolders reads either shape", () => {
+    expect(projectFolders(["a"])).toEqual({ a: "" });
+    expect(projectFolders({ a: "/x" })).toEqual({ a: "/x" });
+    expect(projectFolders(undefined)).toEqual({});
+  });
+});
+
+describe("aliasesFrom / aliasesSet", () => {
+  test("keeps string lists, trims, drops blanks and empty tags", () => {
+    expect(aliasesFrom({ a: [" Public Name ", "", 3], b: [], c: "x" })).toEqual(
+      { a: ["Public Name"] },
+    );
+    expect(aliasesFrom(["x"])).toBeUndefined();
+    expect(aliasesFrom({})).toBeUndefined();
+  });
+
+  test("sets one tag from comma-separated text; blank removes it", () => {
+    const one = aliasesSet(undefined, "a", "Public Name, old repo name");
+    expect(one).toEqual({ a: ["Public Name", "old repo name"] });
+    expect(aliasesSet(one, "a", " , ")).toBeUndefined();
   });
 });

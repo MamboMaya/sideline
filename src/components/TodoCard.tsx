@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { type TodoEntry, todoRowDisplay } from "../inbox";
 import { type ListEntry, displayBody } from "../lib/listFormat";
 import { tagChipClass, tagLabel } from "../lib/format";
+import { looksDone } from "../lib/sweep";
 import type { TagEditorHook } from "../hooks/useTagEditor";
 import { BodyImages } from "./BodyImages";
 import { TagEditor } from "./TagEditor";
@@ -102,6 +103,14 @@ export function TodoCard({
           </button>
         )}
         <span className="ts">{entry.timestamp}</span>
+        {looksDone(entry) && (
+          <span
+            className="stale-badge"
+            title="Its text says done but it's still ⬜ — Verify on the project header has a repo session check"
+          >
+            Looks done
+          </span>
+        )}
         <button
           type="button"
           className="ghost edit-btn"

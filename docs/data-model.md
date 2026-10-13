@@ -70,6 +70,14 @@
   against whatever `read_inbox` just returned, so it covers in-app voice,
   typed notes, and external Raycast captures alike without any capture-side
   changes.
+- **`~/notes/.sideline-done.json`** — when each `✅` todo was first seen
+  done, for the 7-day sweep above: `{ "<key>": "YYYY-MM-DD" }`, key
+  `<project>::<timestamp>::<fnv1a32 hex of title + body>`. On the very
+  first sweep (no `__first-sweep__` key yet) a done entry's date is its own
+  `Done YYYY-MM-DD` body line when an agent wrote one, to clear the
+  backlog; every other entry gets the day Sideline first saw it done. Rebuilt on every sweep from the done
+  entries still in `todos/*.md`, so it never outgrows them. Logic in
+  `src/lib/sweep.ts`.
 - **`~/notes/.sideline-lists.json`** — display-only sidecar for spoken-list
   formatting (see docs/ui.md's List formatting section): a JSON object
   `{ "<key>": { "starts": [12, 40] | null, "show": true } }`. The key is
@@ -103,10 +111,16 @@
   since a web-search answer needs more judgment than Haiku reliably gives),
   and optional
   `"projects": { "<tag>": "<repo path>" }` or a plain array of tags — opts
-  a tag into todo routing. Only the tag itself matters; the path is
-  informational (what the folder-picked "Add project" flow stores, see
+  a tag into todo routing. Routing uses only the tag; the path (set by the
+  folder-picked "Add project" flow or Settings' per-project "Choose…", see
   docs/ui.md's Settings section — a typed tag gets `""`, or the array
-  shape) and is never read or written to. Also
+  shape) is only handed to a terminal: the Todos view's Verify opens
+  `claude` there. Sideline never reads or writes inside it. Also optional
+  `"aliases": { "<project tag>": ["Other Name", …] }` — names a project
+  also goes by (a public product name, an old repo name); the inbox
+  auto-tagger adds the tag when a note mentions any of them, matched like
+  the tag itself (case-insensitive, spaces/hyphens between letters
+  optional). Set in Settings → Tags; written last, after `classifier`. Also
   optional `"claude": false` (default `true`) — no-Claude mode: every
   non-project triage flow (single-note and batch) skips `send_to_claude`
   entirely, deriving titles locally instead of a Haiku call (first
@@ -229,9 +243,18 @@ false`); `"local"` POSTs to `<url>/decide` on a local classifier (a
   leading `**title**` body line — display-parsed back out, plain markdown to
   every other consumer. A re-routed entry (project tag added to an
   already-triaged note) may also carry the earlier triage reply embedded in
-  its body under a `## Claude` line. Entries
-  are never deleted, so this file is history and queue at once. This is the
-  ONLY record of a routed note — triage never also
+  its body under a `## Claude` line. Header lines hand-written by agents
+  are tolerated: a missing timestamp (`### ✅ `), a date only
+  (`### ✅ 2026-10-07 #tags`), an icon glued to text (`### ✅Shipped`) or
+  followed by U+FE0F all still read the status icon. Only the leading
+  `#tag` run is tags; text after it (`### ⬜ #gap Fix the key`) is the
+  entry's title, kept on the header line on rewrite. A `### ` line opens a
+  new entry only when it carries a status icon or a date, so a `### Steps`
+  heading inside a `## Claude` reply stays in its entry. Entries
+  are never deleted: a done entry moves to `todos/done/<project>.md` (same
+  format, append-only, never read by the Todos view) once it has been done
+  for 7 days, so the live file holds open work plus the last week's wins.
+  Between them the two files are the ONLY record of a routed note — triage never also
   writes a `notes/` file for it (a pre-existing duplicate from before this
   rule is left alone). Lives entirely inside
   `~/notes` — Sideline never writes to the project repo itself; a repo opts

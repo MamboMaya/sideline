@@ -18,6 +18,9 @@ export interface AutoTagOptions {
   // app run — skipped here so a removed tag never comes back just because
   // the body still mentions it.
   removedTags: ReadonlySet<string>;
+  // Other names a tag goes by (`.sideline.json` `aliases`): a mention of
+  // any of them adds the tag, matched the same forgiving way as the tag.
+  aliases?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface AutoTagResult {
@@ -39,10 +42,22 @@ export interface AutoTagResult {
 // space/hyphen between the tag's letters instead of demanding the exact
 // token; `\b` boundaries keep it from matching inside a larger word (e.g.
 // "debugging" doesn't match tag "bug").
+// Whether `body` mentions `name`, ignoring case and any spaces/hyphens
+// between its letters ("Public Name" matches "public-name" and
+// "publicname"; "acmecloud" matches "Acme Cloud").
+function mentions(body: string, name: string): boolean {
+  const chars = name.replace(/[\s-]/g, "").split("");
+  if (chars.length === 0) return false;
+  return new RegExp(
+    `\\b${chars.map(escapeRegex).join("[\\s-]?")}\\b`,
+    "i",
+  ).test(body);
+}
+
 export function autoTag(
   notes: Note[],
   knownTags: ReadonlySet<string>,
-  { alreadyProcessed, removedTags }: AutoTagOptions,
+  { alreadyProcessed, removedTags, aliases = {} }: AutoTagOptions,
 ): AutoTagResult {
   let changed = false;
   const processedKeys: string[] = [];
@@ -67,13 +82,8 @@ export function autoTag(
       if (n.tags.includes(tag)) continue;
       // Never re-add a tag the user removed from this note this run.
       if (removedTags.has(`${n.timestamp}::${tag}`)) continue;
-      const chars = tag.replace(/-/g, "").split("");
-      if (chars.length === 0) continue;
-      const re = new RegExp(
-        `\\b${chars.map(escapeRegex).join("[\\s-]?")}\\b`,
-        "i",
-      );
-      if (re.test(n.body)) added.push(tag);
+      if ([tag, ...(aliases[tag] ?? [])].some((name) => mentions(n.body, name)))
+        added.push(tag);
     }
     if (added.length === 0) return n;
     changed = true;

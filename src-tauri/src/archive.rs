@@ -78,10 +78,11 @@ pub(crate) fn purge_archive(app: &tauri::AppHandle) {
     let entry_count = archive.lines().filter(|l| l.starts_with("### ")).count();
 
     // An asset is purgeable only if nothing OUTSIDE the archive still
-    // references it: check inbox.md plus every notes/ and todos/ file.
+    // references it: check inbox.md plus every notes/, todos/ and
+    // todos/done/ file.
     let mut live = String::new();
     live.push_str(&fs::read_to_string(inbox_path()).unwrap_or_default());
-    for sub in ["notes", "todos"] {
+    for sub in ["notes", "todos", "todos/done"] {
         if let Ok(dir) = fs::read_dir(notes_dir().join(sub)) {
             for entry in dir.flatten() {
                 live.push_str(&fs::read_to_string(entry.path()).unwrap_or_default());

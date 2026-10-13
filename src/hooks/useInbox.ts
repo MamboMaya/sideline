@@ -383,6 +383,7 @@ export function useInbox({
     } = autoTag(parsedNotes, known, {
       alreadyProcessed: autoTaggedRef.current,
       removedTags: removedTagsRef.current,
+      aliases: config.aliasesOverride,
     });
     // Ref bookkeeping stays here (in the caller): autoTag itself is pure and
     // never mutates alreadyProcessed — it only reports what it newly saw.

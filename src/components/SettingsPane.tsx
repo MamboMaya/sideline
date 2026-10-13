@@ -72,6 +72,14 @@ export interface SettingsPaneProps {
   removeProject: (tag: string) => void;
   // "Choose folder…": native folder picker → AddProjectModal (App.tsx).
   onChooseFolder: () => void;
+  // Each project's repo folder (`""` = none) and the per-row "Choose…"
+  // that sets it — where the Todos view's Verify opens Claude.
+  projectFolders: Record<string, string>;
+  onChooseFolderFor: (tag: string) => void;
+  // Each project's other names (`aliases`) and the "Also called" field's
+  // commit (comma-separated text) — a note mentioning one gets the tag.
+  projectAliases: Record<string, string[]>;
+  onSetAliases: (tag: string, csv: string) => void;
   // Inbox
   staleDays: number;
   setStaleDays: (days: number) => void;
@@ -188,6 +196,9 @@ function overlayHiddenFrom(overlayOverride: unknown): boolean {
 // hidden tags, and project tags all share this shape, just with a different
 // remove action and (for pinned/project) a cap the caller enforces itself
 // (togglePin already toasts "max 6"; project/hidden tags are uncapped).
+// `/Users/me/x` → `~/x`, for display only.
+const shortHome = (p: string) => p.replace(/^\/Users\/[^/]+\//, "~/");
+
 function ChipList({
   tags,
   onRemove,
@@ -597,6 +608,10 @@ export function SettingsPane({
   addProject,
   removeProject,
   onChooseFolder,
+  projectFolders,
+  onChooseFolderFor,
+  projectAliases,
+  onSetAliases,
   staleDays,
   setStaleDays,
   zoom,
@@ -1100,6 +1115,54 @@ export function SettingsPane({
               Choose folder…
             </button>
           </div>
+        </div>
+        <div className="settings-subrow">
+          <div className="settings-sublabel">
+            Repo folder (where Verify opens Claude) and other names (a note
+            mentioning one gets the tag)
+          </div>
+          {projectTags.map((tag) => {
+            const folder = projectFolders[tag] ?? "";
+            const aliasText = (projectAliases[tag] ?? []).join(", ");
+            return (
+              <div className="project-folder" key={tag}>
+                <div className="project-folder-row">
+                  <span className="project-folder-tag">{tag}</span>
+                  <span
+                    className={
+                      folder
+                        ? "project-folder-path"
+                        : "project-folder-path none"
+                    }
+                    title={folder || undefined}
+                  >
+                    {folder ? shortHome(folder) : "No folder"}
+                  </span>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => onChooseFolderFor(tag)}
+                  >
+                    Choose…
+                  </button>
+                </div>
+                <input
+                  key={aliasText}
+                  className="settings-input project-aliases"
+                  defaultValue={aliasText}
+                  placeholder="Also called… (comma-separated)"
+                  onBlur={(e) => {
+                    if (e.currentTarget.value !== aliasText)
+                      onSetAliases(tag, e.currentTarget.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape")
+                      e.currentTarget.blur();
+                  }}
+                />
+              </div>
+            );
+          })}
         </div>
       </section>
 

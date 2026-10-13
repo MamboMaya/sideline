@@ -464,8 +464,15 @@ does — survives untouched. Six sections, one scrollable pane:
    `addProject(tag, {path, pin})`; two separate writes off the same
    closure would clobber each other. A picked path is stored with the tag,
    which means the map shape is written (an existing array is upgraded,
-   old entries get `""`). The path is informational only — never read or
-   written to. A done state then sets the repo up: it shows the setup
+   old entries get `""`). Sideline never reads or writes inside the folder;
+   the Todos view's Verify opens a terminal there. Below that, **Repo
+   folders** lists every project tag with its folder (or "No folder") and a
+   **Choose…** button that sets it via the same native picker
+   (`projectsSetFolder`, upgrading the array shape to the map), and under
+   each an **Also called…** field: comma-separated other names for the
+   project (`aliases`, committed on blur/Enter). A note mentioning one gets
+   the project tag from the auto-tagger, so a product's public name routes like
+   saying the tag. Removing a project drops its aliases too. A done state then sets the repo up: it shows the setup
    script (`project_setup_script`, docs/backend.md — an idempotent append
    of the `Pending <tag> todos: ~/notes/todos/<tag>.md …` pointer to the
    folder's `CLAUDE.local.md`) with **Set up repo in Terminal**
@@ -732,7 +739,19 @@ In Todos, `←` collapses the selected row's section — the header becomes the
 nav row (amber inset when selected); `→`/`Enter`/click re-expands; collapse
 state is session-only. A status flip (`d`/`i`) keeps the SAME card selected
 in its new section (key-chase after the flat list recomputes; a card the flip
-hides — done with Show done off — leaves the clamped selection alone). On
-launch, done rows of both kinds captured 30+ days ago sweep to archive.md
-(append-only, best-effort, toast reports the count; capture time is the proxy
-since done-time isn't recorded).
+hides — done with Show done off — leaves the clamped selection alone). At
+launch and again whenever the day rolls over (`useHousekeeping`, checked
+hourly), two best-effort sweeps run and one toast reports the counts: ✅ todo
+entries done for 7+ days move to `todos/done/<project>.md` (see
+docs/data-model.md for how the done date is known; a file an agent edited
+mid-sweep is skipped until the next day), and done triaged notes captured
+30+ days ago move to archive.md.
+
+A ⬜ todo whose text carries a `Done YYYY-MM-DD` line shows a "Looks done"
+badge, and its project header gains a `↗ Verify N` button beside `⧉ Copy`.
+When the project has a repo folder (`projects` map in `.sideline.json`), it
+opens the configured terminal in that folder running `claude` with one
+prompt asking it to check every flagged entry and flip the ones that are
+truly finished (`open_verify_session`); with no folder, or if that fails, the
+prompt goes to the clipboard and the toast says why. Sideline never flips
+them itself — partial "Done …" notes are common.

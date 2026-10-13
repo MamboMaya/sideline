@@ -6,6 +6,34 @@ Notable, user-visible changes to Sideline. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- Done todos clean themselves up. A ✅ entry moves out of
+  `~/notes/todos/<project>.md` into `~/notes/todos/done/<project>.md` a week
+  after it was finished, checked at launch and once a day. Nothing is
+  deleted, and 🧊 parked entries stay put.
+- A ⬜ todo whose text says "Done 2026-10-12…" shows a "Looks done" badge,
+  and its project header gets a "↗ Verify" button that opens Claude in that
+  project's repo to check them all at once (or copies the prompt when the
+  project has no repo folder set).
+- Settings → Tags → Repo folders: set or change the repo folder of any
+  existing project (before, a folder could only be picked when adding one).
+- Projects can have other names ("Also called…" under each project in
+  Settings → Tags). Mentioning one in a note tags it with the project, so
+  saying a product's public name routes to that project's todos.
+
+### Changed
+
+- Done todos no longer go to `archive.md` after 30 days (where "Purge
+  Archive" would delete them); they go to `todos/done/` as above.
+
+### Fixed
+
+- Todo headers written without a timestamp (`### ✅ `) or with a date only
+  now count by their icon, so finished entries stop inflating the open
+  count, and text written on such a header line is no longer dropped when
+  Sideline rewrites the file.
+
 ## [0.7.0] - 2026-10-07
 
 ### Added

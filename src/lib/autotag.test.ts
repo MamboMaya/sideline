@@ -17,6 +17,22 @@ const note = (overrides: Partial<Note> = {}): Note => ({
 });
 
 describe("autoTag", () => {
+  test("a project's alias adds the project tag, spoken or written", () => {
+    const opts = {
+      alreadyProcessed: new Set<string>(),
+      removedTags: new Set<string>(),
+      aliases: { "demo-app": ["Public Name", "acme"] },
+    };
+    const tags = (body: string) =>
+      autoTag([note({ body, raw: body })], new Set(["demo-app"]), opts)
+        .nextNotes[0].tags;
+    expect(tags("Ship the public-name pricing page")).toEqual(["demo-app"]);
+    expect(tags("publicname is down")).toEqual(["demo-app"]);
+    expect(tags("Call ACME tomorrow")).toEqual(["demo-app"]);
+    expect(tags("acmeville is unrelated")).toEqual([]);
+    expect(tags("the demo app needs a fix")).toEqual(["demo-app"]);
+  });
+
   test("adds a single known tag mentioned in the body", () => {
     const n = note({ body: "Need to fix this bug in prod" });
     const result = autoTag([n], new Set(["bug"]), {
