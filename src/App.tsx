@@ -2,27 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import {
-  archiveBlock,
-  parseTriagedFile,
-  type TodoEntry,
-  parseTodos,
-  serializeTodos,
-  todoRowDisplay,
-} from "./inbox";
+import { todoRowDisplay } from "./inbox";
 import { QUICK_TAGS, tagLabel } from "./lib/format";
-import { addToDictionary } from "./lib/config";
-import { appendToArchive } from "./lib/archive";
+import { addToDictionary, projectFolders } from "./lib/config";
 import { isStale } from "./lib/stale";
-import {
-  NO_IMAGE,
-  pasteClipboardImage,
-  readTriaged,
-  deleteTriaged,
-  readTodos,
-  writeTodos,
-  openTriaged,
-} from "./lib/commands";
+import { NO_IMAGE, pasteClipboardImage, openTriaged } from "./lib/commands";
 import { useToast } from "./hooks/useToast";
 import { useRecorder } from "./hooks/useRecorder";
 import { useReminders } from "./hooks/useReminders";
@@ -32,6 +16,8 @@ import { useSearch } from "./hooks/useSearch";
 import { useInbox } from "./hooks/useInbox";
 import { useTagEditor } from "./hooks/useTagEditor";
 import { useTodosData } from "./hooks/useTodosData";
+import { useHousekeeping } from "./hooks/useHousekeeping";
+import { looksDone } from "./lib/sweep";
 import { useTriage } from "./hooks/useTriage";
 import { useTodosActions } from "./hooks/useTodosActions";
 import { useLists } from "./hooks/useLists";
@@ -105,6 +91,8 @@ export default function App() {
     zoom,
     promptsOverride,
     modelsOverride,
+    projectsOverride,
+    aliasesOverride,
     audioOverride,
     overlayOverride,
     pushToTalk,
@@ -131,6 +119,8 @@ export default function App() {
     setClassifierUrl,
     addProject,
     removeProject,
+    setProjectFolder,
+    setProjectAliases,
     updateConfig,
   } = useConfig({ showToast, dismissToast });
 
@@ -161,6 +151,13 @@ export default function App() {
   const chooseProjectFolder = () => {
     invoke<string | null>("pick_project_folder").then((path) => {
       if (path) setAddProjectPath(path);
+    });
+  };
+  // Settings' per-project "Choose…": same picker, but the folder goes onto
+  // an existing tag instead of opening AddProjectModal.
+  const chooseFolderFor = (tag: string) => {
+    invoke<string | null>("pick_project_folder").then((path) => {
+      if (path) setProjectFolder(tag, path);
     });
   };
 
@@ -265,63 +262,7 @@ export default function App() {
     sectionKeyOf,
   } = useTodosData({ view, searchLower, matchesSearch });
 
-  // Once per launch: done rows (both kinds) captured more than 30 days ago
-  // move to archive.md — same append-only archive as `x`, nothing is
-  // hard-deleted. Uses capture time as the proxy for "done long enough"
-  // (done-time isn't recorded anywhere).
-  const sweptRef = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: stable-identity pattern — omitted deps are refs, setState, and stable/toast closures that never serve stale data
-  useEffect(() => {
-    if (sweptRef.current) return;
-    sweptRef.current = true;
-    (async () => {
-      try {
-        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        const isOld = (ts: string) => {
-          const t = new Date(ts.replace(" ", "T")).getTime();
-          return !Number.isNaN(t) && t < cutoff;
-        };
-        let archived = 0;
-        const pairs = await readTodos();
-        for (const [project, content] of pairs) {
-          const entries = parseTodos(content);
-          const stale = (e: TodoEntry) =>
-            e.status === "done" && isOld(e.timestamp);
-          const old = entries.filter(stale);
-          if (old.length === 0) continue;
-          for (const e of old) {
-            await appendToArchive(
-              archiveBlock("✅", e.timestamp, e.tags, e.body),
-            );
-          }
-          await writeTodos(
-            project,
-            serializeTodos(entries.filter((e) => !stale(e))),
-          );
-          archived += old.length;
-        }
-        const tpairs = await readTriaged();
-        for (const [filename, content] of tpairs) {
-          const note = parseTriagedFile(filename, content);
-          if (note.status !== "done" || !isOld(note.captured)) continue;
-          await appendToArchive(
-            archiveBlock("✅", note.captured, note.tags, note.body, note.reply),
-          );
-          await deleteTriaged(filename);
-          archived++;
-        }
-        if (archived > 0) {
-          showToast(
-            `Archived ${archived} done item${archived === 1 ? "" : "s"} (30+ days old)`,
-          );
-          loadTriaged();
-          loadTodos();
-        }
-      } catch {
-        // Best-effort housekeeping — never block launch on it.
-      }
-    })();
-  }, []);
+  useHousekeeping({ showToast, loadTodos, loadTriaged });
 
   // Wall clock for the stale-inbox-note badges (InboxCard's age badge,
   // Header's "N stale" count — see src/lib/stale.ts). Recomputed whenever
@@ -419,6 +360,7 @@ export default function App() {
     copyRow,
     pasteImageToRow,
     copyProjectTodos,
+    verifyProjectTodos,
   } = useTodosActions({
     todos,
     setTodos,
@@ -431,6 +373,8 @@ export default function App() {
     showToast,
     dismissToast,
     projectTags,
+    projectsOverride,
+    terminalOverride,
     generateTitles,
     lists,
   });
@@ -670,6 +614,10 @@ export default function App() {
           addProject={addProject}
           removeProject={removeProject}
           onChooseFolder={chooseProjectFolder}
+          projectFolders={projectFolders(projectsOverride)}
+          onChooseFolderFor={chooseFolderFor}
+          projectAliases={aliasesOverride ?? {}}
+          onSetAliases={setProjectAliases}
           staleDays={staleDays}
           setStaleDays={setStaleDays}
           zoom={zoom}
@@ -811,6 +759,12 @@ export default function App() {
                             todosCardRefs.current[headerIdx] = el;
                         }}
                         onCopy={() => copyProjectTodos(project)}
+                        verifyCount={
+                          todos
+                            .find((t) => t.project === project)
+                            ?.entries.filter(looksDone).length ?? 0
+                        }
+                        onVerify={() => verifyProjectTodos(project)}
                       />
                       {!isCollapsed &&
                         rows.map((row) => {

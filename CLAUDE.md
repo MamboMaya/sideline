@@ -31,7 +31,8 @@ entry = `### <icon> YYYY-MM-DD HH:MM #tags` + body (🎙️/🔗/📸).
 `notes/*.md`: triaged non-project notes, YAML frontmatter (`captured`,
 `type`, `tags`, optional `title`, `status: triaged|done|iced`).
 `todos/<project>.md`: routed project todos, `### ⬜|✅|🧊 <timestamp> #tags`,
-never deleted, the ONLY record of a routed note; long entries may lead with a
+never deleted — ✅ entries move to `todos/done/<project>.md` after 7 days
+(`.sideline-done.json` remembers when each was first seen done); long entries may lead with a
 `**title**` body line, re-routed ones may embed a `## Claude` reply.
 `archive.md`: append-only deleted notes.
 `.sideline-reminders.json`: reminders auto-detected in note bodies (text,

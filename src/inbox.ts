@@ -249,7 +249,8 @@ export function setTriagedBody(content: string, body: string): string {
 // (⬜ pending / ✅ done / 🧊 iced) instead of a capture-source icon. Iced =
 // deliberately parked: sessions working the queue skip it (they may ask
 // about it, but shouldn't tackle it). Entries are never deleted; toggling
-// status just rewrites the marker in place.
+// status just rewrites the marker in place. Done entries move to
+// todos/done/<project>.md a week after completion (src/lib/sweep.ts).
 export type TodoStatus = "pending" | "done" | "iced";
 
 export interface TodoEntry {
@@ -260,6 +261,13 @@ export interface TodoEntry {
   // `**title**` body line so any plain-markdown consumer (repo Claude
   // sessions, the ⧉ Copy bundle) sees it too.
   title?: string;
+  // Agents sometimes write the title on the header line itself (`### ⬜
+  // #gap Rotate the key`). That text becomes `title` with `titleOnHeader`
+  // set, so it displays/copies like any title and serializes back onto the
+  // header. If the entry ALSO has a `**title**` line, the header text is
+  // kept in `headerText` instead, only so a rewrite doesn't drop it.
+  titleOnHeader?: true;
+  headerText?: string;
   body: string;
 }
 
@@ -269,9 +277,14 @@ export const STATUS_ICON: Record<TodoStatus, string> = {
   iced: "🧊",
 };
 
+// Icons that mark a todo header, incl. the legacy 📥.
+const STATUS_ICONS = ["⬜", "✅", "🧊", "📥"];
+
 // Tolerates the legacy `### 📥` header from the old sideline-todos.md
 // format (pre-dates the status marker) — anything that isn't ✅ or 🧊 is
-// treated as pending.
+// treated as pending. Agents also hand-write headers with no timestamp
+// (`### ✅ `) or a date only (`### ✅ 2026-10-07 #tags`): the icon is read
+// regardless, so a done entry never counts as open.
 export function parseTodos(content: string): TodoEntry[] {
   const lines = content.split("\n");
   const entries: TodoEntry[] = [];
@@ -279,15 +292,31 @@ export function parseTodos(content: string): TodoEntry[] {
 
   const flush = () => {
     if (!current) return;
-    const header = current[0];
-    const m = header.match(
-      /^###\s+(\S+)\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2})(.*)$/,
-    );
-    const icon = m ? m[1] : "⬜";
+    let rest = current[0].slice(4).trimStart();
+    // The status icon, if the header has one (✅ may carry a trailing
+    // U+FE0F). An unknown leading token is only an icon when a date follows
+    // (old-format headers); otherwise it's header text and is kept.
+    let icon = STATUS_ICONS.find((i) => rest.startsWith(i));
+    if (icon) {
+      rest = rest.slice(icon.length).replace(/^\uFE0F/, "");
+    } else {
+      const legacy = rest.match(/^(\S+)(?=\s+\d{4}-\d{2}-\d{2})/);
+      if (legacy) {
+        icon = legacy[1];
+        rest = rest.slice(icon.length);
+      }
+    }
     const status: TodoStatus =
       icon === "✅" ? "done" : icon === "🧊" ? "iced" : "pending";
-    const timestamp = m ? m[2] : "";
-    const tags = m ? [...m[3].matchAll(/#([\w-]+)/g)].map((t) => t[1]) : [];
+    const ts = rest.match(/^\s*(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?)(?=\s|$)/);
+    const timestamp = ts ? ts[1] : "";
+    if (ts) rest = rest.slice(ts[0].length);
+    // Tags are the leading `#tag` run only: a `#` later in the header text
+    // (a PR number, a URL fragment) stays text.
+    const tagRun = rest.match(/^(?:\s*#[\w-]+(?=\s|$))*/)?.[0] ?? "";
+    const tags = [...tagRun.matchAll(/#([\w-]+)/g)].map((t) => t[1]);
+    rest = rest.slice(tagRun.length);
+    const headerText = rest.trim();
     let body = current.slice(1).join("\n").trim();
     // A leading `**…**` line is the entry's generated header, not body.
     let title: string | undefined;
@@ -300,14 +329,26 @@ export function parseTodos(content: string): TodoEntry[] {
       status,
       timestamp,
       tags,
-      ...(title ? { title } : {}),
+      ...(title
+        ? { title, ...(headerText ? { headerText } : {}) }
+        : headerText
+          ? { title: headerText, titleOnHeader: true as const }
+          : {}),
       body,
     });
     current = null;
   };
 
+  // A `### ` line opens an entry only when it carries a status icon or a
+  // date (or nothing is open yet) — a `### Heading` inside an entry's
+  // `## Claude` reply stays part of that entry.
   for (const line of lines) {
-    if (line.startsWith("### ")) {
+    if (
+      line.startsWith("### ") &&
+      (!current ||
+        STATUS_ICONS.some((i) => line.slice(4).trimStart().startsWith(i)) ||
+        /^###\s+\S+\s+\d{4}-\d{2}-\d{2}/.test(line))
+    ) {
       flush();
       current = [line];
     } else if (current) {
@@ -394,8 +435,13 @@ export function serializeTodos(entries: TodoEntry[]): string {
   if (entries.length === 0) return "";
   const parts = entries.map((e) => {
     const icon = STATUS_ICON[e.status];
-    const body = e.title ? `**${e.title}**\n\n${e.body}` : e.body;
-    return `### ${icon} ${e.timestamp}${tagString(e.tags)}\n\n${body}`;
+    const onHeader = e.titleOnHeader ? e.title : e.headerText;
+    const body =
+      e.title && !e.titleOnHeader ? `**${e.title}**\n\n${e.body}` : e.body;
+    const header = [e.timestamp, ...e.tags.map((t) => `#${t}`), onHeader]
+      .filter(Boolean)
+      .join(" ");
+    return `### ${icon} ${header}\n\n${body}`;
   });
   return `${parts.join("\n\n")}\n`;
 }

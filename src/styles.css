@@ -451,6 +451,9 @@ header .ghost.gear {
   letter-spacing: normal;
   font-weight: 400;
 }
+.copy-btn + .copy-btn {
+  margin-left: 4px;
+}
 .reply {
   margin-top: 6px;
   padding-top: 6px;
@@ -998,6 +1001,39 @@ header .ghost.gear {
 .settings-sublabel {
   color: var(--text-secondary);
   font-size: 11px;
+}
+.project-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0;
+}
+.project-aliases {
+  margin-left: 118px;
+  font-size: 12px;
+}
+.project-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.project-folder-tag {
+  color: var(--project);
+  min-width: 110px;
+  flex-shrink: 0;
+}
+.project-folder-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.project-folder-path.none {
+  color: var(--text-muted);
+  font-style: italic;
 }
 .settings-chip-row {
   display: flex;

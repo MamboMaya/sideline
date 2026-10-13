@@ -291,3 +291,37 @@ export function setListEntry(
     if_absent: ifAbsent,
   });
 }
+
+// The done-todo sweep (src/lib/sweep.ts, src-tauri/src/sweep.rs):
+// `readDoneDates` returns the raw `.sideline-done.json` text (`{}` when
+// absent; rejects if corrupt); `sweepTodos` resolves false, writing
+// nothing, when the project file no longer reads exactly `expected`.
+export function readDoneDates(): Promise<string> {
+  return invoke<string>("read_done_dates");
+}
+
+export function writeDoneDates(content: string): Promise<void> {
+  return invoke<void>("write_done_dates", { content });
+}
+
+export function sweepTodos(
+  project: string,
+  expected: string,
+  live: string,
+  done: string,
+): Promise<boolean> {
+  return invoke<boolean>("sweep_todos", { project, expected, live, done });
+}
+
+// Todos view "Verify N": opens `terminal` (undefined = auto) in the
+// project's repo folder running `claude` with `prompt` as its first message
+// (open_verify_session in docs/backend.md). Rejects when the folder is
+// missing or invalid — the caller falls back to the clipboard.
+export function openVerifySession(
+  path: string,
+  tag: string,
+  prompt: string,
+  terminal: string | undefined,
+): Promise<void> {
+  return invoke<void>("open_verify_session", { path, tag, prompt, terminal });
+}

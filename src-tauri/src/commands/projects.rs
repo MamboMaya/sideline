@@ -145,9 +145,88 @@ pub(crate) fn setup_project_repo(
     crate::commands::open::open_command_script(SETUP_SCRIPT, &setup_script(&path, &tag), &terminal)
 }
 
+/// `.sideline.json` stores some folders as `~/…`; the shell never sees
+/// that form (the path is single-quoted), so expand it here.
+fn expand_home(path: &str) -> String {
+    match (path.strip_prefix("~/"), dirs::home_dir()) {
+        (Some(rest), Some(home)) => home.join(rest).to_string_lossy().into_owned(),
+        _ => path.to_string(),
+    }
+}
+
+/// The ⧉ Verify script: start an interactive `claude` in the repo with the
+/// verify prompt as its first message. The prompt is read from a file at
+/// run time, so its text never becomes shell syntax.
+fn verify_script(path: &str, prompt_file: &std::path::Path, bin: &std::path::Path) -> String {
+    format!(
+        "#!/bin/zsh\ncd '{path}' || exit 1\nexec '{bin}' \"$(cat '{prompt}')\"\n",
+        bin = bin.display(),
+        prompt = prompt_file.display(),
+    )
+}
+
+/// Todos view "Verify N": opens the configured terminal in the project's
+/// repo folder running `claude` with `prompt` (the frontend's verifyPrompt)
+/// — the same `.command` hand-off as `open_ask_session`, so no new TCC
+/// surface: the TERMINAL enters the repo, Sideline only writes the prompt
+/// and script inside ~/notes, one pair per project so two clicks can't
+/// swap prompts.
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) fn open_verify_session(
+    path: String,
+    tag: String,
+    prompt: String,
+    terminal: Option<String>,
+) -> Result<(), String> {
+    let path = expand_home(&path);
+    validate_setup_args(&path, &tag)?;
+    if prompt.is_empty() || prompt.len() > 50_000 {
+        return Err("Invalid prompt".to_string());
+    }
+    let terminal = crate::commands::open::resolve_terminal(terminal)?;
+    let prompt_file = crate::paths::notes_dir().join(format!(".sideline-verify-{tag}.md"));
+    let bin = crate::claude::claude_bin();
+    let bin = std::path::Path::new(&bin);
+    for p in [prompt_file.as_path(), bin] {
+        if p.to_string_lossy()
+            .chars()
+            .any(|c| c == '\'' || c.is_control())
+        {
+            return Err("Unsafe path".to_string());
+        }
+    }
+    std::fs::write(&prompt_file, prompt).map_err(|e| e.to_string())?;
+    crate::commands::open::open_command_script(
+        &format!(".sideline-verify-{tag}.command"),
+        &verify_script(&path, &prompt_file, bin),
+        &terminal,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verify_script_reads_the_prompt_from_a_file() {
+        let s = verify_script(
+            "/Users/me/projects/demo",
+            std::path::Path::new("/Users/me/notes/.sideline-verify-demo.md"),
+            std::path::Path::new("/opt/homebrew/bin/claude"),
+        );
+        assert_eq!(
+            s,
+            "#!/bin/zsh\ncd '/Users/me/projects/demo' || exit 1\n\
+             exec '/opt/homebrew/bin/claude' \"$(cat '/Users/me/notes/.sideline-verify-demo.md')\"\n"
+        );
+    }
+
+    #[test]
+    fn expand_home_only_touches_a_leading_tilde() {
+        assert!(expand_home("~/x").ends_with("/x"));
+        assert!(!expand_home("~/x").starts_with('~'));
+        assert_eq!(expand_home("/a/~/b"), "/a/~/b");
+    }
 
     #[test]
     fn script_is_idempotent_append_in_the_picked_folder() {

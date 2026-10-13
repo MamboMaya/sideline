@@ -19,6 +19,10 @@ interface SectionHeaderProps {
   // the clipboard). Omitted entirely (not just hidden) for the tag/icebox
   // variants, matching the original JSX.
   onCopy?: () => void;
+  // Project sections only, and only while some ⬜ entry's text says it's
+  // done: opens a repo Claude session (or copies its prompt) to verify them.
+  verifyCount?: number;
+  onVerify?: () => void;
 }
 
 // Unifies the three near-identical Todos-view section headers (project, tag,
@@ -33,6 +37,8 @@ export function SectionHeader({
   onToggle,
   headerRef,
   onCopy,
+  verifyCount = 0,
+  onVerify,
 }: SectionHeaderProps) {
   return (
     <div
@@ -43,6 +49,19 @@ export function SectionHeader({
     >
       <span className="chevron">{collapsed ? "▸" : "▾"}</span>
       {label}
+      {onVerify && verifyCount > 0 && (
+        <button
+          type="button"
+          className="ghost copy-btn"
+          title="Open Claude in this project's repo to verify the entries marked “Looks done” (copies the prompt if no repo folder is set)"
+          onClick={(e) => {
+            e.stopPropagation();
+            onVerify();
+          }}
+        >
+          ↗ Verify {verifyCount}
+        </button>
+      )}
       {onCopy && (
         <button
           type="button"

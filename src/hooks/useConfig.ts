@@ -18,6 +18,9 @@ import {
   projectTagsFrom,
   projectsAdd,
   projectsRemove,
+  projectsSetFolder,
+  aliasesSet,
+  type AliasesConfig,
   writeConfig,
 } from "../lib/config";
 import { sanitizeTag } from "../lib/format";
@@ -154,6 +157,10 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   const [classifierOverride, setClassifierOverride] = useState<
     Partial<ClassifierConfig> | undefined
   >(undefined);
+  // `aliases`: project tag → other names (see aliasesFrom in config.ts).
+  const [aliasesOverride, setAliasesOverride] = useState<
+    AliasesConfig | undefined
+  >(undefined);
 
   // The 13 opaque `.sideline.json` overrides, read from current state —
   // passed straight through to writeConfig so a pin/zoom/hide write never
@@ -175,6 +182,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     cleanFillers: cleanFillersOverride,
     autoList: autoListOverride,
     classifier: classifierOverride,
+    aliases: aliasesOverride,
   });
 
   const persistZoom = (next: number) => {
@@ -214,6 +222,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     cleanFillers?: boolean | undefined;
     autoList?: boolean | undefined;
     classifier?: Partial<ClassifierConfig> | undefined;
+    aliases?: AliasesConfig | undefined;
   }) => {
     const nextPinned = patch.pinnedTags ?? pinnedTags;
     const nextHidden = patch.hiddenTags ?? hiddenTags;
@@ -245,6 +254,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
       "autoList" in patch ? patch.autoList : autoListOverride;
     const nextClassifierOverride =
       "classifier" in patch ? patch.classifier : classifierOverride;
+    const nextAliasesOverride =
+      "aliases" in patch ? patch.aliases : aliasesOverride;
 
     setPinnedTags(nextPinned);
     setHiddenTags(nextHidden);
@@ -272,6 +283,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setAutoList(nextAutoListOverride ?? true);
     setClassifierOverride(nextClassifierOverride);
     setClassifier(mergeClassifier(nextClassifierOverride));
+    setAliasesOverride(nextAliasesOverride);
 
     await writeConfig({
       pinnedTags: nextPinned,
@@ -292,6 +304,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
         cleanFillers: nextCleanFillersOverride,
         autoList: nextAutoListOverride,
         classifier: nextClassifierOverride,
+        aliases: nextAliasesOverride,
       },
     });
   };
@@ -481,7 +494,18 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
   };
 
   const removeProject = (tag: string) => {
-    updateConfig({ projects: projectsRemove(projectsOverride, tag) });
+    updateConfig({
+      projects: projectsRemove(projectsOverride, tag),
+      aliases: aliasesSet(aliasesOverride, tag, ""),
+    });
+  };
+
+  const setProjectAliases = (tag: string, csv: string) => {
+    updateConfig({ aliases: aliasesSet(aliasesOverride, tag, csv) });
+  };
+
+  const setProjectFolder = (tag: string, path: string) => {
+    updateConfig({ projects: projectsSetFolder(projectsOverride, tag, path) });
   };
 
   // Applies a loaded SidelineConfig to the corresponding state slices — the
@@ -515,6 +539,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setAutoListOverride(config.autoListOverride);
     setClassifier(config.classifier);
     setClassifierOverride(config.classifierOverride);
+    setAliasesOverride(config.aliasesOverride);
   };
 
   const persistPinnedTags = async (next: string[]) => {
@@ -605,6 +630,7 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     cleanFillersOverride,
     autoListOverride,
     classifierOverride,
+    aliasesOverride,
     unhideTag,
     setModelOverride,
     setPromptOverride,
@@ -621,6 +647,8 @@ export function useConfig({ showToast, dismissToast }: UseConfigParams) {
     setClassifierUrl,
     addProject,
     removeProject,
+    setProjectFolder,
+    setProjectAliases,
     updateConfig,
   };
 }

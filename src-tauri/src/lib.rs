@@ -15,6 +15,7 @@ mod listrules;
 mod lists;
 mod paths;
 mod reminders;
+mod sweep;
 mod tray;
 mod watcher;
 mod whisper;
@@ -203,6 +204,7 @@ pub fn run() {
             commands::projects::pick_project_folder,
             commands::projects::project_setup_script,
             commands::projects::setup_project_repo,
+            commands::projects::open_verify_session,
             commands::assets::paste_clipboard_image,
             commands::assets::read_asset,
             commands::assets::open_asset,
@@ -214,7 +216,10 @@ pub fn run() {
             classifier::classify_local,
             classifier::classifier_health,
             lists::read_lists,
-            lists::set_list_entry
+            lists::set_list_entry,
+            sweep::read_done_dates,
+            sweep::write_done_dates,
+            sweep::sweep_todos
         ])
         .setup(move |app| {
             // One-time launch-at-login consent dialog; after it's answered,

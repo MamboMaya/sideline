@@ -127,9 +127,9 @@ export function projectTagsFrom(
 // brand-new `projects` key defaults to the array shape; a folder-picked
 // project (AddProjectModal, `path` given) needs somewhere to keep the path,
 // so it writes the map shape — upgrading an existing array (every old
-// entry gets `""`) rather than dropping the path. The path stays
-// informational (docs/data-model.md): shown back in Settings, never read
-// or written to. A tag already present is left untouched (no duplicate
+// entry gets `""`) rather than dropping the path. Sideline never reads or
+// writes inside the folder; the Todos view's Verify button hands it to a
+// terminal (docs/data-model.md). A tag already present is left untouched (no duplicate
 // entries, existing path never clobbered).
 export function projectsAdd(
   current: ProjectsConfig | undefined,
@@ -148,6 +148,29 @@ export function projectsAdd(
     return tag in current ? current : { ...current, [tag]: path ?? "" };
   }
   return path === undefined ? [tag] : { [tag]: path };
+}
+
+// Sets (or, with `""`, clears) an existing project's repo folder —
+// Settings' per-project "Choose…". Upgrades the array shape to the map,
+// like projectsAdd with a path. A tag not in `projects` is ignored.
+export function projectsSetFolder(
+  current: ProjectsConfig | undefined,
+  tag: string,
+  path: string,
+): ProjectsConfig | undefined {
+  const folders = projectFolders(current);
+  if (!(tag in folders)) return current;
+  return { ...folders, [tag]: path };
+}
+
+// Every project tag → its repo folder (`""` when none), in either shape.
+export function projectFolders(
+  current: ProjectsConfig | undefined,
+): Record<string, string> {
+  if (Array.isArray(current)) {
+    return Object.fromEntries(current.map((t) => [t, ""]));
+  }
+  return current && typeof current === "object" ? { ...current } : {};
 }
 
 // The tag AddProjectModal prefills from a picked folder: its basename run
@@ -433,6 +456,45 @@ export interface SidelineConfig {
   // key is absent) — kept only so a pin/zoom/hide write doesn't clobber a
   // hand-edited value, same as the other overrides above.
   classifierOverride: Partial<ClassifierConfig> | undefined;
+  // Raw `aliases` (project tag → other names it goes by, e.g.
+  // `"demo-app": ["Public Name"]`) — a note mentioning one gets the
+  // tag from the auto-tagger. Undefined when absent.
+  aliasesOverride: AliasesConfig | undefined;
+}
+
+export type AliasesConfig = Record<string, string[]>;
+
+// Validates a raw `aliases` value: an object of tag → string list; blank
+// names are dropped, a tag left with none is omitted, a non-object is absent.
+export function aliasesFrom(raw: unknown): AliasesConfig | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: AliasesConfig = {};
+  for (const [tag, names] of Object.entries(raw)) {
+    if (!Array.isArray(names)) continue;
+    const clean = names
+      .filter((n): n is string => typeof n === "string")
+      .map((n) => n.trim())
+      .filter(Boolean);
+    if (clean.length) out[tag] = clean;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+// Settings' "Also called" field for one project: comma-separated names in,
+// the whole `aliases` value out (undefined once empty).
+export function aliasesSet(
+  current: AliasesConfig | undefined,
+  tag: string,
+  csv: string,
+): AliasesConfig | undefined {
+  const names = csv
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean);
+  const next = { ...current };
+  if (names.length) next[tag] = names;
+  else delete next[tag];
+  return Object.keys(next).length ? next : undefined;
 }
 
 const EMPTY_CONFIG: SidelineConfig = {
@@ -462,6 +524,7 @@ const EMPTY_CONFIG: SidelineConfig = {
   autoListOverride: undefined,
   classifier: DEFAULT_CLASSIFIER,
   classifierOverride: undefined,
+  aliasesOverride: undefined,
 };
 
 // Validates a raw `dictionary` value into DictionaryConfig: an object whose
@@ -565,6 +628,7 @@ export function parseConfig(raw: string): SidelineConfig {
         ? (parsed.classifier as Partial<ClassifierConfig>)
         : undefined;
     const classifier = mergeClassifier(classifierOverride);
+    const aliasesOverride = aliasesFrom(parsed?.aliases);
     return {
       pinnedTags: sanitized.slice(0, 6),
       hiddenTags: hidden,
@@ -592,6 +656,7 @@ export function parseConfig(raw: string): SidelineConfig {
       autoListOverride,
       classifier,
       classifierOverride,
+      aliasesOverride,
     };
   } catch {
     return EMPTY_CONFIG;
@@ -648,6 +713,7 @@ export interface ConfigOverrides {
   // Raw `classifier` object as read from the file — see
   // SidelineConfig.classifierOverride above.
   classifier: Partial<ClassifierConfig> | undefined;
+  aliases: AliasesConfig | undefined;
 }
 
 export interface ConfigWrite {
@@ -660,7 +726,8 @@ export interface ConfigWrite {
 // Byte-identical to the original writeConfigFile's JSON.stringify(..., null,
 // 2) shape and key order — pinnedTags, hiddenTags?, prompts?, models?,
 // projects?, claude?, zoom?, audio?, hotkeys?, overlay?, pushToTalk?,
-// terminal?, dictionary?, staleDays?, cleanFillers?, autoList?, classifier? (omitted
+// terminal?, dictionary?, staleDays?, cleanFillers?, autoList?, classifier?,
+// aliases? (omitted
 // when falsy/empty/default) —
 // .sideline.json is read by capture/ tooling too, so this order is contract
 // (see docs/data-model.md). Object spread preserves insertion order for
@@ -708,6 +775,7 @@ export function serializeConfig(cfg: ConfigWrite): string {
       ...(cfg.overrides.classifier
         ? { classifier: cfg.overrides.classifier }
         : {}),
+      ...(cfg.overrides.aliases ? { aliases: cfg.overrides.aliases } : {}),
     },
     null,
     2,

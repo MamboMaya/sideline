@@ -30,11 +30,16 @@ What's new in each version: [CHANGELOG.md](CHANGELOG.md).
   Claude-generated headers (your existing `claude` CLI, cheap models).
 - **Todos view**: grouped, collapsible, searchable, with done/icebox states
   and undo. Paste a screenshot onto a card (⌘V) and it's saved to
-  `~/notes/inbox-assets/` and linked from the todo file.
+  `~/notes/inbox-assets/` and linked from the todo file. Done todos move to
+  `~/notes/todos/done/` a week after you finish them, so the live files stay
+  short.
 - **Projects**: tray → Add project… (or Settings → Tags → Choose folder…)
   picks a repo folder, prefills the routing tag from its name, and can append
   the todos pointer to that repo's `CLAUDE.local.md` so a Claude Code session
-  there knows where its routed notes live.
+  there knows where its routed notes live. Give a project other names
+  ("Also called…") and mentioning any of them tags the note. Todos whose text
+  says "Done" but are still open get a Verify button that opens Claude in
+  the repo to check them.
 - **Voice extras**: a dictionary that biases Whisper toward your vocabulary
   and corrects mis-hearings, filler-word removal, and spoken lists ("first…
   second…", "bullet …") shown as bullets — all rule-based and instant, and
@@ -100,7 +105,8 @@ Everything else is deliberately prompt-free: notes live in `~/notes`, which
 is not a TCC-protected folder (Documents/Desktop/Downloads are; that's why
 the location is fixed). The "Add project" folder picker is macOS's own
 dialog; Sideline stores the path and never reads or writes inside that
-folder — the repo setup script runs in your terminal, under its permissions.
+folder — the repo setup script and Verify's Claude session run in your
+terminal, under its permissions.
 
 If you rebuild the app yourself, sign it with a stable identity so macOS
 remembers your permission answers across builds:

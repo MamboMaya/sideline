@@ -370,6 +370,74 @@ describe("parseTodos", () => {
     expect(entry.timestamp).toBe("");
   });
 
+  test("reads the icon from a header with no timestamp or a date only", () => {
+    const [bare, dateOnly] = parseTodos(
+      "### ✅ \n\n**Shipped**\n\nbody\n\n### ✅ 2026-10-07 #me #todo\n**Built**\nbody\n",
+    );
+    expect(bare.status).toBe("done");
+    expect(bare.timestamp).toBe("");
+    expect(dateOnly.status).toBe("done");
+    expect(dateOnly.timestamp).toBe("2026-10-07");
+    expect(dateOnly.tags).toEqual(["me", "todo"]);
+  });
+
+  test("header-line text becomes the title and stays on the header", () => {
+    const content = "### ⬜ #gap Rotate the deploy key\nFound 2026-10-12.\n";
+    const [entry] = parseTodos(content);
+    expect(entry.tags).toEqual(["gap"]);
+    expect(entry.title).toBe("Rotate the deploy key");
+    expect(serializeTodos([entry])).toBe(
+      "### ⬜ #gap Rotate the deploy key\n\nFound 2026-10-12.\n",
+    );
+  });
+
+  test("header text beside a **title** line is kept too", () => {
+    const content = "### ⬜ #gap Header words\n\n**Title**\n\nbody\n";
+    const [entry] = parseTodos(content);
+    expect(entry.title).toBe("Title");
+    expect(entry.headerText).toBe("Header words");
+    expect(serializeTodos([entry])).toBe(content);
+  });
+
+  test("only leading #words are tags; later ones stay text", () => {
+    const content =
+      "### ✅ 2026-10-07 #me Merged PR #22, see https://x.test/a#frag\n\nbody\n";
+    const [entry] = parseTodos(content);
+    expect(entry.tags).toEqual(["me"]);
+    expect(entry.title).toBe("Merged PR #22, see https://x.test/a#frag");
+    expect(serializeTodos([entry])).toBe(content);
+  });
+
+  test("a header with no icon keeps its first word", () => {
+    const [entry] = parseTodos("### Fix the key #gap\n\nbody\n");
+    expect(entry.status).toBe("pending");
+    expect(entry.title).toBe("Fix the key #gap");
+  });
+
+  test("an icon glued to text, or followed by U+FE0F, still reads", () => {
+    const [glued, fe0f] = parseTodos(
+      "### ✅Shipped\n\nbody\n\n### ✅\uFE0F 2026-10-01 09:00 #me\n\nbody\n",
+    );
+    expect(glued.status).toBe("done");
+    expect(glued.title).toBe("Shipped");
+    expect(fe0f.status).toBe("done");
+    expect(fe0f.timestamp).toBe("2026-10-01 09:00");
+  });
+
+  test("a ### heading inside an entry's reply stays in that entry", () => {
+    const content =
+      "### ✅ 2026-10-01 09:00 #me\n\nIdea.\n\n## Claude\n\n### Steps\n\n1. Ship it.\n";
+    const entries = parseTodos(content);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].body).toContain("### Steps");
+    expect(serializeTodos(entries)).toBe(content);
+  });
+
+  test("a bare header round-trips with its trailing space", () => {
+    const content = "### ⬜ \n\n**Title**\n\nbody\n";
+    expect(serializeTodos(parseTodos(content))).toBe(content);
+  });
+
   test("content before the first '### ' header is dropped, not treated as preamble (unlike parseInbox)", () => {
     const [entry] = parseTodos(
       "stray text\n\n### ⬜ 2026-07-29 09:00\n\nbody\n",
